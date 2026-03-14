@@ -3,12 +3,20 @@
 (use-package hydra
   :ensure t)
 
+;;; ace-window
+(use-package ace-window
+  :ensure t
+  :bind ("M-o" . ace-window)
+  :custom
+  (aw-keys '(?a ?s ?d ?f ?g ?h ?j ?k ?l))
+  (aw-scope 'frame))
+
 ;; 창 관리
 (defhydra hydra-window (:hint nil :color amaranth)
   "
   _h_: ←  _l_: →  _j_: ↓  _k_: ↑    _s_: 수평분할  _v_: 수직분할
   _H_: 축소← _L_: 확대→ _J_: 확대↓ _K_: 축소↑    _d_: 삭제  _D_: 나머지삭제
-  _b_: 버퍼전환  _f_: 파일열기  _o_: 다른창   _q_: 종료
+  _b_: 버퍼전환  _f_: 파일열기  _a_: ace-window  _m_: 스왑  _q_: 종료
   "
   ("h" windmove-left)
   ("l" windmove-right)
@@ -24,7 +32,8 @@
   ("D" delete-other-windows :color blue)
   ("b" counsel-switch-buffer)
   ("f" counsel-find-file)
-  ("o" other-window)
+  ("a" ace-window)
+  ("m" ace-swap-window)
   ("q" nil :color blue))
 
 ;; 프로젝트
