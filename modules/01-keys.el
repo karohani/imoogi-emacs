@@ -5,7 +5,9 @@
 (imoogi-require "01-keys")
 
 ;;; macOS: Emacs 포커스 시 시스템 입력 소스를 영문으로 강제 전환
-;; 한글 입력은 Emacs 내장 input-method (S-SPC)로만 처리
+;; 한글 입력은 Emacs 내장 input-method (S-SPC)로 처리.
+;; 예외: vterm 은 키를 셸로 직접 흘려보내 Emacs 입력기(quail)가 동작하지 않으므로
+;; vterm 버퍼에서는 영문 강제를 건너뛴다 → macOS 시스템 한글 입력기를 그대로 사용.
 (when (eq system-type 'darwin)
   (defvar imoogi--prev-input-source nil
     "Emacs 진입 전 macOS 입력 소스를 저장.")
@@ -14,12 +16,13 @@
     "im-select로 포커스 전환 시 입력 소스 자동 관리."
     (let ((im-select (executable-find "im-select")))
       (when im-select
-        ;; Emacs 진입: 현재 입력 소스 저장 후 영문 전환
+        ;; Emacs 진입: 현재 입력 소스 저장 후 영문 전환(vterm 에서는 건너뜀)
         (add-hook 'focus-in-hook
                   (lambda ()
-                    (setq imoogi--prev-input-source
-                          (string-trim (shell-command-to-string im-select)))
-                    (call-process im-select nil nil nil "com.apple.keylayout.ABC")))
+                    (unless (derived-mode-p 'vterm-mode)
+                      (setq imoogi--prev-input-source
+                            (string-trim (shell-command-to-string im-select)))
+                      (call-process im-select nil nil nil "com.apple.keylayout.ABC"))))
         ;; Emacs 이탈: 이전 입력 소스로 복원
         (add-hook 'focus-out-hook
                   (lambda ()

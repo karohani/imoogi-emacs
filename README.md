@@ -49,23 +49,79 @@ git add vendor/ packages.lock packages.el && git commit -m "vendor: update packa
 - **NanumGothicCoding** (나눔고딕코딩) — 기본 코딩 폰트(한글/영문 고정폭). `imoogi-font-family` / `imoogi-font-size` 로 조정.
 - **NFM.ttf** (Symbols Nerd Font Mono) — doom-modeline 아이콘용. 없으면 아이콘만 □ 로 보이고 기능은 정상.
 
-## 주요 키바인딩
+## 상황별 단축키
 
-| 키 | 기능 |
+### 한글 입력
+| 키 | 상황 | 동작 |
+|----|------|------|
+| `S-SPC` | 일반 버퍼 | 한/영 전환 (Emacs 내장 korean-hangul 입력기) |
+| macOS 시스템 한글 (Caps/한영키) | **vterm 안** | vterm 은 Emacs 입력기가 안 되므로 **OS 한글 입력기**로 입력 (S-SPC 사용 불가) |
+
+### 명령·검색·이동 (vertico / consult)
+| 키 | 동작 |
 |----|------|
-| `C-c h` | 마스터 hydra (창, 프로젝트, Git, 줌, treemacs) |
+| `M-x` | 명령 실행 (vertico 세로 완성) |
+| `C-x C-f` | 파일 열기 |
+| `C-s` / `M-s l` | consult-line — 현재 버퍼 검색 |
+| `C-x b` | consult-buffer — 버퍼 전환 |
+| `M-s r` / `M-s g` | consult-ripgrep / grep — 프로젝트·디렉터리 검색 |
+| `M-g g` | 줄 이동 · `M-g i` imenu · `M-g f` flymake 진단 |
+| `M-y` | consult-yank-pop (kill-ring) |
+| `C-.` / `C-;` | embark-act / embark-dwim — 후보·심볼 컨텍스트 액션 |
+
+### 버퍼 내 자동완성 (corfu / cape)
+| 키 | 동작 |
+|----|------|
+| `TAB` | 들여쓰기 또는 완성 (`tab-always-indent`) |
+| `C-c e` | cape 접두 맵 (dabbrev/file/elisp 등 보완) |
+
+### 창 관리
+| 키 | 동작 |
+|----|------|
+| `M-o` | ace-window — 창 점프 |
+| `C-c h` → `w` | hydra-window (`h/l/j/k` 이동, `s/v` 분할, `d` 삭제, `H/L/J/K` 크기) |
+
+### 프로젝트 (projectile)
+| 키 | 동작 |
+|----|------|
 | `C-c p` | projectile 커맨드 맵 |
-| `C-c e` | cape (completion-at-point 접두 맵) |
-| `M-o` | ace-window (창 점프) |
-| `S-SPC` | 한영 전환 |
-| `M-x` | vertico 세로 완성 |
-| `C-s` / `M-s l` | consult-line (현재 버퍼 검색) |
-| `C-x b` | consult-buffer (버퍼 전환) |
-| `M-s r` | consult-ripgrep (프로젝트 검색) |
-| `M-g g` | consult-goto-line · `M-g i` consult-imenu |
-| `C-.` / `C-;` | embark-act / embark-dwim (컨텍스트 액션) |
-| `C-'` | avy 점프 |
+| `C-c h` → `p` | hydra-projectile (`f` 파일, `s` ripgrep, `p` 전환, `r` 최근파일) |
+
+### Git
+| 키 | 동작 |
+|----|------|
+| `C-c h` → `g` | hydra-git (`s` status, `l` log, `b` blame, `d` diff) |
+| 여백 표시 | diff-hl — 커밋되지 않은 변경을 fringe 에 표시 |
+
+### 파일 탐색기 (treemacs)
+| 키 | 동작 |
+|----|------|
+| `C-x t t` | treemacs 토글 · `M-0` treemacs 창으로 |
+| `C-x t 1 / d / B / C-t / M-t` | 단일창 / 디렉터리 / 북마크 / 파일찾기 / 태그찾기 |
+
+### 코드 폴딩 (`C-c z` 접두)
+| 키 | 동작 |
+|----|------|
+| `C-c z a` | 토글 · `C-c z o/O` 열기/재귀 · `C-c z c` 닫기 · `C-c z r/m` 전부 열기/닫기 |
+
+### 터미널 / 편집 / 도움말
+| 키 | 동작 |
+|----|------|
+| `C-c t` | vterm 터미널 (최초 실행 시 모듈 빌드) |
 | `C-z` / `C-S-z` | undo-fu undo / redo |
+| `C-'` | avy — 화면 내 빠른 점프 |
+| `C-h f/v/k` | helpful — 향상된 도움말 (describe-* 대체) |
+| 저장 시 자동 | stripspace(끝공백 제거) · apheleia(포매팅) |
+
+### macOS Cmd 키
+| 키 | 동작 |
+|----|------|
+| `s-c / s-v / s-x` | 복사 / 붙여넣기 / 잘라내기 |
+| `s-z / s-a` | 되돌리기 / 전체 선택 |
+
+### 진입점 요약
+- **`C-c h`** — 마스터 hydra (→ `w` 창, `p` 프로젝트, `g` Git, `z` 줌, `t` treemacs)
+- **`C-c p`** — projectile, **`C-c z`** — 폴딩, **`C-c e`** — cape, **`C-c t`** — 터미널
 
 ## 패키지 관리
 
