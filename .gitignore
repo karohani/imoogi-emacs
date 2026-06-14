@@ -6,3 +6,9 @@
 !vendor/elpa/**/*.elc
 vendor/elpa/archives/
 vendor/elpa/.last-refresh
+
+# vterm 네이티브 모듈은 호스트(OS/아키텍처)마다 다르므로 커밋하지 않는다.
+# 각 타겟에서 최초 실행 시 빌드된다(README "vterm 빌드" 참조).
+vendor/elpa/vterm-*/build/
+vendor/elpa/vterm-*/*.so
+vendor/elpa/vterm-*/*.dylib
