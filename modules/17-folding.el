@@ -6,6 +6,8 @@
 
 ;;; Code:
 
+(imoogi-require "17-folding" 'kirigami 'outline-indent)
+
 ;;; kirigami — 폴드 열기/닫기 통합 인터페이스 (C-c z 접두)
 (use-package kirigami
   :ensure t

@@ -1,5 +1,8 @@
 ;;; which-key.el --- Which Key -*- lexical-binding: t; -*-
 
+;;; Code:
+(imoogi-require "03-which-key" 'which-key)
+
 ;; which-key 는 Emacs 30 부터 내장(별도 설치 불필요).
 (use-package which-key
   :ensure nil

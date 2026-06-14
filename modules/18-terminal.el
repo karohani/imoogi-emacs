@@ -15,6 +15,8 @@
 
 ;;; Code:
 
+(imoogi-require "18-terminal" 'vterm)
+
 ;;; 빌드 사전조건 점검 -----------------------------------------------------------
 ;; vterm 모듈 빌드는 cmake/make/cc 와 (시스템 libvterm 없으면) glibtool·pkg-config
 ;; 가 필요하다. 누락 시 cryptic 한 make 오류 대신 무엇을 설치해야 하는지 안내한다.

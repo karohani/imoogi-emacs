@@ -1,5 +1,8 @@
 ;;; projects.el --- Projectile, Perspective -*- lexical-binding: t; -*-
 
+;;; Code:
+(imoogi-require "04-projects" 'projectile 'perspective 'persp-projectile)
+
 (use-package projectile
   :ensure t
   :config

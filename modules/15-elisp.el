@@ -5,6 +5,9 @@
 
 ;;; Code:
 
+(imoogi-require "15-elisp" 'aggressive-indent 'highlight-defined 'paredit
+                'page-break-lines 'elisp-refs)
+
 ;;; aggressive-indent — 코드 작성 중 자동으로 들여쓰기 유지(lisp 계열)
 (use-package aggressive-indent
   :ensure t

@@ -5,6 +5,8 @@
 
 ;;; Code:
 
+(imoogi-require "12-navigation" 'avy 'helpful 'diff-hl 'bufferfile)
+
 ;;; avy — 화면 내 빠른 점프
 (use-package avy
   :ensure t

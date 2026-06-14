@@ -6,6 +6,8 @@
 
 ;;; Code:
 
+(imoogi-require "10-theme" 'doom-themes 'doom-modeline 'nerd-icons)
+
 ;;; 폰트 — 동봉 폰트 자동 설치 + 코딩 폰트 지정 (망분리 대응, 네트워크 불필요)
 ;; assets/fonts/ 의 모든 .ttf 를 OS 폰트 디렉터리로 복사한다. 로컬 파일 복사라
 ;; 인터넷이 필요 없다(M-x nerd-icons-install-fonts 는 다운로드라 폐쇄망 부적합).

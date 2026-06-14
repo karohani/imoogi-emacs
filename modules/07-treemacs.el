@@ -1,5 +1,9 @@
 ;;; treemacs.el --- Treemacs & related packages -*- lexical-binding: t; -*-
 
+;;; Code:
+(imoogi-require "07-treemacs" 'treemacs 'treemacs-projectile 'treemacs-icons-dired
+                'treemacs-magit 'treemacs-evil 'treemacs-persp 'evil 'persp-mode)
+
 (use-package treemacs
   :ensure t
   :defer t

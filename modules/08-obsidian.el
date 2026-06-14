@@ -1,5 +1,8 @@
 ;;; 08-obsidian.el --- Obsidian (vendored via package.el) -*- lexical-binding: t; -*-
 
+;;; Code:
+(imoogi-require "08-obsidian" 'obsidian)
+
 ;; 과거 straight.el 로 GitHub 에서 설치했으나, 망분리 vendoring 통일을 위해
 ;; MELPA 패키지(obsidian)로 이관. vendor/elpa/ 에 동봉된다.
 (use-package obsidian

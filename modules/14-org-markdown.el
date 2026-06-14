@@ -5,6 +5,8 @@
 
 ;;; Code:
 
+(imoogi-require "14-org-markdown" 'org-appear 'markdown-toc)
+
 ;;; org-mode (내장)
 (use-package org
   :ensure nil

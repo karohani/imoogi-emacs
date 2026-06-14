@@ -1,5 +1,8 @@
 ;;; 09-autorevert.el --- Auto-revert buffers on file change -*- lexical-binding: t; -*-
 
+;;; Code:
+(imoogi-require "09-autorevert" 'autorevert)
+
 (use-package autorevert
   :ensure nil
   :config

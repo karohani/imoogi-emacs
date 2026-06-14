@@ -5,6 +5,8 @@
 
 ;;; Code:
 
+(imoogi-require "13-system" 'exec-path-from-shell 'buffer-terminator 'persist-text-scale)
+
 ;;; exec-path-from-shell — 셸 환경변수를 GUI Emacs 로 동기화 (macOS 필수)
 ;; GUI/데몬으로 띄운 Emacs 는 로그인 셸의 PATH 등을 물려받지 못한다.
 ;; 로컬 셸 호출이라 네트워크 불필요(망분리 안전).

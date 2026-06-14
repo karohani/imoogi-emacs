@@ -10,6 +10,9 @@
 
 ;;; Code:
 
+(imoogi-require "02-completion" 'vertico 'orderless 'marginalia 'embark
+                'embark-consult 'consult 'corfu 'cape)
+
 ;;; Vertico — 미니버퍼 세로 완성 UI
 (use-package vertico
   :ensure t

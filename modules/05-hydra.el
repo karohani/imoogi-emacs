@@ -1,5 +1,8 @@
 ;;; hydra.el --- Hydra definitions -*- lexical-binding: t; -*-
 
+;;; Code:
+(imoogi-require "05-hydra" 'hydra 'ace-window)
+
 (use-package hydra
   :ensure t)
 

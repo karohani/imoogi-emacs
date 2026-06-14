@@ -1,5 +1,9 @@
 ;;; keys.el --- Korean input & key translation -*- lexical-binding: t; -*-
 
+;;; Code:
+;; 외부 패키지 없음(내장 기능만 사용).
+(imoogi-require "01-keys")
+
 ;;; macOS: Emacs 포커스 시 시스템 입력 소스를 영문으로 강제 전환
 ;; 한글 입력은 Emacs 내장 input-method (S-SPC)로만 처리
 (when (eq system-type 'darwin)

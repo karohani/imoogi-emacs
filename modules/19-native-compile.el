@@ -11,6 +11,8 @@
 
 ;;; Code:
 
+(imoogi-require "19-native-compile" 'compile-angel)
+
 (use-package compile-angel
   :ensure t
   :demand t

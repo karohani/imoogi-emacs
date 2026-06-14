@@ -6,6 +6,8 @@
 
 ;;; Code:
 
+(imoogi-require "00-defaults" 'recentf 'savehist 'saveplace)
+
 ;;; 응답 간소화 — yes/no 대신 y/n
 (setq use-short-answers t
       read-answer-short t)

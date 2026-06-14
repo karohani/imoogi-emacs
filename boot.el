@@ -37,6 +37,19 @@
 
 ;; 스크롤 등 편집 기본값은 modules/00-defaults.el 에서 통합 관리한다.
 
+;;; 모듈 사전조건 점검 헬퍼
+;; 각 모듈 파일은 맨 위에서 (imoogi-require "NN-name" 'pkg ...) 로 필요 라이브러리가
+;; 로드 가능한지(vendor 에 동봉됐는지/내장인지) 확인한다. 하나라도 없으면 error 를
+;; 시그널하고, 아래 모듈 로더가 condition-case 로 받아 그 모듈만 건너뛴다.
+(defun imoogi-require (module &rest packages)
+  "MODULE 이 요구하는 PACKAGES 가 모두 로드 가능한지 확인한다.
+누락 시 error 를 시그널해 해당 모듈 로딩을 중단시킨다(나머지 모듈은 계속)."
+  (let ((missing (seq-remove (lambda (p) (locate-library (symbol-name p)))
+                             packages)))
+    (when missing
+      (error "[%s] 누락 패키지 %s — packages.el 에 추가 후 재-vendoring 필요"
+             module missing))))
+
 ;;; Load modules
 (dolist (module '("00-defaults"
                   "01-keys"
@@ -58,7 +71,13 @@
                   "17-folding"
                   "18-terminal"
                   "19-native-compile"))
-  (load (expand-file-name (concat "modules/" module) imoogi-emacs-dir)))
+  (condition-case err
+      (load (expand-file-name (concat "modules/" module) imoogi-emacs-dir))
+    (error
+     (display-warning 'imoogi
+                      (format "모듈 %s 로딩 실패(건너뜀): %s"
+                              module (error-message-string err))
+                      :error))))
 
 ;;; Reload
 (defun imoogi-reload ()

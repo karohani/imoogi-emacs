@@ -5,6 +5,9 @@
 
 ;;; Code:
 
+(imoogi-require "11-editing" 'undo-fu 'undo-fu-session 'yasnippet
+                'yasnippet-snippets 'apheleia 'dumb-jump 'stripspace)
+
 ;;; undo-fu — 더 편한 undo/redo (한 번에 redo, 과도한 redo 방지)
 (use-package undo-fu
   :ensure t

@@ -6,6 +6,10 @@
 
 ;;; Code:
 
+(imoogi-require "16-languages" 'git-modes 'yaml-mode 'dockerfile-mode 'gnuplot
+                'lua-mode 'jinja2-mode 'csv-mode 'go-mode 'rust-mode 'crontab-mode
+                'nginx-mode 'hcl-mode 'nix-mode 'fish-mode 'vimrc-mode 'jenkinsfile-mode)
+
 ;;; Git 관련 파일(.gitignore/.gitconfig/.gitattributes)
 (use-package git-modes
   :ensure t
