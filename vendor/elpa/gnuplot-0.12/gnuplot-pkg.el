@@ -1,0 +1,2 @@
+;; Generated package description from gnuplot.el  -*- mode: lisp-data; no-byte-compile: t; lexical-binding:t -*-
+(define-package "gnuplot" "0.12" "Major-mode and interactive frontend for gnuplot" '((emacs "28.1") (compat "31")) :commit "2da2ef68d4861e2e5a5b1a81340b8d92b276a3a5" :maintainer '(("Maxime Tréca" . "maxime@gmail.com") ("Daniel Mendler" . "mail@daniel-mendler.de")) :keywords '("data" "gnuplot" "plotting") :url "https://github.com/emacs-gnuplot/gnuplot")
