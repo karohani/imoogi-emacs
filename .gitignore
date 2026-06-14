@@ -21,4 +21,5 @@ vendor/elpa/ghostel-*/ghostel-module.*
 !.omc/skills/
 !.omc/skills/update-vendor/
 !.omc/skills/update-vendor/SKILL.md
+modules/.omc/
 .omo/
