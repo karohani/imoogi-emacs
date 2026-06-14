@@ -1,5 +1,5 @@
 ;; imoogi-emacs packages.lock — vendor/elpa/ 에 동결된 패키지 버전
-;; 생성: emacs 30.2, 총 83 패키지
+;; 생성: emacs 30.2, 총 87 패키지
 ;; NAME                         VERSION                ARCHIVE
 ace-window                   0.10.0                 ?
 aggressive-indent            1.10.0                 ?
@@ -11,6 +11,7 @@ bufferfile                   20260604.241           ?
 cape                         2.7                    ?
 cfrs                         20250729.1422          ?
 compat                       31.0.0.1               ?
+compile-angel                20260604.227           ?
 cond-let                     1.1.2                  ?
 consult                      3.6                    ?
 corfu                        2.10                   ?
@@ -41,6 +42,7 @@ ht                           20230703.558           ?
 hydra                        0.15.0                 ?
 jenkinsfile-mode             20230525.2006          ?
 jinja2-mode                  0.3                    ?
+kirigami                     20260613.1820          ?
 llama                        1.0.5                  ?
 lua-mode                     20221027               ?
 lv                           0.15.0                 ?
@@ -55,6 +57,7 @@ nix-mode                     1.5.0                  ?
 obsidian                     20250220.2245          ?
 orderless                    1.7                    ?
 org-appear                   20240716.1413          ?
+outline-indent               20260608.1221          ?
 page-break-lines             0.15                   ?
 paredit                      26                     ?
 persist-text-scale           20260609.1528          ?
@@ -79,6 +82,7 @@ undo-fu                      0.5                    ?
 undo-fu-session              0.8                    ?
 vertico                      2.10                   ?
 vimrc-mode                   20250128.635           ?
+vterm                        20260528.1919          ?
 with-editor                  3.5.1                  ?
 yaml                         1.2.4                  ?
 yaml-mode                    0.0.16                 ?
