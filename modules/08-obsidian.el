@@ -1,7 +1,9 @@
-;;; obsidian.el --- Obsidian.el via straight -*- lexical-binding: t; -*-
+;;; 08-obsidian.el --- Obsidian (vendored via package.el) -*- lexical-binding: t; -*-
 
+;; 과거 straight.el 로 GitHub 에서 설치했으나, 망분리 vendoring 통일을 위해
+;; MELPA 패키지(obsidian)로 이관. vendor/elpa/ 에 동봉된다.
 (use-package obsidian
-  :straight (:host github :repo "licht1stein/obsidian.el" :files ("*.el"))
+  :ensure t
   :config
   (global-obsidian-mode t)
   :custom

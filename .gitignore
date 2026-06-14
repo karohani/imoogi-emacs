@@ -1,2 +1,8 @@
 *.elc
 .cache/
+
+# Vendored 패키지(air-gap): 소스+바이트컴파일 결과를 커밋한다.
+# 단, MELPA 아카이브 캐시/리프레시 마커는 런타임에 불필요하므로 제외.
+!vendor/elpa/**/*.elc
+vendor/elpa/archives/
+vendor/elpa/.last-refresh
