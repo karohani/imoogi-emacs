@@ -4,19 +4,36 @@
 
 ## 설치
 
+Emacs 30.x 기준으로 vendoring 되어 있다. 새 머신에서는 저장소를 받은 뒤
+`~/.emacs.d/early-init.el` 과 `~/.emacs.d/init.el` 이 이 설정을 로드하게 만든다.
+
 ```bash
 # 1. 클론
 git clone <repo-url> ~/workspace/imoogi-emacs
 
-# 2. 심볼릭 링크
-ln -s ~/workspace/imoogi-emacs ~/.config/imoogi-emacs
+# 2. ~/.config/imoogi-emacs 로 연결
+mkdir -p ~/.config
+ln -sfn ~/workspace/imoogi-emacs ~/.config/imoogi-emacs
 
-# 3. init.el 설정 (~/.emacs.d/init.el)
+# 3. Emacs init 디렉터리 준비
+mkdir -p ~/.emacs.d
 ```
+
+`~/.emacs.d/early-init.el`:
+
+```elisp
+(load-file (expand-file-name "early-init.el" "~/.config/imoogi-emacs"))
+```
+
+`~/.emacs.d/init.el`:
 
 ```elisp
 (load-file (expand-file-name "boot.el" "~/.config/imoogi-emacs"))
 ```
+
+기존 Emacs 설정이 있으면 위 두 파일을 덮어쓰기 전에 백업한다. 이후 Emacs 를
+재시작하면 첫 부팅 때 동봉 폰트가 사용자 폰트 디렉터리로 복사되고, 다음 재시작부터
+폰트가 적용된다.
 
 모든 패키지가 저장소 안 `vendor/elpa/` 에 동봉돼 있어, **인터넷 없이도 첫 실행부터 그대로 동작한다**(망분리/air-gap 지원).
 
