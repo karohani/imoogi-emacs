@@ -1,0 +1,45 @@
+;; imoogi-emacs packages.lock — vendor/elpa/ 에 동결된 패키지 버전
+;; 생성: emacs 30.2, 총 42 패키지
+;; NAME                         VERSION                ARCHIVE
+ace-window                   0.10.0                 ?
+async                        1.9.9                  ?
+avy                          0.5.0                  ?
+cfrs                         20250729.1422          ?
+compat                       31.0.0.1               ?
+cond-let                     1.1.2                  ?
+counsel                      0.15.1                 ?
+counsel-projectile           20211004.2003          ?
+dash                         2.20.0                 ?
+doom-modeline                20260612.740           ?
+doom-themes                  20260117.2323          ?
+elgrep                       20230814.1215          ?
+evil                         1.15.0                 ?
+f                            20241003.1131          ?
+ht                           20230703.558           ?
+hydra                        0.15.0                 ?
+ivy                          0.15.1                 ?
+llama                        1.0.5                  ?
+lv                           0.15.0                 ?
+magit                        4.5.0                  ?
+magit-section                4.5.0                  ?
+markdown-mode                2.8                    ?
+nerd-icons                   20260613.1537          ?
+obsidian                     20250220.2245          ?
+persp-mode                   20250830.955           ?
+persp-projectile             20210618.708           ?
+perspective                  20260403.538           ?
+pfuture                      20220913.1401          ?
+posframe                     1.5.2                  ?
+projectile                   2.9.1                  ?
+s                            20220902.1511          ?
+shrink-path                  20190208.1335          ?
+swiper                       0.15.1                 ?
+transient                    0.13.4                 ?
+treemacs                     20251226.1307          ?
+treemacs-evil                20250320.2145          ?
+treemacs-icons-dired         20250320.2145          ?
+treemacs-magit               20250726.2233          ?
+treemacs-persp               20250320.2145          ?
+treemacs-projectile          20250320.2206          ?
+with-editor                  3.5.1                  ?
+yaml                         1.2.4                  ?
