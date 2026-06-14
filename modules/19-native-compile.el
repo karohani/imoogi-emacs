@@ -20,13 +20,9 @@
   ;; 패키지 설치 시 컴파일은 compile-angel 이 담당하므로 끈다.
   (setq package-native-compile nil)
   (setq compile-angel-verbose nil)
-  ;; 사용자 init 계열 파일은 컴파일 대상에서 제외.
-  (dolist (f '("/init.el" "/early-init.el" "/boot.el"))
-    (push f compile-angel-excluded-files))
-  ;; treemacs-persp / persp-mode 는 compile-angel 의 소급 재처리 시 perspective
-  ;; 통합 초기화 순서가 깨져 void-function 오류가 나므로 제외한다.
-  (dolist (f '("treemacs-persp" "persp-mode"))
-    (push f compile-angel-excluded-files))
+  ;; init 계열 파일은 컴파일 대상에서 제외(경로 suffix 매칭).
+  (dolist (suffix '("/init.el" "/early-init.el" "/boot.el"))
+    (push suffix compile-angel-excluded-path-suffixes))
   (compile-angel-on-load-mode 1))
 
 (provide 'imoogi-native-compile)

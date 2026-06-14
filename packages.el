@@ -22,9 +22,8 @@
     hydra ace-window
     ;; 06-git
     magit
-    ;; 07-treemacs (treemacs-evil→evil, treemacs-persp→persp-mode 필요)
+    ;; 07-treemacs (treemacs-persp/treemacs-evil 은 imoogi 스택과 안 맞아 제외)
     treemacs treemacs-projectile treemacs-icons-dired treemacs-magit
-    treemacs-evil treemacs-persp evil persp-mode
     ;; 08-obsidian (straight → package.el 로 이관, markdown-mode 동반)
     obsidian
     ;; 10-theme
@@ -46,8 +45,8 @@
     vimrc-mode jenkinsfile-mode
     ;; 17-folding (treesit-fold 는 tree-sitter 문법 필요로 제외)
     kirigami outline-indent
-    ;; 18-terminal (모듈은 타겟 첫 실행 시 빌드)
-    vterm
+    ;; 18-terminal (ghostel; 네이티브 모듈은 vendor/ghostel-module/ 에 동봉)
+    ghostel
     ;; 19-native-compile
     compile-angel)
   "imoogi-emacs 가 요구하는 top-level 패키지 목록.

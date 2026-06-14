@@ -2,7 +2,7 @@
 
 ;;; Code:
 (imoogi-require "07-treemacs" 'treemacs 'treemacs-projectile 'treemacs-icons-dired
-                'treemacs-magit 'treemacs-evil 'treemacs-persp 'evil 'persp-mode)
+                'treemacs-magit)
 
 (use-package treemacs
   :ensure t
@@ -97,10 +97,6 @@
         ("C-x t C-t" . treemacs-find-file)
         ("C-x t M-t" . treemacs-find-tag)))
 
-(use-package treemacs-evil
-  :after (treemacs evil)
-  :ensure t)
-
 (use-package treemacs-projectile
   :after (treemacs projectile)
   :ensure t)
@@ -113,10 +109,8 @@
   :after (treemacs magit)
   :ensure t)
 
-(use-package treemacs-persp ;;treemacs-perspective if you use perspective.el vs. persp-mode
-  :after (treemacs persp-mode) ;;or perspective vs. persp-mode
-  :ensure t
-  :config (treemacs-set-scope-type 'Perspectives))
+;; (treemacs-persp / treemacs-evil 은 persp-mode / evil 용이라 imoogi 스택
+;;  (perspective + 키바인딩)과 맞지 않아 제거했다. treemacs 는 전역으로 동작.)
 
 ;;; Start treemacs on boot
 (add-hook 'emacs-startup-hook #'treemacs)

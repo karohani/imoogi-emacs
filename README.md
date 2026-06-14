@@ -54,8 +54,7 @@ git add vendor/ packages.lock packages.el && git commit -m "vendor: update packa
 ### 한글 입력
 | 키 | 상황 | 동작 |
 |----|------|------|
-| `S-SPC` | 일반 버퍼 | 한/영 전환 (Emacs 내장 korean-hangul 입력기) |
-| macOS 시스템 한글 (Caps/한영키) | **vterm 안** | vterm 은 Emacs 입력기가 안 되므로 **OS 한글 입력기**로 입력 (S-SPC 사용 불가) |
+| `S-SPC` | 일반 버퍼 / **ghostel 터미널** | 한/영 전환 (Emacs 내장 korean-hangul 입력기). ghostel 은 `ghostel-ime-mode` 로 터미널 안에서도 S-SPC 한글이 동작한다 |
 
 ### 명령·검색·이동 (vertico / consult)
 | 키 | 동작 |
@@ -107,7 +106,7 @@ git add vendor/ packages.lock packages.el && git commit -m "vendor: update packa
 ### 터미널 / 편집 / 도움말
 | 키 | 동작 |
 |----|------|
-| `C-c t` | vterm 터미널 (최초 실행 시 모듈 빌드) |
+| `C-c t` | ghostel 터미널 (한글은 S-SPC 로 입력) |
 | `C-z` / `C-S-z` | undo-fu undo / redo |
 | `C-'` | avy — 화면 내 빠른 점프 |
 | `C-h f/v/k` | helpful — 향상된 도움말 (describe-* 대체) |
@@ -147,7 +146,7 @@ git add vendor/ packages.lock packages.el && git commit -m "vendor: update packa
 | `15-elisp` | aggressive-indent · highlight-defined · paredit · page-break-lines · elisp-refs | Elisp 개발 |
 | `16-languages` | git-modes · yaml · dockerfile · gnuplot · lua · jinja2 · csv · go · rust · crontab · nginx · hcl · nix · fish · vimrc · jenkinsfile (+내장 sgml) | 16종 파일타입 모드 |
 | `17-folding` | kirigami · outline-indent (+내장 outline/hs-minor) | 코드 폴딩 (`C-c z` 접두) |
-| `18-terminal` | vterm | libvterm 기반 터미널 (`C-c t`, 모듈은 타겟 첫 실행 시 빌드) |
+| `18-terminal` | ghostel (+ghostel-ime) | libghostty-vt 터미널 (`C-c t`). 모듈은 vendor 동봉, S-SPC 한글 동작 |
 | `19-native-compile` | compile-angel | 로드 시 바이트/네이티브 컴파일 |
 | `00-defaults` | (내장) | 상대 줄번호, 줄:열 표시, treesit 레벨4, pixel-scroll, fringe |
 
@@ -167,37 +166,21 @@ git add vendor/ packages.lock packages.el && git commit -m "vendor: update packa
 
 위 미반영 패키지를 쓰려면 `packages.el` 의 `imoogi-required-packages` 에 추가하고 온라인 머신에서 `scripts/vendor.el` 을 재실행하면 된다.
 
-### vterm (터미널) 빌드 — 타겟 첫 실행 시
+### 터미널: ghostel (네이티브 모듈)
 
-vterm 의 **elisp 는 vendor 에 동봉**되지만, 고성능을 내는 네이티브 모듈(`vterm-module`)은 C 라이브러리(libvterm) 기반이라 **타겟 머신에서 직접 빌드**해야 한다. 컴파일된 모듈은 OS·아키텍처에 묶이므로 동봉하지 않고, 타겟에서 최초 1회 빌드하는 방식을 택했다.
+터미널은 [ghostel](https://github.com/dakra/ghostel)(libghostty-vt 기반)을 쓴다. vterm 보다 기능이 우수하고, 결정적으로 **`ghostel-ime-mode` 로 Emacs 한글 입력기(S-SPC)가 터미널 안에서도 동작**한다(vterm 은 불가).
 
-**1) 타겟에 빌드 도구 준비** (폐쇄망이면 내부 미러/사전설치 이미지로):
+**air-gap 동작**: ghostel 의 elisp 는 vendor 에, **네이티브 모듈은 사전빌드 바이너리를 `vendor/ghostel-module/` 에 동봉**(커밋)했다(aarch64-macos). 따라서 동일 arch(Apple Silicon macOS) 타겟은 **클론만 하면 빌드 없이 바로 동작**한다. `ghostel-module-auto-install` 은 `nil` 이라 부팅·사용 중 다운로드를 시도하지 않는다.
 
-```bash
-# macOS  (GNU libtool 은 glibtool 로 설치됨)
-brew install cmake libtool libvterm pkg-config
-
-# Debian/Ubuntu
-sudo apt install cmake libtool-bin libvterm-dev pkg-config gcc
-```
-
-> 시스템 `libvterm` 을 반드시 설치할 것. 없으면 cmake 가 번들 libvterm 을 직접 컴파일하는데, 이때 `glibtool` 이 필요하고 소스를 **인터넷에서 받으려 시도**하므로 폐쇄망에서 실패한다. 시스템 libvterm 이 있으면 그걸 링크해 이 과정을 건너뛴다.
-
-**2) 사전 점검** — 빌드 전에 누락된 도구가 있는지 확인:
+**모듈 갱신 / 다른 arch 대응** (온라인 머신에서):
 
 ```
-M-x imoogi-vterm-check-deps
+M-x ghostel-download-module        # 현재 플랫폼 사전빌드 바이너리 다운로드
+C-u M-x ghostel-download-module    # 특정 릴리스 태그 선택
+M-x ghostel-module-compile         # Zig 로 소스 빌드(zig 0.15.2 필요)
 ```
 
-누락이 있으면 무엇을 설치해야 하는지 알려준다. (빌드를 시도해도 누락 시 cryptic 한 make 오류 대신 친절한 안내 후 중단된다.)
-
-**3) 최초 실행 시 빌드**
-
-- Emacs 에서 `M-x vterm` (또는 `C-c t`) 실행 → 모듈이 없으면 `Compile vterm-module?` 확인이 뜬다. `y` 입력하면 빌드된다.
-- 또는 수동으로 `M-x vterm-module-compile`.
-- 빌드 결과 `vterm-module.so`(또는 `.dylib`)는 `vendor/elpa/vterm-*/` 에 생성된다. 한 번 빌드하면 이후 실행은 바로 동작한다.
-
-**참고**: 빌드 도구를 둘 수 없는 타겟이라면, 동일 OS/아키텍처의 빌드 머신에서 빌드한 `vterm-module.*` 를 `vendor/elpa/vterm-*/` 에 복사해 동봉해도 된다. 순수 elisp 터미널을 원하면 `eat` 패키지가 대안이다(빌드 불필요).
+받은 모듈은 `vendor/ghostel-module/` 에 저장되며, 그걸 커밋해 폐쇄망으로 반입한다. 타겟 arch 가 다르면(예: x86_64-linux) 해당 arch 바이너리를 같은 위치에 동봉하면 된다.
 
 ## 라이선스 / 글꼴 출처
 

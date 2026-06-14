@@ -73,7 +73,8 @@ emacs --batch -Q --eval '(setq user-emacs-directory "/tmp/t/")' -l boot.el
 - **straight.el 제거됨** — 모든 패키지는 package.el + vendoring.
 - **which-key 는 Emacs 30 내장**(`:ensure nil`).
 - **한글 입력**: macOS 는 포커스 시 OS 입력을 영문 강제(im-select), 한글은 Emacs 입력기(S-SPC). 단 **vterm 버퍼에서는 영문 강제를 건너뛰어 OS 한글 입력기를 쓴다**(vterm 은 Emacs 입력기 미지원).
-- **vterm 네이티브 모듈**은 동봉하지 않고 **타겟 첫 실행 시 빌드**(호스트별로 다름). 빌드 산출물(`build/`, `*.so`, `*.dylib`)은 `.gitignore` 처리됨.
+- **터미널은 ghostel**(libghostty-vt). `ghostel-ime-mode` 로 터미널 안에서 한글(S-SPC) 동작. 네이티브 모듈은 사전빌드 바이너리를 `vendor/ghostel-module/` 에 동봉(aarch64-macos), `ghostel-module-auto-install nil`. 다른 arch 는 `ghostel-download-module`/`ghostel-module-compile` 후 동봉.
+- **treemacs-persp / treemacs-evil / persp-mode / evil 제거됨** — imoogi 는 `perspective` 를 쓰므로 persp-mode 용 통합은 불필요(과거 treemacs README 복붙 잔재였고 compile-angel 과 충돌). treemacs 는 전역 동작.
 - **의도적 미반영**: auto-package-update(망분리 위반), treesit-fold(문법 빌드 필요), evil(미사용). README "미반영" 표 참고.
 
 ## 6. 커밋 관례

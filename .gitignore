@@ -7,8 +7,9 @@
 vendor/elpa/archives/
 vendor/elpa/.last-refresh
 
-# vterm 네이티브 모듈은 호스트(OS/아키텍처)마다 다르므로 커밋하지 않는다.
-# 각 타겟에서 최초 실행 시 빌드된다(README "vterm 빌드" 참조).
-vendor/elpa/vterm-*/build/
-vendor/elpa/vterm-*/*.so
-vendor/elpa/vterm-*/*.dylib
+# ghostel 네이티브 모듈은 vendor/ghostel-module/ 에 동봉(커밋)한다
+# (aarch64-macos 사전빌드 바이너리). 단, elpa 패키지 디렉터리에 잘못 받아진
+# 모듈 파일은 커밋하지 않는다(모듈 경로는 vendor/ghostel-module/ 로 고정).
+vendor/elpa/ghostel-*/*.so
+vendor/elpa/ghostel-*/*.dylib
+vendor/elpa/ghostel-*/ghostel-module.*
