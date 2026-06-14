@@ -91,6 +91,16 @@
       hscroll-margin 2
       hscroll-step 1)
 
+;;; 부드러운 픽셀 스크롤 + fringe 폭 (minimal-emacs.d 추천)
+;; emacs-mac 포트는 자체 스무스 스크롤이 있어 제외.
+(unless (and (eq window-system 'mac)
+             (bound-and-true-p mac-carbon-version-string))
+  (when (fboundp 'pixel-scroll-precision-mode)
+    (pixel-scroll-precision-mode 1)))
+;; fringe 폭을 글자 폭에 맞춰 동적으로(diff-hl 등 표시 여유).
+(when (fboundp 'fringe-mode)
+  (fringe-mode (frame-char-width)))
+
 ;;; 실행 취소 한계 상향
 (setq undo-limit (* 13 160000)
       undo-strong-limit (* 13 240000)

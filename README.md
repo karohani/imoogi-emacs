@@ -90,7 +90,10 @@ git add vendor/ packages.lock packages.el && git commit -m "vendor: update packa
 | `14-org-markdown` | org · org-appear · markdown-toc | org/markdown |
 | `15-elisp` | aggressive-indent · highlight-defined · paredit · page-break-lines · elisp-refs | Elisp 개발 |
 | `16-languages` | git-modes · yaml · dockerfile · gnuplot · lua · jinja2 · csv · go · rust · crontab · nginx · hcl · nix · fish · vimrc · jenkinsfile (+내장 sgml) | 16종 파일타입 모드 |
-| `00-defaults` | (내장) | 상대 줄번호, 줄:열 표시, treesit 하이라이트 레벨4 |
+| `17-folding` | kirigami · outline-indent (+내장 outline/hs-minor) | 코드 폴딩 (`C-c z` 접두) |
+| `18-terminal` | vterm | libvterm 기반 터미널 (`C-c t`, 모듈은 타겟 첫 실행 시 빌드) |
+| `19-native-compile` | compile-angel | 로드 시 바이트/네이티브 컴파일 |
+| `00-defaults` | (내장) | 상대 줄번호, 줄:열 표시, treesit 레벨4, pixel-scroll, fringe |
 
 ### 이미 반영돼 있던 추천 (중복 도입 안 함)
 
@@ -101,13 +104,36 @@ git add vendor/ packages.lock packages.el && git commit -m "vendor: update packa
 | 추천 | 미반영 이유 |
 |------|-------------|
 | `auto-package-update` | 네트워크로 자동 업데이트 → **망분리 철학과 정면 충돌**. 업데이트는 온라인 머신 vendoring 으로만. |
-| `vterm` | libvterm/cmake **네이티브 모듈 컴파일** 필요 → "클론만 하면 동작"(clone-and-go) 불가. 필요 시 별도 빌드. |
-| `compile-angel` | 이미 `.elc` 동봉 + native-comp JIT 가 있어 이득이 작고, air-gap 첫 부팅을 느리게 만들 우려. |
+| `treesit-fold` | 언어별 tree-sitter 문법(별도 설치/빌드)이 필요 → air-gap 부적합. 문법 갖춘 환경이면 추가 가능. |
 | `inhibit-mouse` | 마우스를 끄는 동작은 과격 — 문서화만. |
 | `evil` (vim 키) | 사용자 선택으로 미사용 (treemacs-evil 의존성으로 vendor 에는 존재). |
-| 코드 폴딩(kirigami/treesit-fold) · easysession · quick-sdcv | 선택사항. 필요하면 `packages.el` 에 추가 후 재-vendoring. |
+| `easysession` · `quick-sdcv` · `eat` | 선택사항. 필요하면 `packages.el` 에 추가 후 재-vendoring. |
 
 위 미반영 패키지를 쓰려면 `packages.el` 의 `imoogi-required-packages` 에 추가하고 온라인 머신에서 `scripts/vendor.el` 을 재실행하면 된다.
+
+### vterm (터미널) 빌드 — 타겟 첫 실행 시
+
+vterm 의 **elisp 는 vendor 에 동봉**되지만, 고성능을 내는 네이티브 모듈(`vterm-module`)은 C 라이브러리(libvterm) 기반이라 **타겟 머신에서 직접 빌드**해야 한다. 컴파일된 모듈은 OS·아키텍처에 묶이므로 동봉하지 않고, 타겟에서 최초 1회 빌드하는 방식을 택했다.
+
+**1) 타겟에 빌드 도구 준비** (폐쇄망이면 내부 미러/사전설치 이미지로):
+
+```bash
+# macOS
+brew install cmake libtool libvterm
+
+# Debian/Ubuntu
+sudo apt install cmake libtool-bin libvterm-dev
+```
+
+> 시스템 `libvterm` 을 반드시 설치할 것. 없으면 cmake 가 libvterm 소스를 **인터넷에서 받으려 시도**하므로 폐쇄망에서 빌드가 실패한다.
+
+**2) 최초 실행 시 빌드**
+
+- Emacs 에서 `M-x vterm` (또는 `C-c t`) 실행 → 모듈이 없으면 `Compile vterm-module?` 확인이 뜬다. `y` 입력하면 빌드된다.
+- 또는 수동으로 `M-x vterm-module-compile`.
+- 빌드 결과 `vterm-module.so`(또는 `.dylib`)는 `vendor/elpa/vterm-*/` 에 생성된다. 한 번 빌드하면 이후 실행은 바로 동작한다.
+
+**참고**: 빌드 도구를 둘 수 없는 타겟이라면, 동일 OS/아키텍처의 빌드 머신에서 빌드한 `vterm-module.*` 를 `vendor/elpa/vterm-*/` 에 복사해 동봉해도 된다. 순수 elisp 터미널을 원하면 `eat` 패키지가 대안이다(빌드 불필요).
 
 ## 라이선스 / 글꼴 출처
 

@@ -43,7 +43,13 @@
     ;; 16-languages
     git-modes yaml-mode dockerfile-mode gnuplot lua-mode jinja2-mode csv-mode
     go-mode rust-mode crontab-mode nginx-mode hcl-mode nix-mode fish-mode
-    vimrc-mode jenkinsfile-mode)
+    vimrc-mode jenkinsfile-mode
+    ;; 17-folding (treesit-fold 는 tree-sitter 문법 필요로 제외)
+    kirigami outline-indent
+    ;; 18-terminal (모듈은 타겟 첫 실행 시 빌드)
+    vterm
+    ;; 19-native-compile
+    compile-angel)
   "imoogi-emacs 가 요구하는 top-level 패키지 목록.
 전이 의존성은 package.el 이 자동으로 함께 설치한다.")
 

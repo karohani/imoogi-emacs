@@ -54,7 +54,10 @@
                   "13-system"
                   "14-org-markdown"
                   "15-elisp"
-                  "16-languages"))
+                  "16-languages"
+                  "17-folding"
+                  "18-terminal"
+                  "19-native-compile"))
   (load (expand-file-name (concat "modules/" module) imoogi-emacs-dir)))
 
 ;;; Reload
