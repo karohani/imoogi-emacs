@@ -1,5 +1,5 @@
 ;; imoogi-emacs packages.lock — vendor/elpa/ 에 동결된 패키지 버전
-;; 생성: emacs 30.2, 총 87 패키지
+;; 생성: emacs 30.2, 총 83 패키지
 ;; NAME                         VERSION                ARCHIVE
 ace-window                   0.10.0                 ?
 aggressive-indent            1.10.0                 ?
@@ -27,10 +27,10 @@ elgrep                       20230814.1215          ?
 elisp-refs                   20230920.201           ?
 embark                       1.2                    ?
 embark-consult               1.2                    ?
-evil                         1.15.0                 ?
 exec-path-from-shell         2.2                    ?
 f                            20241003.1131          ?
 fish-mode                    20240129.1213          ?
+ghostel                      20260613.1939          ?
 git-modes                    1.5.0                  ?
 gnuplot                      0.12                   ?
 go-mode                      1.6.0                  ?
@@ -61,7 +61,6 @@ outline-indent               20260608.1221          ?
 page-break-lines             0.15                   ?
 paredit                      26                     ?
 persist-text-scale           20260609.1528          ?
-persp-mode                   20250830.955           ?
 persp-projectile             20210618.708           ?
 perspective                  20260403.538           ?
 pfuture                      20220913.1401          ?
@@ -73,16 +72,13 @@ shrink-path                  20190208.1335          ?
 stripspace                   20260604.232           ?
 transient                    0.13.4                 ?
 treemacs                     20251226.1307          ?
-treemacs-evil                20250320.2145          ?
 treemacs-icons-dired         20250320.2145          ?
 treemacs-magit               20250726.2233          ?
-treemacs-persp               20250320.2145          ?
 treemacs-projectile          20250320.2206          ?
 undo-fu                      0.5                    ?
 undo-fu-session              0.8                    ?
 vertico                      2.10                   ?
 vimrc-mode                   20250128.635           ?
-vterm                        20260528.1919          ?
 with-editor                  3.5.1                  ?
 yaml                         1.2.4                  ?
 yaml-mode                    0.0.16                 ?
