@@ -1,0 +1,2 @@
+;; Generated package description from kotlin-mode.el  -*- no-byte-compile: t -*-
+(define-package "kotlin-mode" "2.0.0" "Major mode for kotlin" '((emacs "24.3")) :commit "d92c3b773473e9fe15f61f6177e4fbf097aadd05" :url "https://elpa.nongnu.org/nongnu/kotlin-mode.html" :authors '(("Shodai Yokoyama" . "(quantumcars@gmail.com)")) :maintainer '("Shodai Yokoyama" . "(quantumcars@gmail.com)") :keywords '("languages"))

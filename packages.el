@@ -42,7 +42,7 @@
     ;; 16-languages
     git-modes yaml-mode dockerfile-mode gnuplot lua-mode jinja2-mode csv-mode
     go-mode rust-mode crontab-mode nginx-mode hcl-mode nix-mode fish-mode
-    vimrc-mode jenkinsfile-mode
+    vimrc-mode jenkinsfile-mode clojure-mode kotlin-mode typescript-mode web-mode
     ;; 17-folding (treesit-fold 는 tree-sitter 문법 필요로 제외)
     kirigami outline-indent
     ;; 18-terminal (ghostel; 네이티브 모듈은 vendor/ghostel-module/ 에 동봉)
