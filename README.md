@@ -55,10 +55,17 @@ git add vendor/ packages.lock packages.el && git commit -m "vendor: update packa
 |----|------|
 | `C-c h` | 마스터 hydra (창, 프로젝트, Git, 줌, treemacs) |
 | `C-c p` | projectile 커맨드 맵 |
+| `C-c e` | cape (completion-at-point 접두 맵) |
 | `M-o` | ace-window (창 점프) |
 | `S-SPC` | 한영 전환 |
-| `C-s` | swiper 검색 |
-| `M-x` | counsel-M-x |
+| `M-x` | vertico 세로 완성 |
+| `C-s` / `M-s l` | consult-line (현재 버퍼 검색) |
+| `C-x b` | consult-buffer (버퍼 전환) |
+| `M-s r` | consult-ripgrep (프로젝트 검색) |
+| `M-g g` | consult-goto-line · `M-g i` consult-imenu |
+| `C-.` / `C-;` | embark-act / embark-dwim (컨텍스트 액션) |
+| `C-'` | avy 점프 |
+| `C-z` / `C-S-z` | undo-fu undo / redo |
 
 ## 패키지 관리
 
@@ -67,6 +74,40 @@ git add vendor/ packages.lock packages.el && git commit -m "vendor: update packa
 - **`packages.el`** — 필요 패키지 단일 목록(SSOT)
 - **`scripts/vendor.el`** — 온라인 머신에서 vendor/ 채우기·갱신
 - **`packages.lock`** — 동결된 패키지 버전 기록(감사용)
+
+## minimal-emacs.d 추천 셋업 반영
+
+[minimal-emacs.d](https://github.com/jamescherti/minimal-emacs.d) README 가 권장하는 패키지/설정을 imoogi 구조에 맞게 도입했다. (완성 스택은 사용자 선택에 따라 ivy/counsel → vertico 로 이관)
+
+### 도입한 패키지 (모듈별)
+
+| 모듈 | 패키지 | 용도 |
+|------|--------|------|
+| `02-completion` | vertico · orderless · marginalia · embark · embark-consult · consult · corfu · cape | 미니버퍼/버퍼 내 완성 스택 |
+| `11-editing` | undo-fu(+session) · yasnippet(+snippets) · apheleia · dumb-jump · stripspace · elec-pair | undo, 스니펫, 비동기 포매팅, go-to-def, 공백정리, 괄호짝 |
+| `12-navigation` | avy · helpful · diff-hl · bufferfile | 점프, 향상된 도움말, 여백 Git 표시, 파일 조작 |
+| `13-system` | exec-path-from-shell · server · buffer-terminator · persist-text-scale | 환경변수 동기화, 서버, 버퍼 정리, 텍스트 배율 유지 |
+| `14-org-markdown` | org · org-appear · markdown-toc | org/markdown |
+| `15-elisp` | aggressive-indent · highlight-defined · paredit · page-break-lines · elisp-refs | Elisp 개발 |
+| `16-languages` | git-modes · yaml · dockerfile · gnuplot · lua · jinja2 · csv · go · rust · crontab · nginx · hcl · nix · fish · vimrc · jenkinsfile (+내장 sgml) | 16종 파일타입 모드 |
+| `00-defaults` | (내장) | 상대 줄번호, 줄:열 표시, treesit 하이라이트 레벨4 |
+
+### 이미 반영돼 있던 추천 (중복 도입 안 함)
+
+`recentf` · `savehist` · `saveplace` · `auto-revert` (00-defaults/09), `eglot`/`flymake` 기본값 (00-defaults), `which-key`(Emacs 30 내장, 03), `uniquify`, `treemacs`(07), `magit`(06), 폰트·테마(10).
+
+### 의도적으로 미반영 (이유 명시)
+
+| 추천 | 미반영 이유 |
+|------|-------------|
+| `auto-package-update` | 네트워크로 자동 업데이트 → **망분리 철학과 정면 충돌**. 업데이트는 온라인 머신 vendoring 으로만. |
+| `vterm` | libvterm/cmake **네이티브 모듈 컴파일** 필요 → "클론만 하면 동작"(clone-and-go) 불가. 필요 시 별도 빌드. |
+| `compile-angel` | 이미 `.elc` 동봉 + native-comp JIT 가 있어 이득이 작고, air-gap 첫 부팅을 느리게 만들 우려. |
+| `inhibit-mouse` | 마우스를 끄는 동작은 과격 — 문서화만. |
+| `evil` (vim 키) | 사용자 선택으로 미사용 (treemacs-evil 의존성으로 vendor 에는 존재). |
+| 코드 폴딩(kirigami/treesit-fold) · easysession · quick-sdcv | 선택사항. 필요하면 `packages.el` 에 추가 후 재-vendoring. |
+
+위 미반영 패키지를 쓰려면 `packages.el` 의 `imoogi-required-packages` 에 추가하고 온라인 머신에서 `scripts/vendor.el` 을 재실행하면 된다.
 
 ## 라이선스 / 글꼴 출처
 

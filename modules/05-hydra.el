@@ -30,8 +30,8 @@
   ("v" split-window-right)
   ("d" delete-window)
   ("D" delete-other-windows :color blue)
-  ("b" counsel-switch-buffer)
-  ("f" counsel-find-file)
+  ("b" consult-buffer)
+  ("f" find-file)
   ("a" ace-window)
   ("m" ace-swap-window)
   ("q" nil :color blue))
@@ -43,11 +43,11 @@
   _p_: 프로젝트전환  _r_: 최근파일  _k_: 버퍼모두닫기
   _c_: 컴파일  _t_: 테스트  _q_: 종료
   "
-  ("f" counsel-projectile-find-file)
-  ("s" counsel-projectile-rg)
-  ("b" counsel-projectile-switch-to-buffer)
+  ("f" projectile-find-file)
+  ("s" consult-ripgrep)
+  ("b" consult-project-buffer)
   ("d" projectile-dired)
-  ("p" counsel-projectile-switch-project)
+  ("p" projectile-switch-project)
   ("r" projectile-recentf)
   ("k" projectile-kill-buffers)
   ("c" projectile-compile-project)

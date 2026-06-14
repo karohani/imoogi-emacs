@@ -14,10 +14,10 @@
 ;;; Code:
 
 (defvar imoogi-required-packages
-  '(;; 02-completion
-    ivy counsel swiper
+  '(;; 02-completion (vertico 스택 — minimal-emacs.d 추천)
+    vertico orderless marginalia embark embark-consult consult corfu cape
     ;; 04-projects
-    projectile counsel-projectile perspective persp-projectile
+    projectile perspective persp-projectile
     ;; 05-hydra
     hydra ace-window
     ;; 06-git
@@ -25,10 +25,25 @@
     ;; 07-treemacs (treemacs-evil→evil, treemacs-persp→persp-mode 필요)
     treemacs treemacs-projectile treemacs-icons-dired treemacs-magit
     treemacs-evil treemacs-persp evil persp-mode
-    ;; 08-obsidian (straight → package.el 로 이관)
+    ;; 08-obsidian (straight → package.el 로 이관, markdown-mode 동반)
     obsidian
     ;; 10-theme
-    doom-themes doom-modeline nerd-icons)
+    doom-themes doom-modeline nerd-icons
+    ;; 11-editing
+    undo-fu undo-fu-session yasnippet yasnippet-snippets apheleia
+    dumb-jump stripspace
+    ;; 12-navigation
+    avy helpful diff-hl bufferfile
+    ;; 13-system
+    exec-path-from-shell buffer-terminator persist-text-scale
+    ;; 14-org-markdown (markdown-mode 는 obsidian 의존성)
+    org-appear markdown-toc
+    ;; 15-elisp
+    aggressive-indent highlight-defined paredit page-break-lines elisp-refs
+    ;; 16-languages
+    git-modes yaml-mode dockerfile-mode gnuplot lua-mode jinja2-mode csv-mode
+    go-mode rust-mode crontab-mode nginx-mode hcl-mode nix-mode fish-mode
+    vimrc-mode jenkinsfile-mode)
   "imoogi-emacs 가 요구하는 top-level 패키지 목록.
 전이 의존성은 package.el 이 자동으로 함께 설치한다.")
 

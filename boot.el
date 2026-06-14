@@ -48,7 +48,13 @@
                   "07-treemacs"
                   "08-obsidian"
                   "09-autorevert"
-                  "10-theme"))
+                  "10-theme"
+                  "11-editing"
+                  "12-navigation"
+                  "13-system"
+                  "14-org-markdown"
+                  "15-elisp"
+                  "16-languages"))
   (load (expand-file-name (concat "modules/" module) imoogi-emacs-dir)))
 
 ;;; Reload

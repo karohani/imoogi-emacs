@@ -5,15 +5,11 @@
   :config
   (projectile-mode 1)
   (setq projectile-project-search-path '("~/workspace/")
-        projectile-switch-project-action #'projectile-dired)
+        projectile-switch-project-action #'projectile-dired
+        ;; ivy 제거 후 기본 completing-read(vertico) 사용
+        projectile-completion-system 'default)
   :bind-keymap
   ("C-c p" . projectile-command-map))
-
-(use-package counsel-projectile
-  :ensure t
-  :after (counsel projectile)
-  :config
-  (counsel-projectile-mode 1))
 
 ;;; Perspective
 (use-package perspective

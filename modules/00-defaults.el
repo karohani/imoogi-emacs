@@ -64,6 +64,14 @@
 (defalias #'view-hello-file #'ignore)  ; hello 파일 표시 안 함
 ;; 줄 번호 폭 고정(점프 시 흔들림 방지).
 (setq-default display-line-numbers-width 3)
+;; 상대 줄 번호를 코드/텍스트/설정 버퍼에 표시 (minimal-emacs.d 추천).
+(setq-default display-line-numbers-type 'relative)
+(dolist (hook '(prog-mode-hook text-mode-hook conf-mode-hook))
+  (add-hook hook #'display-line-numbers-mode))
+;; 모드라인에 줄:열 표시, Tree-sitter 최대 하이라이트 레벨.
+(setq line-number-mode t
+      column-number-mode t)
+(setq treesit-font-lock-level 4)
 
 ;;; 괄호 매칭
 (setq show-paren-delay 0.1
