@@ -13,3 +13,9 @@ vendor/elpa/.last-refresh
 vendor/elpa/ghostel-*/*.so
 vendor/elpa/ghostel-*/*.dylib
 vendor/elpa/ghostel-*/ghostel-module.*
+
+# 로컬 에이전트/개발환경 메타데이터(세션 상태, 작업 메모리 등)는 커밋하지 않는다.
+.claude/
+.devcontainer/
+.omc/
+.omo/
