@@ -42,6 +42,30 @@
   :ensure nil
   :hook ((html-mode mhtml-mode) . sgml-electric-tag-pair-mode))
 
+;;; Shell script (내장 sh-mode)
+(use-package sh-script
+  :ensure nil
+  :mode ("\\.sh\\'" . sh-mode)
+  :hook (sh-mode . (lambda ()
+                     (imoogi-eglot-ensure-if-server-available "bash-language-server")))
+  :config
+  (imoogi-eglot-register-if-available
+   'sh-mode
+   '("bash-language-server" "start")))
+
+;;; JavaScript (내장 js-mode)
+(use-package js
+  :ensure nil
+  :mode (("\\.js\\'"  . js-mode)
+         ("\\.mjs\\'" . js-mode)
+         ("\\.cjs\\'" . js-mode))
+  :hook (js-mode . (lambda ()
+                     (imoogi-eglot-ensure-if-server-available "typescript-language-server")))
+  :config
+  (imoogi-eglot-register-if-available
+   'js-mode
+   '("typescript-language-server" "--stdio")))
+
 ;;; YAML
 (use-package yaml-mode
   :ensure t
@@ -80,14 +104,22 @@
 ;;; Go
 (use-package go-mode
   :ensure t
-  :mode ("\\.go\\'" . go-mode))
+  :mode ("\\.go\\'" . go-mode)
+  :hook (go-mode . (lambda ()
+                     (imoogi-eglot-ensure-if-server-available "gopls")))
+  :config
+  (imoogi-eglot-register-if-available 'go-mode '("gopls")))
 
 ;;; Rust
 (use-package rust-mode
   :ensure t
   :mode ("\\.rs\\'" . rust-mode)
   :custom
-  (rust-indent-offset 2))
+  (rust-indent-offset 2)
+  :hook (rust-mode . (lambda ()
+                       (imoogi-eglot-ensure-if-server-available "rust-analyzer")))
+  :config
+  (imoogi-eglot-register-if-available 'rust-mode '("rust-analyzer")))
 
 ;;; crontab
 (use-package crontab-mode
@@ -171,7 +203,7 @@
                              (imoogi-eglot-ensure-if-server-available "typescript-language-server")))
   :config
   (imoogi-eglot-register-if-available
-   '(typescript-mode web-mode)
+   'typescript-mode
    '("typescript-language-server" "--stdio")))
 
 ;;; TSX/JSX 템플릿
@@ -186,8 +218,12 @@
   (web-mode-css-indent-offset 2)
   :hook (web-mode . (lambda ()
                       (when (and buffer-file-name
-                                 (string-match-p "\\.tsx\\'" buffer-file-name))
-                        (imoogi-eglot-ensure-if-server-available "typescript-language-server")))))
+                                 (string-match-p "\\.[tj]sx\\'" buffer-file-name))
+                        (imoogi-eglot-ensure-if-server-available "typescript-language-server"))))
+  :config
+  (imoogi-eglot-register-if-available
+   'web-mode
+   '("typescript-language-server" "--stdio")))
 
 (provide 'imoogi-languages)
 ;;; 16-languages.el ends here
