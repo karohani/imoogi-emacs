@@ -32,6 +32,7 @@
   ├── packages.lock                ← 동결 버전 기록(감사용)
   ├── scripts/vendor.el            ← 온라인 vendoring 스크립트
   ├── vendor/elpa/                 ← 동봉된 패키지 (커밋됨, 망분리용)
+  ├── vendor/tree-sitter/          ← 선택적 tree-sitter 문법 라이브러리
   ├── assets/fonts/                ← Nerd Font (동봉, 선택)
   └── modules/                     ← 기능 모듈
 ~/.config/imoogi-emacs/            ← 심볼릭 링크 → ~/workspace/imoogi-emacs
@@ -56,6 +57,8 @@
   진실의 원천은 원격이 아니라 git 이다. `packages.lock` 은 사람이 읽는 감사 기록.
 - **업데이트** = 온라인 머신에서 vendor 재실행 → `vendor/` 커밋 → 폐쇄망 반입.
   폐쇄망 내부에서는 업데이트하지 않는다(네트워크 필요).
+- **Tree-sitter 문법** — 온라인 머신에서 빌드한 grammar 라이브러리를
+  `vendor/tree-sitter/` 에 커밋해 반입한다. 부팅 중 다운로드/빌드는 하지 않는다.
 - **버전 일치** — 빌드 머신과 타겟의 Emacs 메이저 버전을 맞출 것(.elc 호환).
 
 ## 모듈 로딩 순서

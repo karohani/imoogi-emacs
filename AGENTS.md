@@ -20,6 +20,7 @@ packages.el              패키지 매니페스트(SSOT) — imoogi-required-pac
 packages.lock            동결 버전 기록(감사용, vendor 스크립트가 생성)
 scripts/vendor.el        온라인 vendoring 스크립트
 vendor/elpa/             동봉 패키지(커밋됨)
+vendor/tree-sitter/      선택적 tree-sitter 문법 라이브러리(커밋됨, 플랫폼별)
 assets/fonts/            동봉 글꼴(NanumGothicCoding, NFM.ttf) + OFL.txt
 modules/NN-name.el       기능 모듈(번호 순 로딩)
 ```
@@ -74,8 +75,9 @@ emacs --batch -Q --eval '(setq user-emacs-directory "/tmp/t/")' -l boot.el
 - **which-key 는 Emacs 30 내장**(`:ensure nil`).
 - **한글 입력**: macOS 는 포커스 시 OS 입력을 영문 강제(im-select), 한글은 Emacs 입력기(S-SPC). 단 **vterm 버퍼에서는 영문 강제를 건너뛰어 OS 한글 입력기를 쓴다**(vterm 은 Emacs 입력기 미지원).
 - **터미널은 ghostel**(libghostty-vt). `ghostel-ime-mode` 로 터미널 안에서 한글(S-SPC) 동작. 네이티브 모듈은 사전빌드 바이너리를 `vendor/ghostel-module/` 에 동봉(aarch64-macos), `ghostel-module-auto-install nil`. 다른 arch 는 `ghostel-download-module`/`ghostel-module-compile` 후 동봉.
+- **Tree-sitter 문법은 선택적 동봉**. 부팅 중 `treesit-install-language-grammar` 호출 금지. 온라인 머신에서 빌드한 grammar 라이브러리를 `vendor/tree-sitter/` 에 커밋하면, `16-languages` 가 감지된 언어만 `*-ts-mode` 로 전환한다.
 - **treemacs-persp / treemacs-evil / persp-mode / evil 제거됨** — imoogi 는 `perspective` 를 쓰므로 persp-mode 용 통합은 불필요(과거 treemacs README 복붙 잔재였고 compile-angel 과 충돌). treemacs 는 전역 동작.
-- **의도적 미반영**: auto-package-update(망분리 위반), treesit-fold(문법 빌드 필요), evil(미사용). README "미반영" 표 참고.
+- **의도적 미반영**: auto-package-update(망분리 위반), treesit-fold(별도 패키지/문법 필요), evil(미사용). README "미반영" 표 참고.
 
 ## 6. 커밋 관례
 

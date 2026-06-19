@@ -59,6 +59,14 @@ git add vendor/ packages.lock packages.el && git commit -m "vendor: update packa
 
 폐쇄망 안에서는 절대 vendoring 을 돌리지 않는다(네트워크 필요). 업데이트는 항상 온라인 머신 → 반입 순서다.
 
+### Tree-sitter 문법
+
+Emacs 내장 `treesit` 은 사용하되, 언어별 문법은 런타임에 다운로드하지 않는다.
+온라인 머신에서 빌드한 grammar 라이브러리(`libtree-sitter-*.dylib` 등)를
+`vendor/tree-sitter/` 에 넣어 반입하면, `16-languages` 가 해당 문법을 감지한
+언어만 `*-ts-mode` 로 자동 전환한다. 문법이 없으면 기존 전통 major-mode 로
+그대로 열린다.
+
 ### 폰트
 
 폰트는 `assets/fonts/` 에 동봉되며, 첫 부팅 시 OS 폰트 디렉터리(macOS: `~/Library/Fonts/`, Linux: `~/.local/share/fonts/`)로 **자동 복사**된다(로컬 복사, 네트워크 불필요). 복사 후 **Emacs 재시작**하면 적용된다.
@@ -161,7 +169,7 @@ git add vendor/ packages.lock packages.el && git commit -m "vendor: update packa
 | `13-system` | exec-path-from-shell · server · buffer-terminator · persist-text-scale | 환경변수 동기화, 서버, 버퍼 정리, 텍스트 배율 유지 |
 | `14-org-markdown` | org · org-appear · markdown-toc | org/markdown |
 | `15-elisp` | aggressive-indent · highlight-defined · paredit · page-break-lines · elisp-refs | Elisp 개발 |
-| `16-languages` | git-modes · yaml · dockerfile · gnuplot · lua · jinja2 · csv · go · rust · crontab · nginx · hcl · nix · fish · vimrc · jenkinsfile · clojure · kotlin · typescript · web/tsx (+내장 sgml/java) | 21종 파일타입 모드 |
+| `16-languages` | git-modes · yaml · dockerfile · gnuplot · lua · jinja2 · csv · go · rust · crontab · nginx · hcl · nix · fish · vimrc · jenkinsfile · clojure · kotlin · typescript · web/tsx (+내장 sgml/java/treesit) | 21종 파일타입 모드 + 선택적 `*-ts-mode` 전환 |
 | `17-folding` | kirigami · outline-indent (+내장 outline/hs-minor) | 코드 폴딩 (`C-c z` 접두) |
 | `18-terminal` | ghostel (+ghostel-ime) | libghostty-vt 터미널 (`C-c t`). 모듈은 vendor 동봉, S-SPC 한글 동작 |
 | `19-native-compile` | compile-angel | 로드 시 바이트/네이티브 컴파일 |
@@ -176,7 +184,7 @@ git add vendor/ packages.lock packages.el && git commit -m "vendor: update packa
 | 추천 | 미반영 이유 |
 |------|-------------|
 | `auto-package-update` | 네트워크로 자동 업데이트 → **망분리 철학과 정면 충돌**. 업데이트는 온라인 머신 vendoring 으로만. |
-| `treesit-fold` | 언어별 tree-sitter 문법(별도 설치/빌드)이 필요 → air-gap 부적합. 문법 갖춘 환경이면 추가 가능. |
+| `treesit-fold` | 폴딩 패키지 추가와 문법 빌드가 필요해 기본 구성에서는 제외. 문법은 `vendor/tree-sitter/` 로 반입 가능. |
 | `inhibit-mouse` | 마우스를 끄는 동작은 과격 — 문서화만. |
 | `evil` (vim 키) | 사용자 선택으로 미사용 (treemacs-evil 의존성으로 vendor 에는 존재). |
 | `easysession` · `quick-sdcv` · `eat` | 선택사항. 필요하면 `packages.el` 에 추가 후 재-vendoring. |
