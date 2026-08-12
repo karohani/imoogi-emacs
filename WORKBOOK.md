@@ -134,6 +134,11 @@ Perspective에는 프로젝트 밖 Org/참고 파일, Dired, shell, REPL, compil
 | Treemacs 토글 | `C-x t t` | 파일 트리 열기/닫기 |
 | Treemacs 창 선택 | `M-0` | Treemacs 창으로 이동 |
 | Treemacs만 남기기 | `C-x t 1` | 다른 창 정리 |
+| 추가 분할 없이 파일 열기 | `RET` / `o o` | 기존 편집 창에 선택한 파일 표시 |
+| 열 창 직접 선택 | `o a a` | `ace-window`로 대상 창 선택 |
+| 최근 편집 창에 열기 | `o r` | 가장 최근에 사용한 비-Treemacs 창에 표시 |
+| 분할해서 열기 | `o v` / `o h` | 세로 / 가로 분할을 만든 뒤 파일 표시 |
+| 파일을 열고 트리 닫기 | `o c` | 파일을 표시한 뒤 Treemacs 창 닫기 |
 | 디렉터리 선택 | `C-x t d` | `treemacs-select-directory` |
 | 북마크 열기 | `C-x t B` | `treemacs-bookmark` |
 | 현재 파일 찾기 | `C-x t C-t` | `treemacs-find-file` |
@@ -144,6 +149,8 @@ Perspective에는 프로젝트 밖 Org/참고 파일, Dired, shell, REPL, compil
 키를 누르면 현재 보기를 닫고 새 보기로 교체한다. Treemacs가 이미 보이면
 편집 버퍼의 `s-1`은 파일 트리에 포커스를 주고, 그 안의 `s-1`은 파일 트리를
 닫는다. `ESC`는 파일 트리를 열어 둔 채 마지막 편집 창으로 돌아간다.
+기본 `RET`은 기존 편집 창을 재사용한다. Treemacs만 남아 있다면 파일을 표시할
+편집 창이 필요하므로 그때만 옆에 새 창을 만든다.
 
 ## Git
 
