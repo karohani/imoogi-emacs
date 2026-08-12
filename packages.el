@@ -17,13 +17,13 @@
   '(;; 02-completion (vertico 스택 — minimal-emacs.d 추천)
     vertico orderless marginalia embark embark-consult consult corfu cape
     ;; 04-projects
-    projectile perspective persp-projectile
+    perspective
     ;; 05-hydra
     hydra ace-window
     ;; 06-git
     magit
     ;; 07-treemacs (treemacs-persp/treemacs-evil 은 imoogi 스택과 안 맞아 제외)
-    treemacs treemacs-projectile treemacs-icons-dired treemacs-magit
+    treemacs treemacs-icons-dired treemacs-magit
     ;; 08-obsidian (straight → package.el 로 이관, markdown-mode 동반)
     obsidian
     ;; 10-theme

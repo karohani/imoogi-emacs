@@ -33,28 +33,25 @@
   ("v" split-window-right)
   ("d" delete-window)
   ("D" delete-other-windows :color blue)
-  ("b" consult-buffer)
+  ("b" imoogi-consult-perspective-buffer)
   ("f" find-file)
   ("a" ace-window)
   ("m" ace-swap-window)
   ("q" nil :color blue))
 
 ;; 프로젝트
-(defhydra hydra-projectile (:hint nil :color blue)
+(defhydra hydra-project (:hint nil :color blue)
   "
   _f_: 파일찾기  _s_: 검색(grep)  _b_: 버퍼  _d_: dired
-  _p_: 프로젝트전환  _r_: 최근파일  _k_: 버퍼모두닫기
-  _c_: 컴파일  _t_: 테스트  _q_: 종료
+  _p_: 프로젝트+작업공간 전환  _k_: 버퍼모두닫기  _c_: 컴파일  _q_: 종료
   "
-  ("f" projectile-find-file)
-  ("s" consult-ripgrep)
-  ("b" consult-project-buffer)
-  ("d" projectile-dired)
-  ("p" projectile-switch-project)
-  ("r" projectile-recentf)
-  ("k" projectile-kill-buffers)
-  ("c" projectile-compile-project)
-  ("t" projectile-test-project)
+  ("f" project-find-file)
+  ("s" project-find-regexp)
+  ("b" project-switch-to-buffer)
+  ("d" project-dired)
+  ("p" imoogi-project-switch-perspective)
+  ("k" project-kill-buffers)
+  ("c" project-compile)
   ("q" nil))
 
 ;; 텍스트 확대/축소
@@ -85,10 +82,10 @@
   _t_: treemacs  _q_: 종료
   "
   ("w" hydra-window/body)
-  ("p" hydra-projectile/body)
+  ("p" hydra-project/body)
   ("g" hydra-git/body)
   ("z" hydra-zoom/body)
-  ("t" treemacs)
+  ("t" imoogi-treemacs-toggle-file-tree)
   ("q" nil))
 
 (global-set-key (kbd "C-c h") 'hydra-master/body)

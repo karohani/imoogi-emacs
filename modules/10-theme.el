@@ -78,7 +78,7 @@
   (doom-themes-org-config)
   ;; treemacs 색상/아이콘을 doom 테마에 맞춤
   (with-eval-after-load 'treemacs
-    (setq doom-themes-treemacs-theme "doom-atom")
+    (setq doom-themes-treemacs-theme "doom-colors")
     (doom-themes-treemacs-config)))
 
 ;;; doom-modeline — 깔끔한 모드라인

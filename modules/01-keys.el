@@ -58,16 +58,18 @@
     (define-key key-translation-map (kbd (concat "C-" (car p))) (kbd (concat "C-" (cdr p))))
     (define-key key-translation-map (kbd (concat "M-" (car p))) (kbd (concat "M-" (cdr p))))))
 
-;;; macOS Cmd 키 (복사/붙여넣기/잘라내기/되돌리기/전체선택)
+;;; macOS Cmd 키 (복사/붙여넣기/잘라내기/닫기/되돌리기/전체선택)
 (global-set-key (kbd "s-c") 'kill-ring-save)
 (global-set-key (kbd "s-v") 'yank)
 (global-set-key (kbd "s-x") 'kill-region)
+(global-set-key (kbd "s-w") 'kill-current-buffer)
 (global-set-key (kbd "s-z") 'undo)
 (global-set-key (kbd "s-a") 'mark-whole-buffer)
 ;; Super key 한글 매핑
 (define-key key-translation-map (kbd "s-ㅊ") (kbd "s-c"))
 (define-key key-translation-map (kbd "s-ㅍ") (kbd "s-v"))
 (define-key key-translation-map (kbd "s-ㅌ") (kbd "s-x"))
+(define-key key-translation-map (kbd "s-ㅈ") (kbd "s-w"))
 (define-key key-translation-map (kbd "s-ㅋ") (kbd "s-z"))
 (define-key key-translation-map (kbd "s-ㅁ") (kbd "s-a"))
 

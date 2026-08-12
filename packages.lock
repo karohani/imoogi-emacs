@@ -1,5 +1,5 @@
 ;; imoogi-emacs packages.lock — vendor/elpa/ 에 동결된 패키지 버전
-;; 생성: emacs 30.2, 총 87 패키지
+;; 생성: emacs 30.2, 총 84 패키지
 ;; NAME                         VERSION                ARCHIVE
 ace-window                   0.10.0                 ?
 aggressive-indent            1.10.0                 ?
@@ -63,11 +63,9 @@ outline-indent               20260608.1221          ?
 page-break-lines             0.15                   ?
 paredit                      26                     ?
 persist-text-scale           20260609.1528          ?
-persp-projectile             20210618.708           ?
 perspective                  20260403.538           ?
 pfuture                      20220913.1401          ?
 posframe                     1.5.2                  ?
-projectile                   2.9.1                  ?
 rust-mode                    1.0.6                  ?
 s                            20220902.1511          ?
 shrink-path                  20190208.1335          ?
@@ -76,7 +74,6 @@ transient                    0.13.4                 ?
 treemacs                     20251226.1307          ?
 treemacs-icons-dired         20250320.2145          ?
 treemacs-magit               20250726.2233          ?
-treemacs-projectile          20250320.2206          ?
 typescript-mode              0.4                    ?
 undo-fu                      0.5                    ?
 undo-fu-session              0.8                    ?

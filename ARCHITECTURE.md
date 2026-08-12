@@ -12,7 +12,7 @@
               ├── defaults     ← 더 나은 기본값 + recentf/savehist/saveplace
               ├── completion   ← ivy, counsel, swiper
               ├── which-key    ← Emacs 30 내장
-              ├── projects     ← projectile, perspective
+              ├── projects     ← project.el, perspective
               ├── hydra        ← ace-window, hydra 정의, 글로벌 키바인딩
               ├── git          ← magit
               ├── keys         ← 한영전환, 한글 key-translation-map
@@ -69,10 +69,10 @@ boot.el의 `dolist`에서 정의된 순서대로 로딩된다. 의존성이 있�
 1. **01-keys** — 한글 키매핑 (독립적)
 2. **02-completion** — vertico/consult/corfu 스택 (hydra가 consult 함수 참조)
 3. **03-which-key** — Emacs 30 내장
-4. **04-projects** — projectile, perspective
-5. **05-hydra** — ace-window + hydra 정의 (consult, projectile, magit 함수 참조)
+4. **04-projects** — project.el + perspective 작업공간 연결/영속화
+5. **05-hydra** — ace-window + hydra 정의 (consult, project.el, magit 함수 참조)
 6. **06-git** — magit (독립적)
-7. **07-treemacs** — treemacs + projectile/magit/icons-dired 연동
+7. **07-treemacs** — 전역 treemacs + project.el/magit/icons-dired 연동
 8. **08-obsidian** — obsidian (독립적)
 9. **09-autorevert** — global-auto-revert (독립적)
 10. **10-theme** — doom-themes/doom-modeline (treemacs 뒤라야 연동 동작)

@@ -53,6 +53,20 @@
 ;;; Consult — 검색/탐색/미리보기
 ;; 주의: minimal 기본 바인딩 중 `C-c h'(→consult-history)는 imoogi hydra-master
 ;; 와 충돌하므로 제외했다.
+(declare-function persp-current-buffers* "perspective" (&optional include-global))
+
+(defun imoogi-consult-perspective-buffer (prefix)
+  "현재 Perspective의 버퍼만 고른다.
+PREFIX가 있으면 전체 `consult-buffer' 소스를 열어 다른 Perspective의
+버퍼를 의도적으로 가져오거나 공유할 수 있게 한다."
+  (interactive "P")
+  (if prefix
+      (consult-buffer)
+    (require 'consult)
+    (let ((consult-buffer-list-function
+           (lambda () (persp-current-buffers* t))))
+      (consult-buffer (list consult-source-buffer)))))
+
 (use-package consult
   :ensure t
   :bind (("C-c M-x" . consult-mode-command)
@@ -60,7 +74,7 @@
          ("C-c i"   . consult-info)
          ;; ctl-x-map
          ("C-x M-:" . consult-complex-command)
-         ("C-x b"   . consult-buffer)            ; 기존 counsel-switch-buffer 대체
+         ("C-x b"   . imoogi-consult-perspective-buffer)
          ("C-x 4 b" . consult-buffer-other-window)
          ("C-x r b" . consult-bookmark)
          ("C-x p b" . consult-project-buffer)
@@ -130,8 +144,8 @@
   (global-corfu-mode))
 
 ;;; Cape — completion-at-point 백엔드 확장
-;; 주의: minimal 기본 `C-c p'(cape-prefix-map)는 imoogi projectile 과 충돌하므로
-;; `C-c e' 로 변경했다.
+;; minimal 기본 `C-c p'(cape-prefix-map) 대신 프로젝트 접두와 구분되는
+;; `C-c e' 를 사용한다.
 (use-package cape
   :ensure t
   :bind ("C-c e" . cape-prefix-map)

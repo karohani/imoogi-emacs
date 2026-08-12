@@ -123,7 +123,8 @@
   :config
   (setq history-length 300
         savehist-additional-variables
-        '(register-alist mark-ring global-mark-ring
+        '(imoogi-project-perspective-alist
+          register-alist mark-ring global-mark-ring
                          search-ring regexp-search-ring)))
 
 ;;; saveplace — 파일 내 마지막 커서 위치 기억

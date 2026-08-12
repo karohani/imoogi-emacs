@@ -87,7 +87,7 @@ Emacs 내장 `treesit` 은 사용하되, 언어별 문법은 런타임에 다운
 | `M-x` | 명령 실행 (vertico 세로 완성) |
 | `C-x C-f` | 파일 열기 |
 | `C-s` / `M-s l` | consult-line — 현재 버퍼 검색 |
-| `C-x b` | consult-buffer — 버퍼 전환 |
+| `C-x b` | 현재 Perspective 버퍼 전환 · `C-u C-x b` 전체 버퍼 |
 | `M-s r` / `M-s g` | consult-ripgrep / grep — 프로젝트·디렉터리 검색 |
 | `M-g g` | 줄 이동 · `M-g i` imenu · `M-g f` flymake 진단 |
 | `M-y` | consult-yank-pop (kill-ring) |
@@ -105,11 +105,18 @@ Emacs 내장 `treesit` 은 사용하되, 언어별 문법은 런타임에 다운
 | `M-o` | ace-window — 창 점프 |
 | `C-c h` → `w` | hydra-window (`h/l/j/k` 이동, `s/v` 분할, `d` 삭제, `H/L/J/K` 크기) |
 
-### 프로젝트 (projectile)
+### 프로젝트와 작업공간 (`project.el` + `perspective.el`)
 | 키 | 동작 |
 |----|------|
-| `C-c p` | projectile 커맨드 맵 |
-| `C-c h` → `p` | hydra-projectile (`f` 파일, `s` ripgrep, `p` 전환, `r` 최근파일) |
+| `C-x p p` | 프로젝트 선택 → 대응 Perspective 전환/생성 → 프로젝트 Dired |
+| `C-u C-x p p` | 현재 Perspective를 유지하고 다른 프로젝트를 함께 열기 |
+| `C-x x s / c / l` | Perspective 생성·전환 / 종료 / 직전 작업공간 복귀 |
+| `C-x x a / g` | 버퍼를 현재 Perspective에 추가 / 여러 Perspective용 전역 공유 |
+| `C-c h` → `p` | project Hydra (`f` 파일, `s` 검색, `p` 프로젝트+작업공간 전환) |
+
+프로젝트 루트와 기본 Perspective 이름의 연결은 `savehist`로 유지된다.
+Perspective의 파일/Dired 버퍼와 창 배치는 정상 종료 시 저장되며, shell·REPL·compile
+프로세스는 현재 세션의 작업 컨텍스트에는 포함되지만 재시작 시 다시 생성되지는 않는다.
 
 ### Git
 | 키 | 동작 |
@@ -120,8 +127,18 @@ Emacs 내장 `treesit` 은 사용하되, 언어별 문법은 런타임에 다운
 ### 파일 탐색기 (treemacs)
 | 키 | 동작 |
 |----|------|
+| `s-1` | Project: 편집 버퍼에서는 파일 트리로 이동, Treemacs 안에서는 닫기 |
+| `s-2` | Bookmarks: Emacs 북마크 목록 토글 |
+| `s-7` | Structure: 현재 버퍼의 Imenu 구조 토글 |
 | `C-x t t` | treemacs 토글 · `M-0` treemacs 창으로 |
+| `C-x t p` | 현재 `project.el` 프로젝트를 Treemacs에 추가하고 표시 |
 | `C-x t 1 / d / B / C-t / M-t` | 단일창 / 디렉터리 / 북마크 / 파일찾기 / 태그찾기 |
+
+`s-1`, `s-2`, `s-7`은 IntelliJ의 도구 창처럼 같은 왼쪽 슬롯을 공유한다.
+Treemacs가 보이는 상태에서 편집 버퍼의 `s-1`은 파일 트리로 이동하고,
+Treemacs 안의 `s-1`은 파일 트리를 닫는다. `ESC`는 Treemacs를 유지한 채
+마지막 편집 창으로 돌아간다. 다른 도구 창 키를 누르면 해당 보기로 교체된다.
+Bookmarks와 Structure 안에서는 `g`로 새로고침하고 `q`로 닫는다.
 
 ### 코드 폴딩 (`C-c z` 접두)
 | 키 | 동작 |
@@ -141,11 +158,12 @@ Emacs 내장 `treesit` 은 사용하되, 언어별 문법은 런타임에 다운
 | 키 | 동작 |
 |----|------|
 | `s-c / s-v / s-x` | 복사 / 붙여넣기 / 잘라내기 |
+| `s-w` | 현재 버퍼 닫기; 수정된 버퍼는 저장 여부 확인 |
 | `s-z / s-a` | 되돌리기 / 전체 선택 |
 
 ### 진입점 요약
 - **`C-c h`** — 마스터 hydra (→ `w` 창, `p` 프로젝트, `g` Git, `z` 줌, `t` treemacs)
-- **`C-c p`** — projectile, **`C-c z`** — 폴딩, **`C-c e`** — cape, **`C-c t`** — 터미널
+- **`C-x p`** — project.el, **`C-x x`** — Perspective, **`C-c z`** — 폴딩, **`C-c e`** — cape, **`C-c t`** — 터미널
 
 ## 패키지 관리
 

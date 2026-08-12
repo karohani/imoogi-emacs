@@ -39,7 +39,8 @@
 | 하고 싶은 일 | 단축키 | 설명 |
 |---|---|---|
 | 파일 열기 | `C-x C-f` | 기본 `find-file` |
-| 버퍼 전환 | `C-x b` | `consult-buffer` |
+| 현재 작업공간 버퍼 전환 | `C-x b` | 현재 Perspective + 공유 버퍼만 표시 |
+| 전체 버퍼에서 전환/가져오기 | `C-u C-x b` | 전체 `consult-buffer` 소스 사용 |
 | 다른 창에서 버퍼 열기 | `C-x 4 b` | `consult-buffer-other-window` |
 | 프로젝트 버퍼 전환 | `C-x p b` | `consult-project-buffer` |
 | 북마크 열기 | `C-x r b` | `consult-bookmark` |
@@ -87,18 +88,23 @@
 
 | 하고 싶은 일 | 단축키 | 설명 |
 |---|---|---|
-| Projectile 명령 열기 | `C-c p` | Projectile command map |
 | 프로젝트 Hydra 열기 | `C-c h` → `p` | 프로젝트 작업 모음 |
-| 프로젝트 파일 찾기 | `C-c h` → `p` → `f` | `projectile-find-file` |
-| 프로젝트 검색 | `C-c h` → `p` → `s` | `consult-ripgrep` |
-| 프로젝트 버퍼 전환 | `C-c h` → `p` → `b` | `consult-project-buffer` |
-| 프로젝트 Dired 열기 | `C-c h` → `p` → `d` | `projectile-dired` |
-| 프로젝트 전환 | `C-c h` → `p` → `p` | `projectile-switch-project` |
-| 최근 프로젝트 파일 | `C-c h` → `p` → `r` | `projectile-recentf` |
-| 프로젝트 버퍼 모두 닫기 | `C-c h` → `p` → `k` | `projectile-kill-buffers` |
-| 프로젝트 컴파일 | `C-c h` → `p` → `c` | `projectile-compile-project` |
-| 프로젝트 테스트 | `C-c h` → `p` → `t` | `projectile-test-project` |
-| Perspective 접두 | `C-x x` | Perspective 명령 접두 |
+| 프로젝트+기본 작업공간 전환 | `C-x p p` | Perspective 전환/생성 후 프로젝트 Dired |
+| 현재 작업공간에 프로젝트 추가 | `C-u C-x p p` | Perspective를 유지하여 여러 저장소를 함께 사용 |
+| 프로젝트 파일 찾기 | `C-c h` → `p` → `f` | `project-find-file` |
+| 프로젝트 검색 | `C-c h` → `p` → `s` | `project-find-regexp` |
+| 프로젝트 버퍼 전환 | `C-c h` → `p` → `b` | `project-switch-to-buffer` |
+| 프로젝트 Dired 열기 | `C-c h` → `p` → `d` | `project-dired` |
+| 프로젝트 버퍼 모두 닫기 | `C-c h` → `p` → `k` | `project-kill-buffers` |
+| 프로젝트 컴파일 | `C-c h` → `p` → `c` | `project-compile` |
+| 임시 Perspective 생성·전환 | `C-x x s` | 없는 이름이면 생성, 있으면 기존 상태로 전환 |
+| 현재 Perspective 종료 | `C-x x c` | 임시 작업을 닫고 제거 |
+| 직전 Perspective 복귀 | `C-x x l` | 직전에 사용한 작업공간으로 즉시 전환 |
+| 버퍼 추가 / 전역 공유 | `C-x x a` / `C-x x g` | 현재 작업공간에 추가 / 프레임 전역 Perspective에 공유 |
+
+Perspective에는 프로젝트 밖 Org/참고 파일, Dired, shell, REPL, compilation 버퍼도
+포함할 수 있다. 파일과 Dired 및 창 배치는 정상 종료 후 복원 대상이지만, 실행 중인
+프로세스 자체는 재생성하지 않는다.
 
 ## 창 관리
 
@@ -116,10 +122,15 @@
 | 창 스왑 | `C-c h` → `w` → `m` | `ace-swap-window` |
 | 창 크기 조절 | `C-c h` → `w` → `H/L/J/K` | 좌우/상하 크기 조절 |
 
-## Treemacs 파일 탐색
+## IntelliJ 스타일 프로젝트 도구 창
 
 | 하고 싶은 일 | 단축키 | 설명 |
 |---|---|---|
+| 파일 트리 포커스/닫기 | `s-1` | 편집 버퍼에서는 Treemacs로 이동; Treemacs 안에서는 닫기 |
+| 편집 버퍼로 복귀 | `ESC` | Treemacs는 유지하고 마지막으로 사용한 편집 창으로 이동 |
+| 북마크 목록 토글 | `s-2` | Emacs bookmark 목록; 다시 누르면 닫기 |
+| 코드 구조 토글 | `s-7` | 현재 버퍼의 Imenu Structure; 다시 누르면 닫기 |
+| 도구 창 새로고침 / 닫기 | `g` / `q` | Bookmarks·Structure 창 안에서 사용 |
 | Treemacs 토글 | `C-x t t` | 파일 트리 열기/닫기 |
 | Treemacs 창 선택 | `M-0` | Treemacs 창으로 이동 |
 | Treemacs만 남기기 | `C-x t 1` | 다른 창 정리 |
@@ -127,7 +138,12 @@
 | 북마크 열기 | `C-x t B` | `treemacs-bookmark` |
 | 현재 파일 찾기 | `C-x t C-t` | `treemacs-find-file` |
 | 태그 찾기 | `C-x t M-t` | `treemacs-find-tag` |
-| 마스터 Hydra에서 열기 | `C-c h` → `t` | `treemacs` |
+| 마스터 Hydra에서 열기 | `C-c h` → `t` | `s-1`과 같은 파일 트리 토글 |
+
+`s-1`, `s-2`, `s-7`은 동일한 왼쪽 도구 창 슬롯을 공유한다. 다른 보기의
+키를 누르면 현재 보기를 닫고 새 보기로 교체한다. Treemacs가 이미 보이면
+편집 버퍼의 `s-1`은 파일 트리에 포커스를 주고, 그 안의 `s-1`은 파일 트리를
+닫는다. `ESC`는 파일 트리를 열어 둔 채 마지막 편집 창으로 돌아간다.
 
 ## Git
 
@@ -150,6 +166,7 @@
 | 저장 시 포매팅 | 저장 시 자동 | `apheleia`가 major mode별 formatter 실행 |
 | 괄호/따옴표 짝 자동 입력 | 입력 시 자동 | `electric-pair-mode` |
 | 선택 영역 덮어쓰기 | 입력 시 자동 | `delete-selection-mode` |
+| 현재 버퍼 닫기 | `s-w` | IntelliJ의 에디터 탭 닫기와 동일; 수정 사항이 있으면 저장 여부 확인 |
 
 ## 코드 폴딩
 
@@ -214,7 +231,8 @@
 | 진입점 | 용도 |
 |---|---|
 | `C-c h` | 마스터 Hydra: 창, 프로젝트, Git, 확대/축소, Treemacs |
-| `C-c p` | Projectile 전체 명령 |
+| `C-x p` | 내장 `project.el` 명령 (`p`는 Perspective 연동 전환) |
+| `C-x x` | Perspective 작업공간 관리 |
 | `C-c z` | 코드 폴딩 |
 | `C-c e` | Cape 보완 소스 |
 | `C-c t` | ghostel 터미널 |
