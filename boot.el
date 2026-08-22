@@ -51,6 +51,12 @@
              module missing))))
 
 ;;; Load modules
+(defvar imoogi-failed-modules nil
+  "부팅 중 건너뛴 모듈 이름 목록(로드 순서).
+사전조건 누락이나 로딩 오류로 건너뛴 모듈이 여기 쌓인다.
+`M-x describe-variable imoogi-failed-modules' 로 확인할 수 있고,
+tests/assert-boot.el 이 이 값을 설치 검증의 판정 근거로 쓴다.")
+
 (dolist (module '("00-defaults"
                   "01-keys"
                   "02-completion"
@@ -74,6 +80,8 @@
   (condition-case err
       (load (expand-file-name (concat "modules/" module) imoogi-emacs-dir))
     (error
+     (setq imoogi-failed-modules
+           (append imoogi-failed-modules (list module)))
      (display-warning 'imoogi
                       (format "모듈 %s 로딩 실패(건너뜀): %s"
                               module (error-message-string err))

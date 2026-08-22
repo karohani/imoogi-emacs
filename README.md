@@ -4,20 +4,19 @@
 
 ## 설치
 
-Emacs 30.x 기준으로 vendoring 되어 있다. 새 머신에서는 저장소를 받은 뒤
-`~/.emacs.d/early-init.el` 과 `~/.emacs.d/init.el` 이 이 설정을 로드하게 만든다.
+Emacs 30.x 기준으로 vendoring 되어 있다. 저장소를 받은 뒤 설치 스크립트를 실행하면
+`~/.config/imoogi-emacs` 심볼릭 링크와 `~/.emacs.d` 진입점이 만들어진다.
 
 ```bash
-# 1. 클론
 git clone <repo-url> ~/workspace/imoogi-emacs
-
-# 2. ~/.config/imoogi-emacs 로 연결
-mkdir -p ~/.config
-ln -sfn ~/workspace/imoogi-emacs ~/.config/imoogi-emacs
-
-# 3. Emacs init 디렉터리 준비
-mkdir -p ~/.emacs.d
+cd ~/workspace/imoogi-emacs
+./scripts/install.sh
 ```
+
+스크립트는 반복 실행해도 안전하다. 기존 `~/.emacs.d/early-init.el` / `init.el` 이
+있으면 덮어쓰기 전에 타임스탬프를 붙여 백업한다(`init.el.bak.20260822185215` 형태).
+
+직접 하려면 `~/.config/imoogi-emacs` 로 심볼릭 링크를 건 뒤 아래 두 파일을 만든다.
 
 `~/.emacs.d/early-init.el`:
 
@@ -31,11 +30,39 @@ mkdir -p ~/.emacs.d
 (load-file (expand-file-name "boot.el" "~/.config/imoogi-emacs"))
 ```
 
-기존 Emacs 설정이 있으면 위 두 파일을 덮어쓰기 전에 백업한다. 이후 Emacs 를
-재시작하면 첫 부팅 때 동봉 폰트가 사용자 폰트 디렉터리로 복사되고, 다음 재시작부터
-폰트가 적용된다.
+이후 Emacs 를 재시작하면 첫 부팅 때 동봉 폰트가 사용자 폰트 디렉터리로 복사되고,
+다음 재시작부터 폰트가 적용된다.
+
+언어 서버(LSP)까지 쓰려면 `docs/toolchains.md` 의 `imoogi-toolchain setup` 을
+추가로 실행한다. 실행하지 않아도 에디터는 정상 동작하며 LSP 기능만 꺼진 채로 남는다.
 
 모든 패키지가 저장소 안 `vendor/elpa/` 에 동봉돼 있어, **인터넷 없이도 첫 실행부터 그대로 동작한다**(망분리/air-gap 지원).
+
+## 테스트
+
+```bash
+EMACS=/path/to/emacs ./tests/run.sh   # macOS 호스트: check-parens + 오프라인 부팅 + ERT
+./tests/docker/run.sh                 # Linux 컨테이너: 설치 + 부팅 매트릭스
+```
+
+`tests/docker/run.sh` 는 성격이 다른 두 층을 돌린다. 합격 기준이 서로 반대라 곱하지
+않고 나눠 실행한다.
+
+| 층 | 환경 | 합격 기준 |
+|---|---|---|
+| T2 이식성 | `debian:trixie-slim`(30.1) · `ubuntu:26.04`(30.2) · `alpine:edge`(30.2, musl) — 도구 전부 설치 | 스킵된 모듈 **0개** |
+| T1 degradation | `debian:trixie-slim` — `git` 없음 | 선언한 모듈(`06-git`, `07-treemacs`)만 **정확히** 스킵 |
+
+판정은 `tests/assert-boot.el` 이 단독으로 담당하며, Docker 와 호스트가 같은 파일을
+쓴다. **Emacs 종료 코드는 판정 근거가 되지 않는다** — `boot.el` 이 모듈 실패를
+격리하므로 절반이 깨져도 `exit 0` 이 나온다(측정: `git` 부재 시 모듈 2개 스킵,
+Emacs 29.3 + 30.x `.elc` 조합에서 모듈 3개 스킵, 둘 다 `exit 0`). 그래서 실제로
+어떤 모듈이 로드됐는지를 `imoogi-failed-modules` 로 확인한다.
+
+`debian:bookworm`(28.2), `ubuntu:24.04`(29.3) 는 vendored `.elc` 와 메이저 버전이
+달라 매트릭스에서 제외했다. `vendor/ghostel-module`(Mach-O arm64)과
+`vendor/toolchains`(darwin-arm64)는 Linux 에서 실행 자체가 불가능해 컨테이너 범위
+밖이며, macOS 호스트에서만 검증한다.
 
 ## 망분리(air-gap) 환경
 

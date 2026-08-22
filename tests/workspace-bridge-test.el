@@ -303,20 +303,12 @@
   (should (eq (lookup-key global-map (kbd "C-x t p"))
               #'treemacs-add-and-display-current-project)))
 
-(ert-deftest imoogi-perspective-restore-runs-before-treemacs-startup ()
-  (let* ((hooks (mapcar (lambda (entry) (if (consp entry) (car entry) entry))
-                        emacs-startup-hook))
-         (restore-position (cl-position 'imoogi-perspective-state-restore hooks))
-         (treemacs-position (cl-position 'imoogi-treemacs-start hooks)))
-    (should restore-position)
-    (should treemacs-position)
-    (should (< restore-position treemacs-position))))
-
-(ert-deftest imoogi-perspective-and-treemacs-startup-hooks-have-exact-observable-order ()
+(ert-deftest imoogi-treemacs-does-not-auto-start-on-emacs-startup-hook ()
+  "Treemacs no longer opens itself on startup — only via manual toggle."
   (let ((hooks (mapcar (lambda (entry) (if (consp entry) (car entry) entry))
                        emacs-startup-hook)))
-    (should (equal hooks
-                   '(imoogi-perspective-state-restore imoogi-treemacs-start)))
-    (should-not (memq 'treemacs hooks))))
+    (should (equal hooks '(imoogi-perspective-state-restore)))
+    (should-not (memq 'treemacs hooks))
+    (should-not (fboundp 'imoogi-treemacs-start))))
 
 ;;; workspace-bridge-test.el ends here

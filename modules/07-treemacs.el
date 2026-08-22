@@ -357,12 +357,8 @@ selected, close it.  Otherwise replace any custom tool window and show it."
 ;; (treemacs-persp / treemacs-evil 은 persp-mode / evil 용이라 imoogi 스택
 ;;  (perspective + 키바인딩)과 맞지 않아 제거했다. treemacs 는 전역으로 동작.)
 
-(defun imoogi-treemacs-start ()
-  "Start the global Treemacs workspace after Perspective restoration."
-  (treemacs))
-
-;;; Start treemacs after Perspective state restoration (depth -50).
-(add-hook 'emacs-startup-hook #'imoogi-treemacs-start 50)
+;; Treemacs 는 더 이상 시작 시 자동으로 열리지 않는다. 필요할 때
+;; M-0 / <s-1> / C-x t t 로 직접 연다 (imoogi-treemacs-toggle-file-tree).
 
 (provide 'imoogi-treemacs)
 ;;; treemacs.el ends here

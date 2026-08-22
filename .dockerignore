@@ -1,0 +1,10 @@
+.git/
+.local/
+.cache/
+.claude/
+.moai/
+.moai-backups/
+.devcontainer/
+.omc/
+.omo/
+.DS_Store
