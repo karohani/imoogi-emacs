@@ -45,6 +45,8 @@
   (imoogi-treesit-remap-if-available 'typescript-mode 'typescript-ts-mode 'typescript)
   (imoogi-treesit-auto-mode-if-available "\\.tsx\\'" 'tsx-ts-mode 'tsx)
   (imoogi-treesit-auto-mode-if-available "\\.jsx\\'" 'tsx-ts-mode 'tsx)
+  (imoogi-treesit-remap-if-available 'js-json-mode 'json-ts-mode 'json)
+  (imoogi-treesit-remap-if-available 'python-mode 'python-ts-mode 'python)
   (imoogi-treesit-remap-if-available 'go-mode 'go-ts-mode 'go)
   (imoogi-treesit-remap-if-available 'rust-mode 'rust-ts-mode 'rust)
   (imoogi-treesit-remap-if-available 'java-mode 'java-ts-mode 'java)

@@ -88,11 +88,25 @@ git add vendor/ packages.lock packages.el && git commit -m "vendor: update packa
 
 ### Tree-sitter 문법
 
-Emacs 내장 `treesit` 은 사용하되, 언어별 문법은 런타임에 다운로드하지 않는다.
-온라인 머신에서 빌드한 grammar 라이브러리(`libtree-sitter-*.dylib` 등)를
-`vendor/tree-sitter/` 에 넣어 반입하면, `18-languages` 가 해당 문법을 감지한
-언어만 `*-ts-mode` 로 자동 전환한다. 문법이 없으면 기존 전통 major-mode 로
+Emacs 내장 `treesit` 은 사용하되, 언어별 문법은 런타임에 다운로드하지 않는다
+(`treesit-install-language-grammar` 는 네트워크를 쓰므로 폐쇄망 부적합).
+온라인 머신에서 빌드해 `vendor/tree-sitter/` 에 커밋하면, `18-languages` 가
+문법이 있는 언어만 `*-ts-mode` 로 자동 전환한다. 없으면 기존 전통 major-mode 로
 그대로 열린다.
+
+```bash
+./scripts/build-grammars.sh          # 전체 (온라인 머신에서만)
+./scripts/build-grammars.sh go json  # 일부만
+git add vendor/tree-sitter && git commit -m "vendor: update tree-sitter grammars"
+```
+
+현재 반입된 문법: `json` `javascript` `typescript` `tsx` `python` `go` `java` `yaml`.
+결과물은 빌드한 플랫폼 전용이다(macOS `.dylib`, Linux `.so`) — 다른 플랫폼으로
+반입하려면 그 플랫폼에서 다시 빌드한다.
+
+문법이 들어오면 딸려오는 이득이 있다. `json-ts-mode` / `java-ts-mode` /
+`go-ts-mode` / `typescript-ts-mode` 는 자체 imenu 설정을 갖고 있어 `M-g i` 의
+구조 탐색이 정확해지고, `C-c h c` 의 L3(구문 트리)이 켜진다.
 
 ### 폰트
 
