@@ -81,6 +81,19 @@
     (setq doom-themes-treemacs-theme "doom-colors")
     (doom-themes-treemacs-config)))
 
+;;; hl-line — 현재 커서 라인 강하게 표시
+(use-package hl-line
+  :ensure nil
+  :config
+  (global-hl-line-mode 1)
+  (set-face-attribute 'hl-line nil
+                      :background "#343a46"
+                      :extend t)
+  (set-face-attribute 'line-number-current-line nil
+                      :foreground "#ffcc66"
+                      :background "#343a46"
+                      :weight 'bold))
+
 ;;; doom-modeline — 깔끔한 모드라인
 (use-package doom-modeline
   :ensure t

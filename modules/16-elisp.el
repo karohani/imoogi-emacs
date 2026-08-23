@@ -1,11 +1,11 @@
-;;; 15-elisp.el --- Elisp 개발 경험 강화 (minimal-emacs.d 추천) -*- lexical-binding: t; -*-
+;;; 16-elisp.el --- Elisp 개발 경험 강화 (minimal-emacs.d 추천) -*- lexical-binding: t; -*-
 
 ;; aggressive-indent, highlight-defined, paredit, page-break-lines, elisp-refs.
 ;; 대부분 emacs-lisp-mode 등 lisp 계열에만 적용한다.
 
 ;;; Code:
 
-(imoogi-require "15-elisp" 'aggressive-indent 'highlight-defined 'paredit
+(imoogi-require "16-elisp" 'aggressive-indent 'highlight-defined 'paredit
                 'page-break-lines 'elisp-refs)
 
 ;;; aggressive-indent — 코드 작성 중 자동으로 들여쓰기 유지(lisp 계열)
@@ -38,4 +38,4 @@
   :commands (elisp-refs-function elisp-refs-variable elisp-refs-symbol))
 
 (provide 'imoogi-elisp)
-;;; 15-elisp.el ends here
+;;; 16-elisp.el ends here

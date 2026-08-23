@@ -4,19 +4,20 @@
 
 ## 설치
 
-Emacs 30.x 기준으로 vendoring 되어 있다. 저장소를 받은 뒤 설치 스크립트를 실행하면
-`~/.config/imoogi-emacs` 심볼릭 링크와 `~/.emacs.d` 진입점이 만들어진다.
+Emacs 30.x 기준으로 vendoring 되어 있다. 새 머신에서는 저장소를 받은 뒤
+`~/.emacs.d/early-init.el` 과 `~/.emacs.d/init.el` 이 이 설정을 로드하게 만든다.
 
 ```bash
+# 1. 클론
 git clone <repo-url> ~/workspace/imoogi-emacs
-cd ~/workspace/imoogi-emacs
-./scripts/install.sh
+
+# 2. ~/.config/imoogi-emacs 로 연결
+mkdir -p ~/.config
+ln -sfn ~/workspace/imoogi-emacs ~/.config/imoogi-emacs
+
+# 3. Emacs init 디렉터리 준비
+mkdir -p ~/.emacs.d
 ```
-
-스크립트는 반복 실행해도 안전하다. 기존 `~/.emacs.d/early-init.el` / `init.el` 이
-있으면 덮어쓰기 전에 타임스탬프를 붙여 백업한다(`init.el.bak.20260822185215` 형태).
-
-직접 하려면 `~/.config/imoogi-emacs` 로 심볼릭 링크를 건 뒤 아래 두 파일을 만든다.
 
 `~/.emacs.d/early-init.el`:
 
@@ -30,39 +31,11 @@ cd ~/workspace/imoogi-emacs
 (load-file (expand-file-name "boot.el" "~/.config/imoogi-emacs"))
 ```
 
-이후 Emacs 를 재시작하면 첫 부팅 때 동봉 폰트가 사용자 폰트 디렉터리로 복사되고,
-다음 재시작부터 폰트가 적용된다.
-
-언어 서버(LSP)까지 쓰려면 `docs/toolchains.md` 의 `imoogi-toolchain setup` 을
-추가로 실행한다. 실행하지 않아도 에디터는 정상 동작하며 LSP 기능만 꺼진 채로 남는다.
+기존 Emacs 설정이 있으면 위 두 파일을 덮어쓰기 전에 백업한다. 이후 Emacs 를
+재시작하면 첫 부팅 때 동봉 폰트가 사용자 폰트 디렉터리로 복사되고, 다음 재시작부터
+폰트가 적용된다.
 
 모든 패키지가 저장소 안 `vendor/elpa/` 에 동봉돼 있어, **인터넷 없이도 첫 실행부터 그대로 동작한다**(망분리/air-gap 지원).
-
-## 테스트
-
-```bash
-EMACS=/path/to/emacs ./tests/run.sh   # macOS 호스트: check-parens + 오프라인 부팅 + ERT
-./tests/docker/run.sh                 # Linux 컨테이너: 설치 + 부팅 매트릭스
-```
-
-`tests/docker/run.sh` 는 성격이 다른 두 층을 돌린다. 합격 기준이 서로 반대라 곱하지
-않고 나눠 실행한다.
-
-| 층 | 환경 | 합격 기준 |
-|---|---|---|
-| T2 이식성 | `debian:trixie-slim`(30.1) · `ubuntu:26.04`(30.2) · `alpine:edge`(30.2, musl) — 도구 전부 설치 | 스킵된 모듈 **0개** |
-| T1 degradation | `debian:trixie-slim` — `git` 없음 | 선언한 모듈(`06-git`, `07-treemacs`)만 **정확히** 스킵 |
-
-판정은 `tests/assert-boot.el` 이 단독으로 담당하며, Docker 와 호스트가 같은 파일을
-쓴다. **Emacs 종료 코드는 판정 근거가 되지 않는다** — `boot.el` 이 모듈 실패를
-격리하므로 절반이 깨져도 `exit 0` 이 나온다(측정: `git` 부재 시 모듈 2개 스킵,
-Emacs 29.3 + 30.x `.elc` 조합에서 모듈 3개 스킵, 둘 다 `exit 0`). 그래서 실제로
-어떤 모듈이 로드됐는지를 `imoogi-failed-modules` 로 확인한다.
-
-`debian:bookworm`(28.2), `ubuntu:24.04`(29.3) 는 vendored `.elc` 와 메이저 버전이
-달라 매트릭스에서 제외했다. `vendor/ghostel-module`(Mach-O arm64)과
-`vendor/toolchains`(darwin-arm64)는 Linux 에서 실행 자체가 불가능해 컨테이너 범위
-밖이며, macOS 호스트에서만 검증한다.
 
 ## 망분리(air-gap) 환경
 
@@ -90,7 +63,7 @@ git add vendor/ packages.lock packages.el && git commit -m "vendor: update packa
 
 Emacs 내장 `treesit` 은 사용하되, 언어별 문법은 런타임에 다운로드하지 않는다.
 온라인 머신에서 빌드한 grammar 라이브러리(`libtree-sitter-*.dylib` 등)를
-`vendor/tree-sitter/` 에 넣어 반입하면, `16-languages` 가 해당 문법을 감지한
+`vendor/tree-sitter/` 에 넣어 반입하면, `18-languages` 가 해당 문법을 감지한
 언어만 `*-ts-mode` 로 자동 전환한다. 문법이 없으면 기존 전통 major-mode 로
 그대로 열린다.
 
@@ -125,6 +98,31 @@ Emacs 내장 `treesit` 은 사용하되, 언어별 문법은 런타임에 다운
 |----|------|
 | `TAB` | 들여쓰기 또는 완성 (`tab-always-indent`) |
 | `C-c e` | cape 접두 맵 (dabbrev/file/elisp 등 보완) |
+
+### LSP / 코드 탐색 (`eglot` + `xref`)
+| 키 | 동작 |
+|----|------|
+| `M-.` / `C-c l d` | 정의로 이동 |
+| `M-?` / `C-c l r` | 참조 찾기 |
+| `M-,` / `C-c l b` | 이전 xref 위치로 돌아가기 |
+| `C-M-,` / `C-c l f` | 다음 xref 위치로 이동 |
+| `C-c l R` | 심볼 이름 변경 · `C-c l c/o` 코드 액션/임포트 정리 |
+| `C-c l e/q` | Eglot 수동 연결/종료 |
+
+언어별 자동 연결은 `modules/lsp/` 아래에서 독립적으로 관리한다. 현재 Bash,
+JavaScript/TypeScript, Go, Python, Rust, Clojure, Java, Kotlin 설정이 있으며,
+새 언어는 같은 폴더에 설정 파일 하나를 추가하면 `17-lsp`가 자동으로 로드한다.
+Go/TypeScript 서버는 저장소의 `vendor/toolchains/`에 고정된 artifact를 사용한다.
+온라인 머신에서는 `vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain fetch`로
+`toolchains.lock.json`과 artifact를 갱신하고, 폐쇄망 타겟에서는 같은 bootstrap의
+`setup`만 실행한다. `setup`은 `.local/toolchains/<bundle>/`에 검증 후 설치하고
+상대 symlink `.local/bin`을 활성화한다. `17-lsp`는 부팅 중 설치나 다운로드 없이
+활성 `.local/bin`이 있을 때만 `exec-path`와 `PATH` 앞에 둔다. 서버가 없어도
+메이저 모드와 xref fallback은 그대로 동작한다.
+
+CLI는 SemVer(`1.0.0`), 설치 bundle은 CalVer(`2026.08.22.1`)로 독립 관리한다.
+현재 고정 버전, SHA-256, 업데이트와 rollback 절차는
+[`docs/toolchains.md`](docs/toolchains.md)를 따른다.
 
 ### 창 관리
 | 키 | 동작 |
@@ -196,7 +194,7 @@ Bookmarks와 Structure 안에서는 `g`로 새로고침하고 `q`로 닫는다.
 
 ### 진입점 요약
 - **`C-c h`** — 마스터 hydra (→ `w` 창, `p` 프로젝트, `g` Git, `z` 줌, `t` treemacs)
-- **`C-x p`** — project.el, **`C-x x`** — Perspective, **`C-c z`** — 폴딩, **`C-c e`** — cape, **`C-c t`** — 터미널
+- **`C-x p`** — project.el, **`C-x x`** — Perspective, **`C-c l`** — LSP/xref, **`C-c z`** — 폴딩, **`C-c e`** — cape, **`C-c t`** — 터미널
 
 ## 패키지 관리
 
@@ -218,17 +216,19 @@ Bookmarks와 Structure 안에서는 `g`로 새로고침하고 `q`로 닫는다.
 | `11-editing` | undo-fu(+session) · yasnippet(+snippets) · apheleia · dumb-jump · stripspace · elec-pair | undo, 스니펫, 비동기 포매팅, go-to-def, 공백정리, 괄호짝 |
 | `12-navigation` | avy · helpful · diff-hl · bufferfile | 점프, 향상된 도움말, 여백 Git 표시, 파일 조작 |
 | `13-system` | exec-path-from-shell · server · buffer-terminator · persist-text-scale | 환경변수 동기화, 서버, 버퍼 정리, 텍스트 배율 유지 |
-| `14-org-markdown` | org · org-appear · markdown-toc | org/markdown |
-| `15-elisp` | aggressive-indent · highlight-defined · paredit · page-break-lines · elisp-refs | Elisp 개발 |
-| `16-languages` | git-modes · yaml · dockerfile · gnuplot · lua · jinja2 · csv · go · rust · crontab · nginx · hcl · nix · fish · vimrc · jenkinsfile · clojure · kotlin · typescript · web/tsx (+내장 sgml/java/treesit) | 21종 파일타입 모드 + 선택적 `*-ts-mode` 전환 |
-| `17-folding` | kirigami · outline-indent (+내장 outline/hs-minor) | 코드 폴딩 (`C-c z` 접두) |
-| `18-terminal` | ghostel (+ghostel-ime) | libghostty-vt 터미널 (`C-c t`). 모듈은 vendor 동봉, S-SPC 한글 동작 |
-| `19-native-compile` | compile-angel | 로드 시 바이트/네이티브 컴파일 |
+| `14-org` | org · org-appear | org-mode |
+| `15-markdown` | markdown-mode · markdown-toc | Markdown + Org-style 구조 편집 키 |
+| `16-elisp` | aggressive-indent · highlight-defined · paredit · page-break-lines · elisp-refs | Elisp 개발 |
+| `17-lsp` | Eglot · Flymake · xref (Emacs 30 내장) | 공통 LSP 설정 + `modules/lsp/*.el` 언어별 자동 로더 |
+| `18-languages` | git-modes · yaml · dockerfile · gnuplot · lua · jinja2 · csv · go · rust · crontab · nginx · hcl · nix · fish · vimrc · jenkinsfile · clojure · kotlin · typescript · web/tsx (+내장 sgml/java/treesit) | 21종 파일타입 모드 + 선택적 `*-ts-mode` 전환 |
+| `19-folding` | kirigami · outline-indent (+내장 outline/hs-minor) | 코드 폴딩 (`C-c z` 접두) |
+| `20-terminal` | ghostel (+ghostel-ime) | libghostty-vt 터미널 (`C-c t`). 모듈은 vendor 동봉, S-SPC 한글 동작 |
+| `21-native-compile` | compile-angel | 로드 시 바이트/네이티브 컴파일 |
 | `00-defaults` | (내장) | 상대 줄번호, 줄:열 표시, treesit 레벨4, pixel-scroll, fringe |
 
 ### 이미 반영돼 있던 추천 (중복 도입 안 함)
 
-`recentf` · `savehist` · `saveplace` · `auto-revert` (00-defaults/09), `eglot`/`flymake` 기본값 (00-defaults), `which-key`(Emacs 30 내장, 03), `uniquify`, `treemacs`(07), `magit`(06), 폰트·테마(10).
+`recentf` · `savehist` · `saveplace` · `auto-revert` (00-defaults/09), `eglot`/`flymake` 기본값 (17-lsp), `which-key`(Emacs 30 내장, 03), `uniquify`, `treemacs`(07), `magit`(06), 폰트·테마(10).
 
 ### 의도적으로 미반영 (이유 명시)
 

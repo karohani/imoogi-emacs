@@ -146,22 +146,6 @@
         dired-clean-confirm-killing-deleted-buffers nil
         dired-auto-revert-buffer 'dired-directory-changed-p))
 
-;;; eglot (Emacs 29+ 내장 LSP) — 사용 시 빠르고 조용하게
-(with-eval-after-load 'eglot
-  (setq eglot-autoshutdown t           ; 마지막 버퍼 종료 시 서버 종료
-        eglot-sync-connect 0           ; 연결 동안 UI 블로킹 안 함
-        eglot-extend-to-xref t
-        eglot-events-buffer-config '(:size 0 :format short)))
-
-;;; flymake
-(with-eval-after-load 'flymake
-  (setq flymake-show-diagnostics-at-end-of-line nil
-        flymake-wrap-around nil))
-
-;;; xref — 정의 후보를 미니버퍼에서 보완
-(setq xref-show-definitions-function 'xref-show-definitions-completing-read
-      xref-show-xrefs-function 'xref-show-definitions-completing-read)
-
 ;;; 비활성화돼 있던 유용한 명령들 활성화
 (dolist (cmd '(narrow-to-region narrow-to-page upcase-region downcase-region
                                 erase-buffer scroll-left dired-find-alternate-file

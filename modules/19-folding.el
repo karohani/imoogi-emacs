@@ -1,4 +1,4 @@
-;;; 17-folding.el --- 코드 폴딩 (minimal-emacs.d 추천) -*- lexical-binding: t; -*-
+;;; 19-folding.el --- 코드 폴딩 (minimal-emacs.d 추천) -*- lexical-binding: t; -*-
 
 ;; kirigami(통합 폴드 인터페이스) + 내장 outline/hs-minor-mode + outline-indent.
 ;; treesit-fold 는 언어별 tree-sitter 문법(별도 설치/빌드)이 필요해 air-gap 에서는
@@ -6,7 +6,7 @@
 
 ;;; Code:
 
-(imoogi-require "17-folding" 'kirigami 'outline-indent)
+(imoogi-require "19-folding" 'kirigami 'outline-indent)
 
 ;;; kirigami — 폴드 열기/닫기 통합 인터페이스 (C-c z 접두)
 (use-package kirigami
@@ -51,4 +51,4 @@
     (add-hook hook #'outline-indent-minor-mode)))
 
 (provide 'imoogi-folding)
-;;; 17-folding.el ends here
+;;; 19-folding.el ends here

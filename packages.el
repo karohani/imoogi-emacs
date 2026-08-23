@@ -35,19 +35,21 @@
     avy helpful diff-hl bufferfile
     ;; 13-system
     exec-path-from-shell buffer-terminator persist-text-scale
-    ;; 14-org-markdown (markdown-mode 는 obsidian 의존성)
-    org-appear markdown-toc
-    ;; 15-elisp
+    ;; 14-org
+    org-appear
+    ;; 15-markdown (markdown-mode 는 obsidian 의존성)
+    markdown-toc edit-indirect
+    ;; 16-elisp
     aggressive-indent highlight-defined paredit page-break-lines elisp-refs
-    ;; 16-languages
+    ;; 18-languages
     git-modes yaml-mode dockerfile-mode gnuplot lua-mode jinja2-mode csv-mode
     go-mode rust-mode crontab-mode nginx-mode hcl-mode nix-mode fish-mode
     vimrc-mode jenkinsfile-mode clojure-mode kotlin-mode typescript-mode web-mode
-    ;; 17-folding (treesit-fold 는 tree-sitter 문법 필요로 제외)
+    ;; 19-folding (treesit-fold 는 tree-sitter 문법 필요로 제외)
     kirigami outline-indent
-    ;; 18-terminal (ghostel; 네이티브 모듈은 vendor/ghostel-module/ 에 동봉)
+    ;; 20-terminal (ghostel; 네이티브 모듈은 vendor/ghostel-module/ 에 동봉)
     ghostel
-    ;; 19-native-compile
+    ;; 21-native-compile
     compile-angel)
   "imoogi-emacs 가 요구하는 top-level 패키지 목록.
 전이 의존성은 package.el 이 자동으로 함께 설치한다.")

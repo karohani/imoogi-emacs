@@ -71,12 +71,14 @@ tests/assert-boot.el 이 이 값을 설치 검증의 판정 근거로 쓴다.")
                   "11-editing"
                   "12-navigation"
                   "13-system"
-                  "14-org-markdown"
-                  "15-elisp"
-                  "16-languages"
-                  "17-folding"
-                  "18-terminal"
-                  "19-native-compile"))
+                  "14-org"
+                  "15-markdown"
+                  "16-elisp"
+                  "17-lsp"
+                  "18-languages"
+                  "19-folding"
+                  "20-terminal"
+                  "21-native-compile"))
   (condition-case err
       (load (expand-file-name (concat "modules/" module) imoogi-emacs-dir))
     (error

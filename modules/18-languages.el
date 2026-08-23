@@ -1,4 +1,4 @@
-;;; 16-languages.el --- 언어/파일타입 메이저 모드 (minimal-emacs.d 추천) -*- lexical-binding: t; -*-
+;;; 18-languages.el --- 언어/파일타입 메이저 모드 (minimal-emacs.d 추천) -*- lexical-binding: t; -*-
 
 ;; 가벼운 메이저 모드 모음. 대부분 해당 확장자를 열 때만 로드된다(:mode).
 ;; Tree-sitter 문법이 있으면 내장 *-ts-mode 로 자동 전환하고, 없으면
@@ -6,27 +6,10 @@
 
 ;;; Code:
 
-(imoogi-require "16-languages" 'git-modes 'yaml-mode 'dockerfile-mode 'gnuplot
+(imoogi-require "18-languages" 'git-modes 'yaml-mode 'dockerfile-mode 'gnuplot
                 'lua-mode 'jinja2-mode 'csv-mode 'go-mode 'rust-mode 'crontab-mode
                 'nginx-mode 'hcl-mode 'nix-mode 'fish-mode 'vimrc-mode 'jenkinsfile-mode
                 'clojure-mode 'kotlin-mode 'typescript-mode 'web-mode)
-
-(defun imoogi-eglot-server-available-p (server)
-  "Return non-nil when SERVER command is available locally."
-  (let ((command (if (listp server) (car server) server)))
-    (and (stringp command) (executable-find command))))
-
-(defun imoogi-eglot-register-if-available (modes server)
-  "Register SERVER for MODES when its executable exists."
-  (when (imoogi-eglot-server-available-p server)
-    (with-eval-after-load 'eglot
-      (add-to-list 'eglot-server-programs (cons modes server)))))
-
-(defun imoogi-eglot-ensure-if-server-available (server)
-  "Start Eglot only when SERVER executable exists locally."
-  (when (and (imoogi-eglot-server-available-p server)
-             (require 'eglot nil t))
-    (eglot-ensure)))
 
 (defvar imoogi-treesit-grammar-dir
   (expand-file-name "vendor/tree-sitter/" imoogi-emacs-dir)
@@ -69,36 +52,6 @@
   (imoogi-treesit-remap-if-available 'dockerfile-mode 'dockerfile-ts-mode 'dockerfile)
   (imoogi-treesit-remap-if-available 'html-mode 'html-ts-mode 'html))
 
-;;; Optional Eglot server programs.  Register at load time as well as in
-;;; package configs so direct *-ts-mode activation keeps LSP fallback behavior.
-(imoogi-eglot-register-if-available
- '(sh-mode bash-ts-mode)
- '("bash-language-server" "start"))
-(imoogi-eglot-register-if-available
- '(js-mode js-ts-mode)
- '("typescript-language-server" "--stdio"))
-(imoogi-eglot-register-if-available
- '(go-mode go-ts-mode)
- '("gopls"))
-(imoogi-eglot-register-if-available
- '(rust-mode rust-ts-mode)
- '("rust-analyzer"))
-(imoogi-eglot-register-if-available
- '(java-mode java-ts-mode)
- '("jdtls"))
-(imoogi-eglot-register-if-available
- '(typescript-mode typescript-ts-mode)
- '("typescript-language-server" "--stdio"))
-(imoogi-eglot-register-if-available
- '(web-mode tsx-ts-mode)
- '("typescript-language-server" "--stdio"))
-(imoogi-eglot-register-if-available
- '(clojure-mode clojurec-mode clojurescript-mode)
- '("clojure-lsp"))
-(imoogi-eglot-register-if-available
- 'kotlin-mode
- '("kotlin-language-server"))
-
 ;;; Git 관련 파일(.gitignore/.gitconfig/.gitattributes)
 (use-package git-modes
   :ensure t
@@ -116,26 +69,14 @@
 ;;; Shell script (내장 sh-mode)
 (use-package sh-script
   :ensure nil
-  :mode ("\\.sh\\'" . sh-mode)
-  :hook ((sh-mode bash-ts-mode) . (lambda ()
-                                    (imoogi-eglot-ensure-if-server-available "bash-language-server")))
-  :config
-  (imoogi-eglot-register-if-available
-   '(sh-mode bash-ts-mode)
-   '("bash-language-server" "start")))
+  :mode ("\\.sh\\'" . sh-mode))
 
 ;;; JavaScript (내장 js-mode)
 (use-package js
   :ensure nil
   :mode (("\\.js\\'"  . js-mode)
          ("\\.mjs\\'" . js-mode)
-         ("\\.cjs\\'" . js-mode))
-  :hook ((js-mode js-ts-mode) . (lambda ()
-                                  (imoogi-eglot-ensure-if-server-available "typescript-language-server")))
-  :config
-  (imoogi-eglot-register-if-available
-   '(js-mode js-ts-mode)
-   '("typescript-language-server" "--stdio")))
+         ("\\.cjs\\'" . js-mode)))
 
 ;;; YAML
 (use-package yaml-mode
@@ -172,25 +113,16 @@
   (csv-align-max-width 100)
   (csv-separators '("," ";" " " "|" "\t")))
 
-;;; Go
 (use-package go-mode
   :ensure t
-  :mode ("\\.go\\'" . go-mode)
-  :hook ((go-mode go-ts-mode) . (lambda ()
-                                  (imoogi-eglot-ensure-if-server-available "gopls")))
-  :config
-  (imoogi-eglot-register-if-available '(go-mode go-ts-mode) '("gopls")))
+  :mode ("\\.go\\'" . go-mode))
 
 ;;; Rust
 (use-package rust-mode
   :ensure t
   :mode ("\\.rs\\'" . rust-mode)
   :custom
-  (rust-indent-offset 2)
-  :hook ((rust-mode rust-ts-mode) . (lambda ()
-                                      (imoogi-eglot-ensure-if-server-available "rust-analyzer")))
-  :config
-  (imoogi-eglot-register-if-available '(rust-mode rust-ts-mode) '("rust-analyzer")))
+  (rust-indent-offset 2))
 
 ;;; crontab
 (use-package crontab-mode
@@ -234,48 +166,25 @@
   :mode (("\\.clj\\'"  . clojure-mode)
          ("\\.cljc\\'" . clojurec-mode)
          ("\\.cljs\\'" . clojurescript-mode)
-         ("\\.edn\\'"  . edn-mode))
-  :hook ((clojure-mode clojurec-mode clojurescript-mode)
-         . (lambda ()
-             (imoogi-eglot-ensure-if-server-available "clojure-lsp")))
-  :config
-  (imoogi-eglot-register-if-available
-   '(clojure-mode clojurec-mode clojurescript-mode)
-   '("clojure-lsp")))
+         ("\\.edn\\'"  . edn-mode)))
 
 ;;; Java (내장 cc-mode)
 (use-package cc-mode
   :ensure nil
-  :mode ("\\.java\\'" . java-mode)
-  :hook ((java-mode java-ts-mode) . (lambda ()
-                                      (imoogi-eglot-ensure-if-server-available "jdtls")))
-  :config
-  (imoogi-eglot-register-if-available '(java-mode java-ts-mode) '("jdtls")))
+  :mode ("\\.java\\'" . java-mode))
 
 ;;; Kotlin
 (use-package kotlin-mode
   :ensure t
   :mode (("\\.kt\\'"  . kotlin-mode)
-         ("\\.kts\\'" . kotlin-mode))
-  :hook (kotlin-mode . (lambda ()
-                         (imoogi-eglot-ensure-if-server-available "kotlin-language-server")))
-  :config
-  (imoogi-eglot-register-if-available
-   'kotlin-mode
-   '("kotlin-language-server")))
+         ("\\.kts\\'" . kotlin-mode)))
 
 ;;; TypeScript
 (use-package typescript-mode
   :ensure t
   :mode ("\\.ts\\'" . typescript-mode)
   :custom
-  (typescript-indent-level 2)
-  :hook ((typescript-mode typescript-ts-mode tsx-ts-mode) . (lambda ()
-                                                              (imoogi-eglot-ensure-if-server-available "typescript-language-server")))
-  :config
-  (imoogi-eglot-register-if-available
-   '(typescript-mode typescript-ts-mode)
-   '("typescript-language-server" "--stdio")))
+  (typescript-indent-level 2))
 
 ;;; TSX/JSX 템플릿
 (use-package web-mode
@@ -286,15 +195,7 @@
   (web-mode-content-types-alist '(("jsx" . "\\.tsx\\'")))
   (web-mode-markup-indent-offset 2)
   (web-mode-code-indent-offset 2)
-  (web-mode-css-indent-offset 2)
-  :hook (web-mode . (lambda ()
-                      (when (and buffer-file-name
-                                 (string-match-p "\\.[tj]sx\\'" buffer-file-name))
-                        (imoogi-eglot-ensure-if-server-available "typescript-language-server"))))
-  :config
-  (imoogi-eglot-register-if-available
-   '(web-mode tsx-ts-mode)
-   '("typescript-language-server" "--stdio")))
+  (web-mode-css-indent-offset 2))
 
 ;; Keep TSX/JSX tree-sitter entries ahead of web-mode's fallback entries.
 (when (require 'treesit nil t)
@@ -302,4 +203,4 @@
   (imoogi-treesit-auto-mode-if-available "\\.jsx\\'" 'tsx-ts-mode 'tsx))
 
 (provide 'imoogi-languages)
-;;; 16-languages.el ends here
+;;; 18-languages.el ends here

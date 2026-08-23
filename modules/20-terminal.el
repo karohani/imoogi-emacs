@@ -1,4 +1,4 @@
-;;; 18-terminal.el --- ghostel 터미널 (libghostty-vt) -*- lexical-binding: t; -*-
+;;; 20-terminal.el --- ghostel 터미널 (libghostty-vt) -*- lexical-binding: t; -*-
 
 ;; ghostel 은 libghostty-vt(Ghostty 의 VT 엔진) 기반 Emacs 터미널 에뮬레이터다.
 ;; vterm 대비 기능이 우수하고(kitty graphics/keyboard, OSC8, char/line/emacs 모드,
@@ -12,7 +12,7 @@
 
 ;;; Code:
 
-(imoogi-require "18-terminal" 'ghostel)
+(imoogi-require "20-terminal" 'ghostel)
 
 (use-package ghostel
   :ensure t
@@ -34,4 +34,4 @@
   :hook (ghostel-mode . ghostel-ime-mode))
 
 (provide 'imoogi-terminal)
-;;; 18-terminal.el ends here
+;;; 20-terminal.el ends here

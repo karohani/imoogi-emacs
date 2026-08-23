@@ -1,4 +1,4 @@
-;;; 19-native-compile.el --- compile-angel 네이티브 컴파일 (minimal-emacs.d 추천) -*- lexical-binding: t; -*-
+;;; 21-native-compile.el --- compile-angel 네이티브 컴파일 (minimal-emacs.d 추천) -*- lexical-binding: t; -*-
 
 ;; compile-angel 은 로드되는 .el 을 바이트/네이티브 컴파일해 실행 성능을 높인다.
 ;; `compile-angel-on-load-mode' 는 이후 로드뿐 아니라 이미 로드된 패키지도
@@ -11,7 +11,7 @@
 
 ;;; Code:
 
-(imoogi-require "19-native-compile" 'compile-angel)
+(imoogi-require "21-native-compile" 'compile-angel)
 
 (use-package compile-angel
   :ensure t
@@ -20,10 +20,14 @@
   ;; 패키지 설치 시 컴파일은 compile-angel 이 담당하므로 끈다.
   (setq package-native-compile nil)
   (setq compile-angel-verbose nil)
+  ;; Emacs 자체 내장 lisp(Emacs.app/.../lisp/*.el.gz 등)은 컴파일 대상에서
+  ;; 제외한다. 이미 컴파일된 배포본 내장 파일까지 건드리면 macOS 배포판의
+  ;; .el.gz 처리 과정에서 읽기 오류(Invalid read syntax 등)가 난다.
+  (setq compile-angel-exclude-core-emacs-directory t)
   ;; init 계열 파일은 컴파일 대상에서 제외(경로 suffix 매칭).
   (dolist (suffix '("/init.el" "/early-init.el" "/boot.el"))
     (push suffix compile-angel-excluded-path-suffixes))
   (compile-angel-on-load-mode 1))
 
 (provide 'imoogi-native-compile)
-;;; 19-native-compile.el ends here
+;;; 21-native-compile.el ends here
