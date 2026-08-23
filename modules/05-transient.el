@@ -14,9 +14,11 @@
 ;; 표시 폭 기준 값을 직접 준다. 그룹 제목 뒤의 ─ 는 열 경계를 눈으로 잡아주는
 ;; 구분선이며, 폭 안에 들어가도록 길이를 맞춘다.
 
-(defcustom imoogi-transient-min-height-fraction 0.33
+(defcustom imoogi-transient-min-height-fraction 0.15
   "transient 팝업이 차지할 프레임 높이의 최소 비율.
 내용이 더 길면 그만큼 커진다(이 값은 하한이지 고정 높이가 아니다).
+0.33 은 8줄짜리 메뉴에 30줄 가까이 비어 실측상 과했다 — 짧은 메뉴가 납작해
+보이지 않을 만큼만 띄우는 값으로 잡는다.
 nil 이면 transient 기본 동작(내용에 딱 맞춤)을 쓴다."
   :type '(choice (const :tag "transient 기본" nil) number)
   :group 'imoogi)
@@ -92,17 +94,18 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
     ("b" "버퍼" project-switch-to-buffer)]
    ;; 이미 열려 있는 작업공간 사이를 오가는 쪽. n/N 은 훑어보는 동작이라
    ;; 메뉴를 열어 둔 채 반복할 수 있게 :transient t 를 준다.
-   ["작업공간 전환 --"
-    ("l" "직전 작업공간" persp-switch-last)
+   ["작업공간 --------"
+    ("a" "새로 만들기" imoogi-persp-new)
+    ("l" "직전으로" persp-switch-last)
     ("o" "목록에서 선택" persp-switch)
     ("n" "다음" persp-next :transient t)
     ("N" "이전" persp-prev :transient t)
     ("#" "번호로" persp-switch-by-number)]
    ["관리 --------------"
+    ("r" "작업공간 이름변경" persp-rename)
+    ("K" "작업공간 삭제" persp-kill)
     ("c" "컴파일" project-compile)
     ("k" "버퍼모두닫기" project-kill-buffers)
-    ("r" "작업공간 이름변경" persp-rename)
-    ("K" "작업공간 닫기" persp-kill)
     ("F" "목록에서 제거" project-forget-project)
     ("q" "종료" transient-quit-one)]])
 

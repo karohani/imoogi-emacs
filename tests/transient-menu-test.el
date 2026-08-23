@@ -67,6 +67,7 @@
      (project-find-regexp              transient--do-exit)
      (project-dired                    transient--do-exit)
      (project-switch-to-buffer         transient--do-exit)
+     (imoogi-persp-new                 transient--do-exit)
      (persp-switch-last                transient--do-exit)
      (persp-switch                     transient--do-exit)
      (persp-next                       transient--do-call)

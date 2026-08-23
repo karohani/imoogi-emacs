@@ -104,6 +104,15 @@ the selected project without leaving the current Perspective."
     (let ((default-directory root))
       (project-dired))))
 
+(defun imoogi-persp-new (name)
+  "새 작업공간 NAME 을 만들고 그리로 전환한다.
+
+perspective 의 `persp-new' 는 interactive 가 아니라 메뉴에 직접 붙일 수 없고,
+`persp-switch' 는 없는 이름을 주면 만들지만 이름만 봐서는 생성인지 전환인지
+알기 어렵다. 그래서 \"만들기\"를 별도 명령으로 드러낸다."
+  (interactive "s새 작업공간 이름: ")
+  (persp-switch name))
+
 (defun imoogi-perspective-state-restore ()
   "Restore saved Perspective state without making startup fragile."
   (when (file-readable-p imoogi-perspective-state-file)
