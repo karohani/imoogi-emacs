@@ -56,22 +56,22 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
 (transient-define-prefix imoogi-transient-window ()
   "창 이동·분할·크기 조절 메뉴."
   :column-widths '(12 15 19 19)
-  [["이동 ──────"
+  [["이동 ------"
     ("h" "←" windmove-left :transient t)
     ("l" "→" windmove-right :transient t)
     ("j" "↓" windmove-down :transient t)
     ("k" "↑" windmove-up :transient t)]
-   ["크기 ─────────"
+   ["크기 ---------"
     ("H" "축소←" shrink-window-horizontally :transient t)
     ("L" "확대→" enlarge-window-horizontally :transient t)
     ("J" "확대↓" enlarge-window :transient t)
     ("K" "축소↑" shrink-window :transient t)]
-   ["분할·삭제 ───────"
+   ["분할·삭제 -------"
     ("s" "수평분할" split-window-below :transient t)
     ("v" "수직분할" split-window-right :transient t)
     ("d" "삭제" delete-window :transient t)
     ("D" "나머지삭제" delete-other-windows)]
-   ["기타 ────────────"
+   ["기타 ------------"
     ("b" "버퍼전환" imoogi-consult-perspective-buffer :transient t)
     ("f" "파일열기" find-file :transient t)
     ("a" "ace-window" ace-window :transient t)
@@ -84,7 +84,7 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
 (transient-define-prefix imoogi-transient-project ()
   "프로젝트·작업공간 메뉴."
   :column-widths '(17 17 21)
-  [["열기 ───────────"
+  [["열기 -----------"
     ("p" "프로젝트 전환" imoogi-project-switch-perspective)
     ("f" "파일찾기" project-find-file)
     ("s" "검색(grep)" project-find-regexp)
@@ -92,13 +92,13 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
     ("b" "버퍼" project-switch-to-buffer)]
    ;; 이미 열려 있는 작업공간 사이를 오가는 쪽. n/N 은 훑어보는 동작이라
    ;; 메뉴를 열어 둔 채 반복할 수 있게 :transient t 를 준다.
-   ["작업공간 전환 ──"
+   ["작업공간 전환 --"
     ("l" "직전 작업공간" persp-switch-last)
     ("o" "목록에서 선택" persp-switch)
     ("n" "다음" persp-next :transient t)
     ("N" "이전" persp-prev :transient t)
     ("#" "번호로" persp-switch-by-number)]
-   ["관리 ──────────────"
+   ["관리 --------------"
     ("c" "컴파일" project-compile)
     ("k" "버퍼모두닫기" project-kill-buffers)
     ("r" "작업공간 이름변경" persp-rename)
@@ -117,7 +117,7 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
 (transient-define-prefix imoogi-transient-zoom ()
   "텍스트 확대/축소 메뉴."
   :column-widths '(14)
-  [["확대/축소 ───"
+  [["확대/축소 ---"
     ("i" "확대" text-scale-increase :transient t)
     ("o" "축소" text-scale-decrease :transient t)
     ("0" "초기화" imoogi-transient-zoom-reset)
@@ -129,7 +129,7 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
 (transient-define-prefix imoogi-transient-git ()
   "Magit 진입 메뉴."
   :column-widths '(14)
-  [["Git ─────────"
+  [["Git ---------"
     ("s" "status" magit-status)
     ("l" "log" magit-log-current)
     ("b" "blame" magit-blame)
@@ -207,25 +207,25 @@ major-mode 로 언어를 역추적하지 않고 버퍼에 직접 묻는다 — `
 (transient-define-prefix imoogi-transient-code ()
   "코드 이해 — 깊이 5단계."
   :column-widths '(17 14 13 13 15)
-  [["L1 빠른 탐색 ──"
+  [["L1 빠른 탐색 --"
     ("i" "이 파일 심볼" consult-imenu)
     ("I" "프로젝트 심볼" consult-imenu-multi)]
-   ["L2 상주 패널 ─"
+   ["L2 상주 패널 -"
     ("s" "구조 패널" imoogi-treemacs-toggle-structure
      :inapt-if-not imoogi-code--panel-available-p)
     ("f" "파일 트리" imoogi-treemacs-toggle-file-tree
      :inapt-if-not imoogi-code--panel-available-p)]
-   ["L3 구문 ────"
+   ["L3 구문 ----"
     ("t" "구문 트리" treesit-explore-mode
      :inapt-if-not imoogi-code--syntax-available-p)]
-   ["L4 관계 ────"
+   ["L4 관계 ----"
     ("d" "정의로" xref-find-definitions)
     ("r" "참조 찾기" xref-find-references)
     ("m" "구현" eglot-find-implementation
      :inapt-if-not imoogi-code--relations-available-p)
     ("y" "타입 정의" eglot-find-typeDefinition
      :inapt-if-not imoogi-code--relations-available-p)]
-   ["L5 전체 ─────"
+   ["L5 전체 -----"
     ("g" "전체 그래프" imoogi-code-capability-report
      :inapt-if-not imoogi-code--graph-available-p)
     ("?" "가용성 보고" imoogi-code-capability-report)
@@ -237,15 +237,15 @@ major-mode 로 언어를 역추적하지 않고 버퍼에 직접 묻는다 — `
 (transient-define-prefix imoogi-transient-master ()
   "imoogi 마스터 메뉴."
   :column-widths '(15 15 17)
-  [["메뉴 ─────────"
+  [["메뉴 ---------"
     ("w" "창관리" imoogi-transient-window)
     ("p" "프로젝트" imoogi-transient-project)
     ("g" "Git" imoogi-transient-git)
     ("z" "확대/축소" imoogi-transient-zoom)]
-   ["도구 ─────────"
+   ["도구 ---------"
     ("c" "코드 이해" imoogi-transient-code)
     ("t" "treemacs" imoogi-treemacs-toggle-file-tree)]
-   ["설정 ───────────"
+   ["설정 -----------"
     ("R" "설정 재로드" imoogi-reload)
     ("q" "종료" transient-quit-one)]])
 

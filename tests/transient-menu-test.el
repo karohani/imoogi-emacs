@@ -372,5 +372,28 @@ tests/assert-boot.el 이 잘못 읽는다(실제로 발생했던 버그).
                    ("t" . tab-bar-mode)
                    ("u" . tab-bar-undo-close-tab)))))
 
+;;; 렌더 폭 — Emacs 의 계산과 폰트의 실제 그리기가 어긋나지 않아야 한다
+
+;; transient 는 열 위치를 문자 폭 계산으로 정하는데, 폰트가 그것과 다른 폭으로
+;; 글리프를 그리면 그 줄만 오른쪽으로 밀린다. 실측: NanumGothicCoding 에서
+;; U+2500(─)은 `char-width' 가 1 인데 실제로는 2칸(14px)으로 그려져,
+;; "열기 ───────────" 이 계산상 16칸이지만 화면에서는 27칸을 차지했다.
+;; 그래서 그룹 제목의 구분선은 ASCII 로 쓴다(측정: "-" 는 정확히 1칸).
+;;
+;; 픽셀 측정은 그래픽 프레임이 있어야 하므로, 여기서는 그 원인이 되는 문자가
+;; 제목에 다시 들어오지 않는지를 지킨다.
+(defconst imoogi-test--ambiguous-width-chars
+  "─│┌┐└┘├┤┬┴┼━┃"
+  "폰트에 따라 2칸으로 그려질 수 있는 박스 드로잉 문자들.")
+
+(ert-deftest imoogi-transient-group-headings-avoid-ambiguous-width-chars ()
+  (dolist (prefix '(imoogi-transient-master imoogi-transient-window
+                    imoogi-transient-project imoogi-transient-zoom
+                    imoogi-transient-git imoogi-transient-code
+                    imoogi-transient-lsp imoogi-transient-tab))
+    (let ((layout (format "%S" (get prefix (quote transient--layout)))))
+      (dolist (ch (string-to-list imoogi-test--ambiguous-width-chars))
+        (should-not (string-search (char-to-string ch) layout))))))
+
 (provide 'transient-menu-test)
 ;;; transient-menu-test.el ends here

@@ -136,13 +136,13 @@ Eglot 이 아직 로드되지 않았을 수도 있으므로 `fboundp' 로 먼저
   (transient-define-prefix imoogi-transient-lsp ()
     "LSP·코드 탐색 메뉴."
     :column-widths '(16 18)
-    [["탐색 (xref) ──"
+    [["탐색 (xref) --"
       ("d" "정의로" xref-find-definitions)
       ("r" "참조 찾기" xref-find-references)
       ("a" "apropos" xref-find-apropos)
       ("b" "뒤로" xref-go-back :transient t)
       ("f" "앞으로" xref-go-forward :transient t)]
-     ["Eglot ─────────"
+     ["Eglot ---------"
       ("e" "연결" eglot)
       ;; 아래 넷은 Eglot 이 붙은 버퍼에서만 의미가 있다. 숨기지 않고 흐리게
       ;; 표시해(:inapt-*) 기능의 존재는 알리되 지금은 못 쓴다는 걸 보여준다.

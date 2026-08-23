@@ -62,12 +62,12 @@ tmux 에서 window 이름이 하는 역할과 맞춘다."
   (transient-define-prefix imoogi-transient-tab ()
     "탭 — tmux 의 window 층."
     :column-widths '(17 19)
-    [["이동 ───────────"
+    [["이동 -----------"
       ("n" "다음" tab-bar-switch-to-next-tab :transient t)
       ("p" "이전" tab-bar-switch-to-prev-tab :transient t)
       ("l" "직전 탭" tab-bar-switch-to-recent-tab)
       ("s" "목록에서 선택" tab-bar-switch-to-tab)]
-     ["관리 ─────────────"
+     ["관리 -------------"
       ("c" "새 탭" tab-bar-new-tab)
       ("r" "이름 변경" tab-bar-rename-tab)
       ("k" "닫기" tab-bar-close-tab)
