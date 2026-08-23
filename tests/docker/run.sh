@@ -5,7 +5,7 @@
 # and so have different pass criteria:
 #
 #   T2 portability : full toolset installed. Nothing may be skipped.
-#   T1 degradation : tools withheld. Exactly the declared modules may be skipped.
+#   T1 degradation : an optional tool withheld. Nothing may skip or error.
 #
 # Running the matrix without the second criterion would just multiply false
 # passes: a half-broken Emacs still exits 0 (see tests/assert-boot.el).
@@ -26,9 +26,18 @@ T2_IMAGES=(
   "alpine:edge"
 )
 
-# The degradation contract: with git absent, exactly these modules may skip.
+# The degradation contract: an OPTIONAL tool is withheld and nothing may break.
+# ripgrep is genuinely optional -- 11-editing guards it with executable-find, so
+# its absence must change nothing at all (measured: zero skips, zero errors).
+#
+# git is deliberately NOT the withheld tool. It is a hard requirement of this
+# config (magit is a git client), and measurement showed the no-git state is not
+# a clean degradation: 07-treemacs skips while 06-git half-loads and logs a
+# use-package error. Asserting that state as "expected" would have encoded a
+# broken configuration as healthy.
 T1_IMAGE="debian:trixie-slim"
-T1_EXPECTED_SKIPS="06-git,07-treemacs"
+T1_TOOL_PKGS="git"
+T1_EXPECTED_SKIPS=""
 
 PORTABILITY_PKGS="git ripgrep"
 
@@ -66,14 +75,13 @@ run_case() {
 }
 
 # T2 also runs the ERT suite (IMOOGI_RUN_ERT=1) so the tests are repeatable on
-# every image, not just the maintainer's host. T1 deliberately does not: with
-# git withheld, the treemacs/git modules are absent by design and their tests
-# would fail for a reason the tier is not measuring.
+# every image, not just the maintainer's host. T1 deliberately does not: it
+# measures the boot contract under a missing optional tool, not the test suite.
 for image in "${T2_IMAGES[@]}"; do
   run_case "T2 portability+ERT" "$image" "$PORTABILITY_PKGS" "" "t2" 1
 done
 
-run_case "T1 degradation" "$T1_IMAGE" "" "$T1_EXPECTED_SKIPS" "t1" 0
+run_case "T1 degradation" "$T1_IMAGE" "$T1_TOOL_PKGS" "$T1_EXPECTED_SKIPS" "t1" 0
 
 echo
 echo "=============================================================="

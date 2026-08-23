@@ -83,7 +83,8 @@ tests/assert-boot.el 이 이 값을 설치 검증의 판정 근거로 쓴다.")
                   "18-languages"
                   "19-folding"
                   "20-terminal"
-                  "21-native-compile"))
+                  "21-native-compile"
+                  "22-tabs"))
   (condition-case err
       (load (expand-file-name (concat "modules/" module) imoogi-emacs-dir))
     (error

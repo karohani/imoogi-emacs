@@ -52,6 +52,25 @@
   (imoogi-treesit-remap-if-available 'dockerfile-mode 'dockerfile-ts-mode 'dockerfile)
   (imoogi-treesit-remap-if-available 'html-mode 'html-ts-mode 'html))
 
+;;; JSON — imenu 로 키를 훑을 수 있게
+;; js-json-mode 는 js-mode 에서 파생돼 JavaScript 용 인덱서
+;; (`js--imenu-create-index')를 물려받는다. 그건 함수 선언·할당 같은 "코드"를
+;; 찾으므로 순수 데이터인 JSON 에서는 늘 빈손이고, imenu 는
+;; "No items suitable for an index found" 로 끝난다(실측).
+;;
+;; 그래서 인덱서를 기본 구현으로 되돌리고 키를 잡는 패턴을 준다. 둘 다 해야
+;; 한다 — `imenu-generic-expression' 만 설정하면 여전히 js 인덱서가 불린다.
+;;
+;; tree-sitter json 문법을 반입하면 json-ts-mode 가 자체 imenu 설정
+;; (treesit-simple-imenu-settings)을 갖고 있어 이 보정이 필요 없어진다.
+(defun imoogi-json-setup-imenu ()
+  "JSON 버퍼에서 키를 imenu 항목으로 잡는다."
+  (setq-local imenu-create-index-function #'imenu-default-create-index-function)
+  (setq-local imenu-generic-expression
+              '((nil "^[ \t]*\"\\([^\"]+\\)\"[ \t]*:" 1))))
+
+(add-hook 'js-json-mode-hook #'imoogi-json-setup-imenu)
+
 ;;; Git 관련 파일(.gitignore/.gitconfig/.gitattributes)
 (use-package git-modes
   :ensure t

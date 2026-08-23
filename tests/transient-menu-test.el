@@ -99,6 +99,7 @@
      (imoogi-transient-git             transient--do-stack)
      (imoogi-transient-zoom            transient--do-stack)
      (imoogi-transient-code            transient--do-stack)
+     (imoogi-transient-tab             transient--do-stack)
      (imoogi-treemacs-toggle-file-tree transient--do-exit)
      (imoogi-reload                    transient--do-exit)
      (transient-quit-one               transient--do-quit-one)))
@@ -150,6 +151,7 @@
 (ert-deftest imoogi-transient-master-bindings-have-no-collisions ()
   (should (equal (imoogi-test--layout-bindings 'imoogi-transient-master)
                  '(("R" . imoogi-reload)
+                   ("T" . imoogi-transient-tab)
                    ("c" . imoogi-transient-code)
                    ("g" . imoogi-transient-git)
                    ("l" . imoogi-transient-lsp)
@@ -342,6 +344,33 @@ tests/assert-boot.el 이 잘못 읽는다(실제로 발생했던 버그).
       ;; 미지원 항목은 이유 없이 나열되면 안 된다
       (should (string-match-p "hierarchy" text))
       (should (string-match-p "vendor/tree-sitter/" text)))))
+
+;;; 탭 메뉴 (tmux window 층, modules/22-tabs.el)
+
+(ert-deftest imoogi-tab-prefix-map-is-bound-outside-treemacs-territory ()
+  "Emacs 표준 C-x t 는 treemacs 가 이미 쓰므로 C-c w 를 쓴다."
+  (should (keymapp (lookup-key global-map (kbd "C-c w"))))
+  (should (eq (lookup-key imoogi-tab-map (kbd "c")) #'tab-bar-new-tab))
+  ;; treemacs 자리를 빼앗지 않았는지 함께 고정한다.
+  (should (eq (lookup-key global-map (kbd "C-x t t"))
+              #'imoogi-treemacs-toggle-file-tree)))
+
+(ert-deftest imoogi-tab-quick-switch-keys-are-bound ()
+  (should (eq (key-binding (kbd "s-[")) #'tab-bar-switch-to-prev-tab))
+  (should (eq (key-binding (kbd "s-]")) #'tab-bar-switch-to-next-tab)))
+
+(ert-deftest imoogi-transient-tab-bindings-are-stable ()
+  (should (equal (imoogi-test--layout-bindings 'imoogi-transient-tab)
+                 '(("c" . tab-bar-new-tab)
+                   ("k" . tab-bar-close-tab)
+                   ("l" . tab-bar-switch-to-recent-tab)
+                   ("n" . tab-bar-switch-to-next-tab)
+                   ("p" . tab-bar-switch-to-prev-tab)
+                   ("q" . transient-quit-one)
+                   ("r" . tab-bar-rename-tab)
+                   ("s" . tab-bar-switch-to-tab)
+                   ("t" . tab-bar-mode)
+                   ("u" . tab-bar-undo-close-tab)))))
 
 (provide 'transient-menu-test)
 ;;; transient-menu-test.el ends here
