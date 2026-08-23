@@ -100,7 +100,16 @@ Emacs 내장 `treesit` 은 사용하되, 언어별 문법은 런타임에 다운
 git add vendor/tree-sitter && git commit -m "vendor: update tree-sitter grammars"
 ```
 
-현재 반입된 문법: `json` `javascript` `typescript` `tsx` `python` `go` `java` `yaml`.
+현재 반입된 문법: `json` `javascript` `typescript` `tsx` `python` `go` `java` `yaml`
+`kotlin` `clojure` `regex` `markdown-inline`.
+
+Kotlin 과 Clojure 는 Emacs 에 ts-mode 가 내장돼 있지 않아 패키지(`kotlin-ts-mode`,
+`clojure-ts-mode`)와 문법이 **둘 다** 있어야 동작한다. `regex` 와
+`markdown-inline` 은 `clojure-ts-mode` 가 함께 요구하는 문법이다 — 없으면 그
+모드가 부팅 중 인터넷에서 내려받으려 하므로(기본 `clojure-ts-ensure-grammars` 가
+`t`) `18-languages` 가 그 동작을 끄고 문법을 동봉으로 대신한다. 리비전이
+어긋나도 같은 다운로드가 일어나므로, 스크립트의 태그는 패키지가 못박은 값과
+정확히 일치해야 한다.
 결과물은 빌드한 플랫폼 전용이다(macOS `.dylib`, Linux `.so`) — 다른 플랫폼으로
 반입하려면 그 플랫폼에서 다시 빌드한다.
 

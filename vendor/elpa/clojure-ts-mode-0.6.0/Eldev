@@ -1,0 +1,36 @@
+; -*- mode: emacs-lisp; lexical-binding: t -*-
+
+(eldev-require-version "1.8.2")
+
+(eldev-use-package-archive 'gnu-elpa)
+(eldev-use-package-archive 'nongnu-elpa)
+
+(eldev-use-package-archive 'melpa-stable)
+(eldev-use-package-archive 'melpa-unstable)
+
+(eldev-use-plugin 'autoloads)
+
+(eldev-add-extra-dependencies 'test 'buttercup)
+
+(setq byte-compile-docstring-max-column 240)
+(setq checkdoc-force-docstrings-flag nil)
+(setq checkdoc-permit-comma-termination-flag t)
+(setq checkdoc--interactive-docstring-flag nil)
+
+(setq eldev-lint-default-excluded '(package))
+
+(with-eval-after-load 'elisp-lint
+  ;; We will byte-compile with Eldev.
+  (setf elisp-lint-ignored-validators '("fill-column" "check-declare")
+        enable-local-variables        :safe))
+
+(setq eldev-project-main-file "clojure-ts-mode.el")
+
+;; Exclude tests merged from clojure-mode from running, linting and byte compiling
+(setf eldev-test-fileset
+      `(:and ,eldev-test-fileset
+             (:not "./clojure-mode-tests/*")))
+(setf eldev-standard-excludes
+      `(:or ,eldev-standard-excludes "./clojure-mode-tests/*"))
+(setf eldev-lint-ignored-fileset
+      `(:or ,eldev-lint-ignored-fileset "./clojure-mode-tests/*"))

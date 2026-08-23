@@ -38,6 +38,15 @@
                 (push entry entries)))))
     (push (cons regexp mode) auto-mode-alist)))
 
+;; [HARD] 런타임 문법 다운로드 차단.
+;; clojure-ts-mode 는 `clojure-ts-ensure-grammars' 가 기본 t 라, 문법이 없거나
+;; 자기가 못박은 리비전과 다르면 모드 진입 시 GitHub 에서 내려받아 컴파일한다
+;; (실측: 부팅 중 clojure/regex/markdown-inline 3개가 ~/.emacs.d/tree-sitter/ 에
+;; 설치됨). 망분리 원칙("부팅 경로에서 네트워크 접근 없음") 위반이므로 끈다.
+;; 필요한 문법은 vendor/tree-sitter/ 에 정확한 리비전으로 동봉한다
+;; (scripts/build-grammars.sh 의 clojure/regex/markdown-inline 항목).
+(setq clojure-ts-ensure-grammars nil)
+
 (when (require 'treesit nil t)
   (add-to-list 'treesit-extra-load-path imoogi-treesit-grammar-dir)
   (imoogi-treesit-remap-if-available 'sh-mode 'bash-ts-mode 'bash)
@@ -52,7 +61,11 @@
   (imoogi-treesit-remap-if-available 'java-mode 'java-ts-mode 'java)
   (imoogi-treesit-remap-if-available 'yaml-mode 'yaml-ts-mode 'yaml)
   (imoogi-treesit-remap-if-available 'dockerfile-mode 'dockerfile-ts-mode 'dockerfile)
-  (imoogi-treesit-remap-if-available 'html-mode 'html-ts-mode 'html))
+  (imoogi-treesit-remap-if-available 'html-mode 'html-ts-mode 'html)
+  ;; 아래 둘은 Emacs 내장 ts-mode 가 없어 패키지가 제공한다. 패키지와 문법이
+  ;; 모두 있어야 전환된다 — 헬퍼가 `fboundp' 로 모드 존재까지 확인한다.
+  (imoogi-treesit-remap-if-available 'kotlin-mode 'kotlin-ts-mode 'kotlin)
+  (imoogi-treesit-remap-if-available 'clojure-mode 'clojure-ts-mode 'clojure))
 
 ;;; JSON — imenu 로 키를 훑을 수 있게
 ;; js-json-mode 는 js-mode 에서 파생돼 JavaScript 용 인덱서

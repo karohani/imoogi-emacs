@@ -45,6 +45,9 @@
     git-modes yaml-mode dockerfile-mode gnuplot lua-mode jinja2-mode csv-mode
     go-mode rust-mode crontab-mode nginx-mode hcl-mode nix-mode fish-mode
     vimrc-mode jenkinsfile-mode clojure-mode kotlin-mode typescript-mode web-mode
+    ;; tree-sitter 메이저 모드 — Emacs 30 에 내장되지 않은 언어만 패키지로 보충.
+    ;; (json/js/ts/tsx/python/go/java/yaml 은 내장이라 문법만 있으면 된다)
+    kotlin-ts-mode clojure-ts-mode
     ;; 19-folding (treesit-fold 는 tree-sitter 문법 필요로 제외)
     kirigami outline-indent
     ;; 20-terminal (ghostel; 네이티브 모듈은 vendor/ghostel-module/ 에 동봉)

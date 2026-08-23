@@ -37,6 +37,15 @@ GRAMMARS=(
   "go|tree-sitter/tree-sitter-go|v0.23.4|"
   "java|tree-sitter/tree-sitter-java|v0.23.5|"
   "yaml|ikatyang/tree-sitter-yaml|v0.5.0|"
+  # 아래 둘은 Emacs 에 ts-mode 가 내장돼 있지 않아 패키지(kotlin-ts-mode /
+  # clojure-ts-mode)와 짝을 이룬다 — 문법만 넣어도, 패키지만 넣어도 동작하지 않는다.
+  "kotlin|fwcd/tree-sitter-kotlin|0.3.8|"
+  # clojure-ts-mode 0.6.0 의 clojure-ts-grammar-recipes 가 못박은 리비전을 그대로
+  # 따른다. 다른 버전을 넣으면 그 패키지가 "outdated" 로 판정해 부팅 중 다시
+  # 내려받는다(실측) — 망분리 원칙 위반이라 버전이 정확히 맞아야 한다.
+  "clojure|sogaiu/tree-sitter-clojure|unstable-20250526|"
+  "regex|tree-sitter/tree-sitter-regex|v0.24.3|"
+  "markdown-inline|MDeiml/tree-sitter-markdown|v0.4.1|tree-sitter-markdown-inline/"
 )
 
 mkdir -p "$OUT_DIR"

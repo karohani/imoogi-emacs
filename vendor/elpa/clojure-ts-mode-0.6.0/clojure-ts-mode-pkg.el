@@ -1,0 +1,2 @@
+;; Generated package description from clojure-ts-mode.el  -*- mode: lisp-data; no-byte-compile: t -*-
+(define-package "clojure-ts-mode" "0.6.0" "Major mode for Clojure code" '((emacs "30.1")) :commit "96fdffcbe9e1b8ebf9ad14e23b06f62cc3422e22" :maintainer '("Bozhidar Batsov" . "bozhidar@batsov.dev") :keywords '("languages" "clojure" "clojurescript" "lisp") :url "http://github.com/clojure-emacs/clojure-ts-mode")

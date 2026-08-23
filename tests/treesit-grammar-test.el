@@ -28,7 +28,9 @@
     (python . ("s.py" . "def f():\n    return 1\n"))
     (go . ("s.go" . "package main\nfunc main() {}\n"))
     (java . ("s.java" . "class A { void m() {} }\n"))
-    (yaml . ("s.yaml" . "a: 1\n"))))
+    (yaml . ("s.yaml" . "a: 1\n"))
+    (kotlin . ("s.kt" . "fun main() { println(\"x\") }\n"))
+    (clojure . ("s.clj" . "(defn f [] 1)\n"))))
 
 (ert-deftest imoogi-treesit-grammar-dir-is-on-the-load-path ()
   "18-languages 가 vendor/tree-sitter/ 를 treesit 경로에 넣는다."
@@ -56,6 +58,24 @@
     ;; 하나도 검사하지 못했다면 그 사실을 알린다(조용한 통과 방지).
     (when (zerop checked)
       (message "treesit 문법이 하나도 없어 전부 건너뜀"))))
+
+;;; 망분리 — 런타임 문법 다운로드 금지
+
+;; clojure-ts-mode 는 기본값(clojure-ts-ensure-grammars t)으로 모드 진입 시
+;; 문법을 GitHub 에서 내려받아 컴파일한다. 실측으로 부팅 중 3개(clojure,
+;; regex, markdown-inline)가 ~/.emacs.d/tree-sitter/ 에 설치되는 것을 확인했고,
+;; 이는 "부팅 경로에서 네트워크 접근 없음" 원칙 위반이다. 18-languages 가 이를
+;; 끄므로, 그 설정이 사라지지 않았는지 지킨다.
+(ert-deftest imoogi-treesit-runtime-grammar-download-is-disabled ()
+  (should (boundp 'clojure-ts-ensure-grammars))
+  (should-not clojure-ts-ensure-grammars))
+
+;; 자동 다운로드를 껐으므로, clojure-ts-mode 가 못박은 리비전의 문법이 모두
+;; 동봉돼 있어야 그 모드가 온전히 동작한다. 하나라도 빠지면 조용히 반쪽이 된다.
+(ert-deftest imoogi-treesit-clojure-companion-grammars-are-vendored ()
+  (skip-unless (treesit-language-available-p 'clojure))
+  (dolist (lang '(regex markdown-inline))
+    (should (treesit-language-available-p lang))))
 
 (provide 'treesit-grammar-test)
 ;;; treesit-grammar-test.el ends here
