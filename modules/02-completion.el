@@ -51,8 +51,8 @@
   :hook (embark-collect-mode . consult-preview-at-point-mode))
 
 ;;; Consult — 검색/탐색/미리보기
-;; 주의: minimal 기본 바인딩 중 `C-c h'(→consult-history)는 imoogi hydra-master
-;; 와 충돌하므로 제외했다.
+;; 주의: minimal 기본 바인딩 중 `C-c h'(→consult-history)는 imoogi 마스터 메뉴
+;; `imoogi-transient-master' 와 충돌하므로 제외했다.
 (declare-function persp-current-buffers* "perspective" (&optional include-global))
 
 (defun imoogi-consult-perspective-buffer (prefix)

@@ -36,7 +36,7 @@ declare -a RESULTS=()
 overall=0
 
 run_case() {
-  local label="$1" base="$2" pkgs="$3" expected="$4"
+  local label="$1" base="$2" pkgs="$3" expected="$4" run_ert="${6:-0}"
   local tag="imoogi-install-test:$(echo "$base" | tr ':/' '--')-${5}"
 
   echo
@@ -55,7 +55,9 @@ run_case() {
     return
   fi
 
-  if docker run --rm -e "IMOOGI_EXPECTED_SKIPS=${expected}" "$tag"; then
+  if docker run --rm \
+      -e "IMOOGI_EXPECTED_SKIPS=${expected}" \
+      -e "IMOOGI_RUN_ERT=${run_ert}" "$tag"; then
     RESULTS+=("PASS         ${label}  ${base}")
   else
     RESULTS+=("FAIL         ${label}  ${base}")
@@ -63,11 +65,15 @@ run_case() {
   fi
 }
 
+# T2 also runs the ERT suite (IMOOGI_RUN_ERT=1) so the tests are repeatable on
+# every image, not just the maintainer's host. T1 deliberately does not: with
+# git withheld, the treemacs/git modules are absent by design and their tests
+# would fail for a reason the tier is not measuring.
 for image in "${T2_IMAGES[@]}"; do
-  run_case "T2 portability" "$image" "$PORTABILITY_PKGS" "" "t2"
+  run_case "T2 portability+ERT" "$image" "$PORTABILITY_PKGS" "" "t2" 1
 done
 
-run_case "T1 degradation" "$T1_IMAGE" "" "$T1_EXPECTED_SKIPS" "t1"
+run_case "T1 degradation" "$T1_IMAGE" "" "$T1_EXPECTED_SKIPS" "t1" 0
 
 echo
 echo "=============================================================="

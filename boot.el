@@ -57,12 +57,17 @@
 `M-x describe-variable imoogi-failed-modules' 로 확인할 수 있고,
 tests/assert-boot.el 이 이 값을 설치 검증의 판정 근거로 쓴다.")
 
+;; 이 파일은 `imoogi-reload' 로 다시 로드될 수 있다. 목록을 비우지 않으면
+;; 재로드마다 같은 모듈이 중복 누적돼(예: ("06-git" "06-git")) 이 변수를 판정
+;; 근거로 쓰는 쪽이 잘못 읽는다. 매 로드가 그 로드의 결과만 담도록 초기화한다.
+(setq imoogi-failed-modules nil)
+
 (dolist (module '("00-defaults"
                   "01-keys"
                   "02-completion"
                   "03-which-key"
                   "04-projects"
-                  "05-hydra"
+                  "05-transient"
                   "06-git"
                   "07-treemacs"
                   "08-obsidian"
@@ -91,10 +96,20 @@ tests/assert-boot.el 이 이 값을 설치 검증의 판정 근거로 쓴다.")
 
 ;;; Reload
 (defun imoogi-reload ()
-  "Reload imoogi-emacs configuration."
+  "설정을 다시 읽는다(Emacs 재시작 불필요).
+
+건너뛴 모듈이 있으면 그 목록까지 함께 알린다 — 조용히 절반만 로드된 상태를
+성공으로 착각하지 않도록. 전체 결과는 `imoogi-failed-modules' 에 남는다.
+
+한계: 이미 정의된 것을 덮어쓰는 것이라 되돌리지는 못한다. 키바인딩 제거,
+모드 해제, 훅에서 뺀 함수 같은 \"없앤 변경\"은 재시작해야 반영된다."
   (interactive)
   (load-file (expand-file-name "boot.el" imoogi-emacs-dir))
-  (message "imoogi-emacs reloaded."))
+  (if imoogi-failed-modules
+      (message "imoogi-emacs 재로드 완료 — 건너뛴 모듈 %d개: %s"
+               (length imoogi-failed-modules)
+               (string-join imoogi-failed-modules ", "))
+    (message "imoogi-emacs 재로드 완료 — 모든 모듈 정상.")))
 
 (provide 'imoogi-boot)
 ;;; boot.el ends here

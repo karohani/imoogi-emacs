@@ -41,4 +41,10 @@ RUN ./scripts/install.sh
 # assert-boot.el drives ~/.emacs.d (what install.sh actually wired up) and owns
 # the verdict, so the exit code here is meaningful. IMOOGI_EXPECTED_SKIPS is
 # supplied per run by tests/docker/run.sh.
-CMD ["emacs", "--batch", "-l", "/opt/imoogi-emacs/tests/assert-boot.el"]
+#
+# IMOOGI_RUN_ERT=1 additionally runs the full host suite (check-parens, offline
+# boot, ERT) in the container, so the ERT tests are repeatable on every image in
+# the matrix rather than only on the maintainer's macOS box. Only meaningful in
+# the T2 tier, where the external tools those tests need are installed.
+CMD ["sh", "-c", "emacs --batch -l /opt/imoogi-emacs/tests/assert-boot.el && \
+  { [ \"${IMOOGI_RUN_ERT:-0}\" != 1 ] || bash /opt/imoogi-emacs/tests/run.sh; }"]

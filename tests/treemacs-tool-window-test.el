@@ -24,8 +24,13 @@
   (should (eq (lookup-key global-map (kbd "C-x t t"))
               #'imoogi-treemacs-toggle-file-tree)))
 
-(ert-deftest imoogi-treemacs-file-tree-wrapper-is-used-by-master-hydra ()
-  (should (eq (cadr (assoc "t" hydra-master/heads))
+;; @MX:NOTE transient-get-suffix 의 반환 형태에 의존한다
+;; ((transient-suffix :key ... :command CMD) 의 cdr 이 plist). 향후 transient
+;; 업그레이드로 형태가 바뀌면 (get 'imoogi-transient-master 'transient--layout)
+;; 를 직접 들여다보는 방식으로 대체한다 (research.md §4.1).
+(ert-deftest imoogi-treemacs-file-tree-wrapper-is-used-by-master-transient ()
+  (should (eq (plist-get (cdr (transient-get-suffix 'imoogi-transient-master "t"))
+                         :command)
               #'imoogi-treemacs-toggle-file-tree)))
 
 (ert-deftest imoogi-treemacs-uses-colorful-nerd-icons-theme ()

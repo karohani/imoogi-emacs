@@ -1,7 +1,7 @@
 ;;; packages.el --- imoogi-emacs 패키지 매니페스트(SSOT) -*- lexical-binding: t; -*-
 
 ;; 망분리(air-gap) 대응을 위한 vendoring 의 단일 진실 원천.
-;; 여기 적힌 top-level 패키지만 명시하면 전이 의존성(transient, with-editor,
+;; 여기 적힌 top-level 패키지만 명시하면 전이 의존성(with-editor,
 ;; dash, markdown-mode 등)은 package.el 이 자동 해결한다.
 ;;
 ;; 사용처:
@@ -18,8 +18,8 @@
     vertico orderless marginalia embark embark-consult consult corfu cape
     ;; 04-projects
     perspective
-    ;; 05-hydra
-    hydra ace-window
+    ;; 05-transient
+    transient ace-window
     ;; 06-git
     magit
     ;; 07-treemacs (treemacs-persp/treemacs-evil 은 imoogi 스택과 안 맞아 제외)

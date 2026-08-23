@@ -119,6 +119,44 @@ ignored so Emacs startup stays side-effect free."
 (with-eval-after-load 'which-key
   (which-key-add-key-based-replacements "C-c l" "LSP/xref"))
 
+(defun imoogi-lsp-eglot-active-p ()
+  "현재 버퍼가 Eglot 관리 하에 있으면 non-nil.
+Eglot 이 아직 로드되지 않았을 수도 있으므로 `fboundp' 로 먼저 막는다."
+  (and (fboundp 'eglot-managed-p) (eglot-managed-p)))
+
+;; transient 메뉴는 05-transient 가 로드된 경우에만 만든다. 이 모듈은 transient
+;; 를 사전조건(`imoogi-require')으로 요구하지 않으므로, 05 가 건너뛰어졌으면
+;; 메뉴만 없고 위 `imoogi-lsp-map'(C-c l)은 그대로 동작한다.
+;; @MX:NOTE 마스터 메뉴에 자기 항목을 스스로 등록하는 방식(transient-append-suffix).
+;; 05-transient 가 이 모듈을 알 필요가 없고, 이 모듈이 로드 실패하면 항목도 함께
+;; 사라진다 — imoogi-require 의 degradation 모델과 같은 결. 등록 키가 다른 모듈과
+;; 겹치면 나중 등록이 조용히 이기므로, tests/transient-menu-test.el 이 마스터의
+;; 키 집합을 단언해 충돌을 잡는다.
+(with-eval-after-load 'imoogi-transient
+  (transient-define-prefix imoogi-transient-lsp ()
+    "LSP·코드 탐색 메뉴."
+    :column-widths '(16 18)
+    [["탐색 (xref) ──"
+      ("d" "정의로" xref-find-definitions)
+      ("r" "참조 찾기" xref-find-references)
+      ("a" "apropos" xref-find-apropos)
+      ("b" "뒤로" xref-go-back :transient t)
+      ("f" "앞으로" xref-go-forward :transient t)]
+     ["Eglot ─────────"
+      ("e" "연결" eglot)
+      ;; 아래 넷은 Eglot 이 붙은 버퍼에서만 의미가 있다. 숨기지 않고 흐리게
+      ;; 표시해(:inapt-*) 기능의 존재는 알리되 지금은 못 쓴다는 걸 보여준다.
+      ("R" "이름 변경" eglot-rename :inapt-if-not imoogi-lsp-eglot-active-p)
+      ("c" "코드 액션" eglot-code-actions :inapt-if-not imoogi-lsp-eglot-active-p)
+      ("o" "임포트 정리" eglot-code-action-organize-imports
+       :inapt-if-not imoogi-lsp-eglot-active-p)
+      ;; 접두 맵에서는 C-c l q 지만, transient 에서 q 는 종료 관례라 K 로 옮겼다.
+      ("K" "서버 종료" eglot-shutdown :inapt-if-not imoogi-lsp-eglot-active-p)
+      ("q" "종료" transient-quit-one)]])
+
+  (transient-append-suffix 'imoogi-transient-master "t"
+    '("l" "LSP" imoogi-transient-lsp)))
+
 (imoogi-lsp-prepend-local-bin)
 
 (defun imoogi-lsp-load-language-configurations ()
