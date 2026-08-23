@@ -1,12 +1,58 @@
 {
   "schema": "imoogi-toolchains-lock/v1",
   "cli_version": "1.0.0",
-  "bundle": "2026.08.22.1",
+  "bundle": "2026.08.23.1",
   "target": {
     "os": "darwin",
     "arch": "arm64"
   },
   "components": [
+    {
+      "name": "basedpyright",
+      "kind": "python-language-server",
+      "source": "npm",
+      "upstream_version": "1.39.10",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "artifact": {
+        "path": "vendor/toolchains/python/basedpyright/1.39.10/darwin-arm64/package.tgz",
+        "size": 6156337,
+        "sha256": "11891e35fb3afcde55d5f358b147ec99be13ee1eb8ea5db893db430f51eb5b2b",
+        "source_url": "https://registry.npmjs.org/basedpyright/-/basedpyright-1.39.10.tgz",
+        "retrieved_at": "2026-08-23T06:31:21Z"
+      },
+      "license": {
+        "path": "vendor/toolchains/licenses/basedpyright-LICENSE"
+      },
+      "provenance": {
+        "builder": "darwin/arm64",
+        "toolchain": "go1.26.4",
+        "command": "curl https://registry.npmjs.org/basedpyright/-/basedpyright-1.39.10.tgz"
+      },
+      "install": [
+        {
+          "path": "bin/basedpyright",
+          "mode": "executable"
+        },
+        {
+          "path": "bin/basedpyright-langserver",
+          "mode": "executable"
+        },
+        {
+          "path": "lib/node_modules/basedpyright",
+          "mode": "directory"
+        }
+      ],
+      "runtime": {},
+      "probe": {
+        "command": "bin/basedpyright",
+        "args": [
+          "--version"
+        ]
+      }
+    },
     {
       "name": "gopls",
       "kind": "go-language-server",

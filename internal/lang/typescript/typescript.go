@@ -58,6 +58,17 @@ func (p Provider) Materialize(repoRoot, stagingRoot string) ([]lang.Probe, error
 	if err := writeTscLauncher(stagingRoot, nodeDist); err != nil {
 		return nil, err
 	}
+	if components.pyright.Name != "" {
+		if _, err := extractPackage(repoRoot, stagingRoot, components.pyright, "basedpyright"); err != nil {
+			return nil, err
+		}
+		if err := writeBasedpyrightLauncher(stagingRoot, nodeDist); err != nil {
+			return nil, err
+		}
+		if err := writeBasedpyrightCLILauncher(stagingRoot, nodeDist); err != nil {
+			return nil, err
+		}
+	}
 	if err := writeLauncher(stagingRoot, nodeDist); err != nil {
 		return nil, err
 	}
@@ -98,6 +109,8 @@ type selected struct {
 	node       config.LockComponent
 	typescript config.LockComponent
 	tls        config.LockComponent
+	// node 를 공유하는 선택적 서버. 없으면 zero value 로 남는다.
+	pyright config.LockComponent
 }
 
 func selectComponents(components []config.LockComponent) (selected, error) {
@@ -110,6 +123,10 @@ func selectComponents(components []config.LockComponent) (selected, error) {
 			out.typescript = component
 		case component.Name == "typescript-language-server" || component.Kind == "typescript-language-server":
 			out.tls = component
+		case component.Name == "basedpyright" || component.Kind == "python-language-server":
+			// node 를 공유하는 서버라 이 provider 가 함께 설치한다. 선택 사항이므로
+			// 없어도 실패시키지 않는다.
+			out.pyright = component
 		}
 	}
 	if out.node.Name == "" {
@@ -166,7 +183,16 @@ func extractPackage(repoRoot, stagingRoot string, component config.LockComponent
 	if err := os.MkdirAll(filepath.Dir(extractDestination), 0o755); err != nil {
 		return "", err
 	}
-	if _, err := artifact.ExtractTarGzip(lang.ArtifactPath(repoRoot, component), extractDestination, digest(component), artifact.Limits{}); err != nil {
+	// 기본 한도(4096 항목)는 보수적인 하한이라 파일이 많은 패키지에서 걸린다 —
+	// basedpyright 는 typeshed 스텁을 동봉해 4097 개였다(실측). extractNode 가
+	// 같은 이유로 20,000 을 쓰는 선례를 따른다. 이 확장은 안전을 무르게 하지
+	// 않는다: 추출 전에 lock 의 SHA-256 으로 아티팩트를 이미 검증하므로, 이
+	// 한도는 1차 통제가 아니라 자원 소모 상한(방어 심층화)이다.
+	if _, err := artifact.ExtractTarGzip(lang.ArtifactPath(repoRoot, component), extractDestination, digest(component), artifact.Limits{
+		MaxEntries:     20_000,
+		MaxFileBytes:   512 << 20,
+		MaxOutputBytes: 1 << 30,
+	}); err != nil {
 		return "", fmt.Errorf("extract %s artifact: %w", component.Name, err)
 	}
 	defer os.RemoveAll(extractDestination)
@@ -243,6 +269,42 @@ bundle_dir=$(CDPATH= cd -P -- "$bin_dir/.." && pwd)
 exec "$bundle_dir/lib/node/%s/bin/node" "$bundle_dir/lib/node_modules/typescript/lib/tsc.js" "$@"
 `, nodeDist)
 	return lang.WriteExecutable(launcher, []byte(script))
+}
+
+// basedpyright 는 node 로 실행되는 Python 언어 서버다. eglot 이 찾는 이름은
+// basedpyright-langserver 이며, npm 패키지의 bin 매핑상 진입점은
+// langserver.index.js 다.
+func writeBasedpyrightLauncher(stagingRoot, nodeDist string) error {
+	launcher, err := lang.ContainedStagePath(stagingRoot, "bin/basedpyright-langserver")
+	if err != nil {
+		return err
+	}
+	// bin/ 은 활성 번들로 가는 심볼릭 링크라, 평범한 cd 로는 링크 위치(.local)에
+	// 머물러 lib/ 를 찾지 못한다. 물리 경로로 해석해야 한다(cd -P) —
+	// typescript-language-server 런처와 같은 형태.
+	script := fmt.Sprintf(`#!/bin/sh
+set -eu
+bin_dir=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
+bundle_dir=$(CDPATH= cd -P -- "$bin_dir/.." && pwd)
+exec "$bundle_dir/lib/node/%s/bin/node" "$bundle_dir/lib/node_modules/basedpyright/langserver.index.js" "$@"
+`, nodeDist)
+	return os.WriteFile(launcher, []byte(script), lang.ExecutableMode)
+}
+
+// CLI 진입점(index.js). 언어 서버 진입점은 전송 방식 인자(--stdio) 없이는
+// 종료하지 않아 probe 로 쓸 수 없으므로, 버전만 찍고 끝나는 이쪽을 probe 에 쓴다.
+func writeBasedpyrightCLILauncher(stagingRoot, nodeDist string) error {
+	launcher, err := lang.ContainedStagePath(stagingRoot, "bin/basedpyright")
+	if err != nil {
+		return err
+	}
+	script := fmt.Sprintf(`#!/bin/sh
+set -eu
+bin_dir=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
+bundle_dir=$(CDPATH= cd -P -- "$bin_dir/.." && pwd)
+exec "$bundle_dir/lib/node/%s/bin/node" "$bundle_dir/lib/node_modules/basedpyright/index.js" "$@"
+`, nodeDist)
+	return os.WriteFile(launcher, []byte(script), lang.ExecutableMode)
 }
 
 func nodePackageDestination(stagingRoot, packageName string) (string, error) {

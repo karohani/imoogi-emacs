@@ -1,7 +1,7 @@
 {
   "schema": "imoogi-toolchains-desired/v1",
   "cli_version": "1.0.0",
-  "bundle": "2026.08.22.1",
+  "bundle": "2026.08.23.1",
   "target": {
     "os": "darwin",
     "arch": "arm64"
@@ -38,6 +38,12 @@
       "runtime": {
         "node_engine": ">=22.22.2"
       }
+    },
+    {
+      "name": "basedpyright",
+      "kind": "python-language-server",
+      "source": "npm",
+      "upstream_version": "1.39.10"
     }
   ]
 }

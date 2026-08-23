@@ -303,6 +303,10 @@ func isTypeScriptComponent(component config.LockComponent) bool {
 		return true
 	case component.Name == "typescript-language-server" || component.Kind == "typescript-language-server":
 		return true
+	// node 런타임을 공유하므로 같은 provider 가 설치한다(typescript 와 무관한
+	// 서버지만, 묶는 기준은 언어가 아니라 런타임이다).
+	case component.Name == "basedpyright" || component.Kind == "python-language-server":
+		return true
 	default:
 		return false
 	}

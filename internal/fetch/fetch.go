@@ -304,6 +304,32 @@ func fetchComponent(ctx context.Context, opts Options, repoRoot, staging string,
 			{Path: "lib/node_modules/typescript-language-server", Mode: "directory"},
 			{Path: "bin/typescript-language-server", Mode: "executable"},
 		}, config.Probe{Command: "bin/typescript-language-server", Args: []string{"--help"}}), artifacts, nil
+	case "basedpyright":
+		// npm 배포물이라 typescript-language-server 와 같은 경로를 탄다.
+		// 실행은 node 가 하므로 별도 런타임을 받지 않는다.
+		version := component.UpstreamVersion
+		url := npmTarballURL(opts.Sources.NPMRegistry, "basedpyright", version)
+		rel := fmt.Sprintf("vendor/toolchains/python/basedpyright/%s/darwin-arm64/package.tgz", version)
+		digest, artifact, reused, err := fetchDownloadedArtifact(ctx, opts.Client, repoRoot, staging, previous, component, rel, url, 0o644, nil)
+		if err != nil {
+			return config.LockComponent{}, nil, err
+		}
+		retrievedAt = reuseRetrievedAt(retrievedAt, reused)
+		artifacts := appendArtifact(nil, artifact)
+		archivePath, err := downloadedArtifactPath(repoRoot, rel, artifact)
+		if err != nil {
+			return config.LockComponent{}, nil, err
+		}
+		license := "vendor/toolchains/licenses/basedpyright-LICENSE"
+		artifacts, err = stageFromTarGz(repoRoot, staging, archivePath, license, []string{"package/LICENSE.txt", "package/LICENSE"}, artifacts)
+		if err != nil {
+			return config.LockComponent{}, nil, err
+		}
+		return lock(component, target, rel, url, retrievedAt, digest, license, "", "curl "+url, []config.InstallEntry{
+			{Path: "lib/node_modules/basedpyright", Mode: "directory"},
+			{Path: "bin/basedpyright-langserver", Mode: "executable"},
+			{Path: "bin/basedpyright", Mode: "executable"},
+		}, config.Probe{Command: "bin/basedpyright", Args: []string{"--version"}}), artifacts, nil
 	case "gopls":
 		version := component.UpstreamVersion
 		rel := fmt.Sprintf("vendor/toolchains/go/gopls/%s/darwin-arm64/gopls", version)
