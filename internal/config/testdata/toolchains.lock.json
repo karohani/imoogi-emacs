@@ -1,0 +1,167 @@
+{
+  "schema": "imoogi-toolchains-lock/v1",
+  "cli_version": "1.2.3",
+  "bundle": "2026.08.15.1",
+  "target": {
+    "os": "darwin",
+    "arch": "arm64"
+  },
+  "components": [
+    {
+      "name": "gopls",
+      "kind": "go-language-server",
+      "source": "golang.org/x/tools/gopls",
+      "upstream_version": "v0.20.0",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "artifact": {
+        "path": "vendor/toolchains/go/gopls/v0.20.0/darwin-arm64/gopls.tar.gz",
+        "size": 123,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source_url": "https://example.invalid/gopls.tar.gz",
+        "retrieved_at": "2026-08-15T00:00:00Z"
+      },
+      "license": {
+        "path": "vendor/toolchains/go/gopls/v0.20.0/LICENSE"
+      },
+      "provenance": {
+        "builder": "imoogi-release",
+        "toolchain": "go1.26 darwin/arm64",
+        "command": "go build ./gopls"
+      },
+      "install": [
+        {
+          "path": "bin/gopls",
+          "mode": "executable"
+        }
+      ],
+      "probe": {
+        "command": "bin/gopls",
+        "args": [
+          "version"
+        ]
+      }
+    },
+    {
+      "name": "node",
+      "kind": "node-runtime",
+      "source": "nodejs.org/dist",
+      "upstream_version": "v22.14.0",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "artifact": {
+        "path": "vendor/toolchains/typescript/node/v22.14.0/darwin-arm64/node.tar.gz",
+        "size": 456,
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "source_url": "https://example.invalid/node.tar.gz",
+        "retrieved_at": "2026-08-15T00:00:00Z"
+      },
+      "license": {
+        "path": "vendor/toolchains/typescript/node/v22.14.0/LICENSE"
+      },
+      "provenance": {
+        "builder": "imoogi-release",
+        "toolchain": "upstream prebuilt darwin-arm64",
+        "command": "curl node archive"
+      },
+      "install": [
+        {
+          "path": "bin/node",
+          "mode": "executable"
+        }
+      ],
+      "probe": {
+        "command": "bin/node",
+        "args": [
+          "--version"
+        ]
+      }
+    },
+    {
+      "name": "typescript",
+      "kind": "typescript-sdk",
+      "source": "npm:typescript",
+      "upstream_version": "5.8.2",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "artifact": {
+        "path": "vendor/toolchains/typescript/typescript/5.8.2/darwin-arm64/typescript.tgz",
+        "size": 789,
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "source_url": "https://example.invalid/typescript.tgz",
+        "retrieved_at": "2026-08-15T00:00:00Z"
+      },
+      "license": {
+        "path": "vendor/toolchains/typescript/typescript/5.8.2/LICENSE"
+      },
+      "provenance": {
+        "builder": "imoogi-release",
+        "toolchain": "npm pack",
+        "command": "npm pack typescript@5.8.2"
+      },
+      "install": [
+        {
+          "path": "lib/typescript/package",
+          "mode": "directory"
+        }
+      ],
+      "probe": {
+        "command": "bin/tsc",
+        "args": [
+          "--version"
+        ]
+      }
+    },
+    {
+      "name": "typescript-language-server",
+      "kind": "typescript-language-server",
+      "source": "npm:typescript-language-server",
+      "upstream_version": "4.3.3",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "artifact": {
+        "path": "vendor/toolchains/typescript/typescript-language-server/4.3.3/darwin-arm64/server.tgz",
+        "size": 321,
+        "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "source_url": "https://example.invalid/typescript-language-server.tgz",
+        "retrieved_at": "2026-08-15T00:00:00Z"
+      },
+      "license": {
+        "path": "vendor/toolchains/typescript/typescript-language-server/4.3.3/LICENSE"
+      },
+      "provenance": {
+        "builder": "imoogi-release",
+        "toolchain": "npm pack",
+        "command": "npm pack typescript-language-server@4.3.3"
+      },
+      "install": [
+        {
+          "path": "bin/typescript-language-server",
+          "mode": "executable"
+        },
+        {
+          "path": "lib/typescript-language-server/package",
+          "mode": "directory"
+        }
+      ],
+      "runtime": {
+        "node_engine": ">=20.0.0 <23.0.0"
+      },
+      "probe": {
+        "command": "bin/typescript-language-server",
+        "args": [
+          "--help"
+        ]
+      }
+    }
+  ],
+  "generated_by": "fixture"
+}

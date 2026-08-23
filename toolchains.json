@@ -1,0 +1,43 @@
+{
+  "schema": "imoogi-toolchains-desired/v1",
+  "cli_version": "1.0.0",
+  "bundle": "2026.08.22.1",
+  "target": {
+    "os": "darwin",
+    "arch": "arm64"
+  },
+  "runtime_policy": {
+    "node_version": "v24.19.0"
+  },
+  "components": [
+    {
+      "name": "gopls",
+      "kind": "go-language-server",
+      "source": "golang.org/x/tools/gopls",
+      "upstream_version": "v0.23.0",
+      "revision": "014f87ff5c01915bc90f4f11a6bb8aea3e0edbd7"
+    },
+    {
+      "name": "node",
+      "kind": "node-runtime",
+      "source": "nodejs.org/dist",
+      "upstream_version": "v24.19.0"
+    },
+    {
+      "name": "typescript",
+      "kind": "typescript-sdk",
+      "source": "npm:typescript",
+      "upstream_version": "6.0.3"
+    },
+    {
+      "name": "typescript-language-server",
+      "kind": "typescript-language-server",
+      "source": "npm:typescript-language-server",
+      "upstream_version": "6.0.0",
+      "revision": "1c0f224eb44c626d96dae07aaf5d78654de0e1f2",
+      "runtime": {
+        "node_engine": ">=22.22.2"
+      }
+    }
+  ]
+}

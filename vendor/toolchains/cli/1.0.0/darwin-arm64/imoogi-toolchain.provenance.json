@@ -1,0 +1,11 @@
+{
+  "cli_version": "1.0.0",
+  "builder": "darwin/arm64",
+  "go_version": "go1.26.4",
+  "command": "GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags=-buildid= -X main.version=1.0.0 -o vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain ./cmd/imoogi-toolchain",
+  "built_at": "2026-08-22T03:18:49Z",
+  "artifact": "vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain",
+  "size": 9555810,
+  "sha256": "a5ea1ffa79f38b8e59a25e06fb3c198defcee6c44e8b757f1a478b05b06d436f",
+  "generated_by": "imoogi-toolchain fetch"
+}

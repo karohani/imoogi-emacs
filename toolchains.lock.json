@@ -1,0 +1,181 @@
+{
+  "schema": "imoogi-toolchains-lock/v1",
+  "cli_version": "1.0.0",
+  "bundle": "2026.08.22.1",
+  "target": {
+    "os": "darwin",
+    "arch": "arm64"
+  },
+  "components": [
+    {
+      "name": "gopls",
+      "kind": "go-language-server",
+      "source": "golang.org/x/tools/gopls",
+      "upstream_version": "v0.23.0",
+      "revision": "014f87ff5c01915bc90f4f11a6bb8aea3e0edbd7",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "artifact": {
+        "path": "vendor/toolchains/go/gopls/v0.23.0/darwin-arm64/gopls",
+        "size": 40939042,
+        "sha256": "8de8bfd7d4f9e36f2d8fc679061dbd6f982553b1f32e84e7c658f6da4c9c64a8",
+        "source_url": "https://proxy.golang.org/golang.org/x/tools/gopls/@v/v0.23.0.zip",
+        "retrieved_at": "2026-08-22T02:51:57Z"
+      },
+      "license": {
+        "path": "vendor/toolchains/licenses/gopls-LICENSE"
+      },
+      "provenance": {
+        "builder": "darwin/arm64",
+        "toolchain": "go1.26.4",
+        "command": "go install -trimpath -ldflags=-buildid= golang.org/x/tools/gopls@v0.23.0"
+      },
+      "install": [
+        {
+          "path": "bin/gopls",
+          "mode": "executable"
+        }
+      ],
+      "runtime": {},
+      "probe": {
+        "command": "bin/gopls",
+        "args": [
+          "version"
+        ]
+      }
+    },
+    {
+      "name": "node",
+      "kind": "node-runtime",
+      "source": "nodejs.org/dist",
+      "upstream_version": "v24.19.0",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "artifact": {
+        "path": "vendor/toolchains/node/v24.19.0/darwin-arm64/node-v24.19.0-darwin-arm64.tar.gz",
+        "size": 52234372,
+        "sha256": "8294b7aa9b03997481c06babf1e8b270c859358f27da57a11509afe537ac381d",
+        "source_url": "https://nodejs.org/dist/v24.19.0/node-v24.19.0-darwin-arm64.tar.gz",
+        "retrieved_at": "2026-08-22T02:52:07Z"
+      },
+      "license": {
+        "path": "vendor/toolchains/licenses/node-v24.19.0-LICENSE"
+      },
+      "provenance": {
+        "builder": "darwin/arm64",
+        "toolchain": "go1.26.4",
+        "command": "curl https://nodejs.org/dist/v24.19.0/node-v24.19.0-darwin-arm64.tar.gz"
+      },
+      "install": [
+        {
+          "path": "bin/node",
+          "mode": "executable"
+        },
+        {
+          "path": "lib/node",
+          "mode": "directory"
+        }
+      ],
+      "runtime": {},
+      "probe": {
+        "command": "bin/node",
+        "args": [
+          "--version"
+        ]
+      }
+    },
+    {
+      "name": "typescript",
+      "kind": "typescript-sdk",
+      "source": "npm:typescript",
+      "upstream_version": "6.0.3",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "artifact": {
+        "path": "vendor/toolchains/typescript/typescript/6.0.3/darwin-arm64/typescript.tgz",
+        "size": 4515854,
+        "sha256": "33cd0ee1beaa8c9e9d15a9da836c62ddea4c34a42d7c2d349dbc80d94165d22a",
+        "source_url": "https://registry.npmjs.org/typescript/-/typescript-6.0.3.tgz",
+        "retrieved_at": "2026-08-22T02:52:08Z"
+      },
+      "license": {
+        "path": "vendor/toolchains/licenses/typescript-6.0.3-LICENSE.txt",
+        "notice": "vendor/toolchains/licenses/typescript-6.0.3-ThirdPartyNoticeText.txt"
+      },
+      "provenance": {
+        "builder": "darwin/arm64",
+        "toolchain": "go1.26.4",
+        "command": "curl https://registry.npmjs.org/typescript/-/typescript-6.0.3.tgz"
+      },
+      "install": [
+        {
+          "path": "bin/tsc",
+          "mode": "executable"
+        },
+        {
+          "path": "lib/node_modules/typescript",
+          "mode": "directory"
+        }
+      ],
+      "runtime": {},
+      "probe": {
+        "command": "bin/tsc",
+        "args": [
+          "--version"
+        ]
+      }
+    },
+    {
+      "name": "typescript-language-server",
+      "kind": "typescript-language-server",
+      "source": "npm:typescript-language-server",
+      "upstream_version": "6.0.0",
+      "revision": "1c0f224eb44c626d96dae07aaf5d78654de0e1f2",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "artifact": {
+        "path": "vendor/toolchains/typescript/typescript-language-server/6.0.0/darwin-arm64/server.tgz",
+        "size": 515598,
+        "sha256": "6e23b48efc76af4e70928cdfe62ea6e6cfef67ab4c1e7579c4e82dd284fbdfd2",
+        "source_url": "https://registry.npmjs.org/typescript-language-server/-/typescript-language-server-6.0.0.tgz",
+        "retrieved_at": "2026-08-22T02:52:08Z"
+      },
+      "license": {
+        "path": "vendor/toolchains/licenses/typescript-language-server-LICENSE"
+      },
+      "provenance": {
+        "builder": "darwin/arm64",
+        "toolchain": "go1.26.4",
+        "command": "curl https://registry.npmjs.org/typescript-language-server/-/typescript-language-server-6.0.0.tgz"
+      },
+      "install": [
+        {
+          "path": "bin/typescript-language-server",
+          "mode": "executable"
+        },
+        {
+          "path": "lib/node_modules/typescript-language-server",
+          "mode": "directory"
+        }
+      ],
+      "runtime": {
+        "node_engine": "\u003e=22.22.2"
+      },
+      "probe": {
+        "command": "bin/typescript-language-server",
+        "args": [
+          "--help"
+        ]
+      }
+    }
+  ],
+  "generated_by": "imoogi-toolchain fetch"
+}
