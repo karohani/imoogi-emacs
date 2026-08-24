@@ -10,7 +10,7 @@
   └── boot.el                  ← package.el → vendor/elpa/, use-package (오프라인)
         └── modules/ (순서대로 load)
               ├── defaults     ← 더 나은 기본값 + recentf/savehist/saveplace
-              ├── completion   ← ivy, counsel, swiper
+              ├── completion   ← vertico, consult, corfu
               ├── which-key    ← Emacs 30 내장
               ├── projects     ← project.el, perspective
               ├── hydra        ← ace-window, hydra 정의, 글로벌 키바인딩
@@ -32,6 +32,17 @@
   ├── packages.lock                ← 동결 버전 기록(감사용)
   ├── scripts/vendor.el            ← 온라인 vendoring 스크립트
   ├── vendor/elpa/                 ← 동봉된 패키지 (커밋됨, 망분리용)
+  ├── toolchains.json              ← 언어 도구 desired manifest (버전 SSOT)
+  ├── toolchains.lock.json         ← 해시·출처·설치 계약을 해석한 lock
+  ├── cmd/imoogi-toolchain/        ← 사전빌드되는 Go CLI 진입점
+  ├── internal/
+  │   ├── cli/                     ← help/fetch/setup/version 명령과 종료 코드
+  │   ├── config/                  ← strict manifest·lock·버전/호환성 검증
+  │   ├── artifact/                ← 해시 검증과 제한된 안전 추출
+  │   ├── lang/{golang,typescript}/← 언어별 materialize/probe provider
+  │   ├── setup/                   ← 오프라인 staging·publish·activation
+  │   └── activation/              ← bootstrap 빌드 계약
+  ├── vendor/toolchains/           ← 고정 바이너리·archive·license (커밋됨)
   ├── vendor/tree-sitter/          ← 선택적 tree-sitter 문법 라이브러리
   ├── assets/fonts/                ← Nerd Font (동봉, 선택)
   └── modules/                     ← 기능 모듈
@@ -43,6 +54,8 @@
 
 설정 코드와 패키지 모두 `~/workspace/imoogi-emacs`에 존재한다(self-contained).
 `~/.emacs.d/`는 로더와 캐시(.cache/, eln-cache 등)만 포함한다.
+`.local/toolchains/<bundle>/`과 상대 symlink `.local/bin`은 setup이 만드는
+git-ignored 런타임 상태다.
 
 ## 망분리(air-gap) 설계
 
@@ -60,6 +73,10 @@
 - **Tree-sitter 문법** — 온라인 머신에서 빌드한 grammar 라이브러리를
   `vendor/tree-sitter/` 에 커밋해 반입한다. 부팅 중 다운로드/빌드는 하지 않는다.
 - **버전 일치** — 빌드 머신과 타겟의 Emacs 메이저 버전을 맞출 것(.elc 호환).
+- **언어 도구 capability 분리** — 네트워크와 Go 컴파일은 온라인 `fetch`만
+  소유한다. 폐쇄망 `setup`은 committed artifact 읽기, 검증, 로컬 파일 생성과
+  절대 경로 probe만 수행한다. `version`/`--help`는 읽기 전용이며 Emacs의
+  `17-lsp`는 설치나 다운로드를 호출하지 않는다.
 
 ## 모듈 로딩 순서
 
@@ -79,12 +96,23 @@ boot.el의 `dolist`에서 정의된 순서대로 로딩된다. 의존성이 있�
 11. **11-editing** — undo-fu, yasnippet, apheleia, dumb-jump, stripspace, elec-pair
 12. **12-navigation** — avy, helpful, diff-hl, bufferfile
 13. **13-system** — exec-path-from-shell, server, buffer-terminator, persist-text-scale
-14. **14-org-markdown** — org, org-appear, markdown-toc
-15. **15-elisp** — aggressive-indent, paredit, highlight-defined 등
-16. **16-languages** — 21종 파일타입 메이저 모드
-17. **17-folding** — kirigami, outline-indent, 내장 outline/hs-minor
-18. **18-terminal** — ghostel + ghostel-ime (모듈은 vendor/ghostel-module/ 동봉)
-19. **19-native-compile** — compile-angel (소급 컴파일하므로 마지막)
+14. **14-org** — org, org-appear
+15. **15-markdown** — markdown-mode, markdown-toc
+16. **16-elisp** — aggressive-indent, paredit, highlight-defined 등
+17. **17-lsp** — 내장 Eglot/Flymake/xref 공통 설정과 `modules/lsp/*.el` 로더
+18. **18-languages** — 21종 파일타입 메이저 모드(언어별 LSP와 분리)
+19. **19-folding** — kirigami, outline-indent, 내장 outline/hs-minor
+20. **20-terminal** — ghostel + ghostel-ime (모듈은 vendor/ghostel-module/ 동봉)
+21. **21-native-compile** — compile-angel (소급 컴파일하므로 마지막)
+
+언어별 LSP 설정은 `modules/lsp/` 아래의 이름 기반 파일로 분리한다. `17-lsp`가
+`*.el`을 정렬해 자동 로드하고 각 파일의 실패를 격리하므로, 새 언어는
+`modules/lsp/LANGUAGE.el`만 추가하면 최상위 모듈 번호나 `boot.el`을 바꿀 필요가 없다.
+
+Go CLI도 같은 경계를 따른다. `internal/cli`는 명령 해석만 담당하고,
+`internal/lang/golang`과 `internal/lang/typescript`가 언어별 설치 surface를
+소유한다. 새 언어는 provider를 추가하고 setup의 provider factory에 등록한다.
+공통 무결성·추출·원자적 활성화 코드는 언어 provider 안에 복제하지 않는다.
 
 ## 패키지 관리
 

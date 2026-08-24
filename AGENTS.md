@@ -40,6 +40,17 @@ modules/NN-name.el       기능 모듈(번호 순 로딩)
 3. 파일 끝에 `(provide 'imoogi-NAME)`.
 4. `boot.el` 의 `dolist` 모듈 리스트에 `"NN-name"` 추가(로딩 순서 = 의존성 순서).
 
+### LSP 언어 설정
+
+- `modules/17-lsp.el` 은 Eglot/Flymake/xref 공통 설정과 하위 로더만 둔다.
+- 언어별 자동기동과 workspace 설정은 `modules/lsp/LANGUAGE.el` 에 둔다.
+  `17-lsp`가 이 폴더의 `*.el`을 자동 로드하므로 새 언어를 추가할 때
+  최상위 모듈 번호나 `boot.el`은 수정하지 않는다.
+- 각 언어 파일도 `;;; Code:` 바로 아래 `imoogi-require`로 사전조건을 확인하고,
+  서버 실행 파일은 `executable-find` 기반 공통 헬퍼로 감지한다. 런타임 설치나
+  다운로드를 추가하지 않는다.
+- 메이저 모드, 확장자, Tree-sitter remap은 `modules/18-languages.el`이 소유한다.
+
 ## 3. 패키지 추가/업데이트 (반드시 온라인 머신에서)
 
 폐쇄망 안에서는 절대 vendoring 하지 않는다(네트워크 필요). 항상 온라인 빌드 머신 → 반입 순서.
@@ -76,7 +87,7 @@ emacs --batch -Q --eval '(setq user-emacs-directory "/tmp/t/")' -l boot.el
 - **which-key 는 Emacs 30 내장**(`:ensure nil`).
 - **한글 입력**: macOS 는 포커스 시 OS 입력을 영문 강제(im-select), 한글은 Emacs 입력기(S-SPC). 단 **vterm 버퍼에서는 영문 강제를 건너뛰어 OS 한글 입력기를 쓴다**(vterm 은 Emacs 입력기 미지원).
 - **터미널은 ghostel**(libghostty-vt). `ghostel-ime-mode` 로 터미널 안에서 한글(S-SPC) 동작. 네이티브 모듈은 사전빌드 바이너리를 `vendor/ghostel-module/` 에 동봉(aarch64-macos), `ghostel-module-auto-install nil`. 다른 arch 는 `ghostel-download-module`/`ghostel-module-compile` 후 동봉.
-- **Tree-sitter 문법은 선택적 동봉**. 부팅 중 `treesit-install-language-grammar` 호출 금지. 온라인 머신에서 빌드한 grammar 라이브러리를 `vendor/tree-sitter/` 에 커밋하면, `16-languages` 가 감지된 언어만 `*-ts-mode` 로 전환한다.
+- **Tree-sitter 문법은 선택적 동봉**. 부팅 중 `treesit-install-language-grammar` 호출 금지. 온라인 머신에서 빌드한 grammar 라이브러리를 `vendor/tree-sitter/` 에 커밋하면, `18-languages` 가 감지된 언어만 `*-ts-mode` 로 전환한다.
 - **Projectile 계열 제거됨** — `projectile`, `persp-projectile`, `treemacs-projectile` 대신 내장 `project.el`을 사용한다. treemacs는 전역 동작하며 project.el의 현재 프로젝트를 직접 추가한다.
 - **treemacs-persp / treemacs-evil / persp-mode / evil 제거됨** — imoogi 는 `perspective` 를 쓰므로 persp-mode 용 통합은 불필요(과거 treemacs README 복붙 잔재였고 compile-angel 과 충돌).
 - **의도적 미반영**: auto-package-update(망분리 위반), treesit-fold(별도 패키지/문법 필요), evil(미사용). README "미반영" 표 참고.
