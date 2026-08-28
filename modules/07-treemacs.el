@@ -285,7 +285,14 @@ selected, close it.  Otherwise replace any custom tool window and show it."
           treemacs-project-follow-cleanup          nil
           treemacs-persist-file                    (expand-file-name ".cache/treemacs-persist" user-emacs-directory)
           treemacs-position                        'left
-          treemacs-read-string-input               'from-child-frame
+          ;; 자식 프레임 팝업(cfrs -> posframe)이 아니라 미니버퍼로 입력받는다.
+          ;; posframe 1.5.2 는 Package-Requires 가 emacs 26.1 인 오래된 패키지인데,
+          ;; Emacs 31 이 자식 프레임을 크게 손봤다(NEWS: "Child frames are now
+          ;; supported on TTY frames"). 31.1 에서 팝업이 본문 위에 겹쳐 그려져
+          ;; 읽을 수 없게 됐다(실측). treemacs 자신도 같은 종류의 문제를 아는지
+          ;; Wayland 에서는 기본값을 from-minibuffer 로 돌린다.
+          ;; posframe 이 31 을 지원하면 'from-child-frame 으로 되돌려도 된다.
+          treemacs-read-string-input               'from-minibuffer
           treemacs-recenter-distance               0.1
           treemacs-recenter-after-file-follow      nil
           treemacs-recenter-after-tag-follow       nil
