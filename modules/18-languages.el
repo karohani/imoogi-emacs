@@ -95,18 +95,20 @@
             4)))
 
 ;; [HARD] 문법 자동 다운로드 차단 (Emacs 31+ 에서만 존재하는 옵션).
-;; 31 에 없는 문법을 자동으로 내려받아 빌드하는 기능이 생겼다. 망분리 원칙상
-;; 꺼야 하는데, 허용 값 이름을 실기기에서 확인하지 못했다(NEWS 는 ask/ask-dir/
-;; always 만 언급하고 기본값을 밝히지 않는다). nil 이 빗나가도 setopt 는 경고만
-;; 내고 넘어가므로(30.2 실측) 부팅을 깨지는 않는다. 31 로 올린 뒤
-;; `C-h v treesit-auto-install-grammar' 로 정확한 "끔" 값을 확인해 고칠 것.
+;; 31 에 없는 문법을 자동으로 내려받아 빌드하는 기능이 생겼고, 기본값이 `ask'
+;; 다(31.1 실측). 망분리 원칙("부팅 경로에서 네트워크 접근 없음")상 꺼야 한다.
 ;;
-;; 다만 지금도 구조적으로는 이미 막혀 있다 — `imoogi-treesit-remap-if-available'
-;; 가 `treesit-language-available-p' 로 먼저 거르므로, 문법이 없는 언어는
-;; ts-mode 에 진입 자체를 안 하고 따라서 자동 설치가 발동할 계기가 없다.
-;; `treesit-enabled-modes' 로 모드를 직접 켜게 되면 이 보호가 사라지니 주의.
+;; 값은 반드시 `never' 여야 한다. :type 이 열거형이라(31.1 실측)
+;;   (choice (const never) (const always) (const ask) (const ask-dir))
+;; nil 은 허용 값이 아니고, 주면 setopt 가 타입 경고를 낸다.
+;;
+;; 지금은 구조적으로도 이미 막혀 있다 — `imoogi-treesit-remap-if-available' 가
+;; `treesit-language-available-p' 로 먼저 거르므로, 문법이 없는 언어는 ts-mode
+;; 진입 자체를 안 하고 따라서 자동 설치가 발동할 계기가 없다. 다만
+;; `treesit-enabled-modes' 로 모드를 직접 켜면 그 보호가 사라지므로, 이 설정이
+;; 그때의 방어선이 된다.
 (when (boundp 'treesit-auto-install-grammar)
-  (setopt treesit-auto-install-grammar nil))
+  (setopt treesit-auto-install-grammar 'never))
 
 ;;; JSON — imenu 로 키를 훑을 수 있게
 ;; js-json-mode 는 js-mode 에서 파생돼 JavaScript 용 인덱서
