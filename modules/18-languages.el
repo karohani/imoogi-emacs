@@ -67,6 +67,47 @@
   (imoogi-treesit-remap-if-available 'kotlin-mode 'kotlin-ts-mode 'kotlin)
   (imoogi-treesit-remap-if-available 'clojure-mode 'clojure-ts-mode 'clojure))
 
+;;; Tree-sitter 색칠 수준 — IntelliJ/VSCode 식 의미 기반 하이라이트
+;; 기본값 3 은 정의·키워드·타입·상수까지만 칠한다. 4 를 켜야 아래가 붙는다
+;; (go-ts-mode 의 `treesit-font-lock-feature-list' 실측):
+;;   bracket delimiter error function operator property variable
+;; 즉 함수 "호출", 변수 "사용처", 프로퍼티가 여기서 처음 색을 갖는다.
+;; doom-themes 가 이 확장 face 를 모두 정의하므로(doom-themes-base.el —
+;; font-lock-function-call-face 는 이탤릭 + 흐린 색으로 정의를 호출과 구분한다)
+;; 레벨만 올리면 바로 보인다.
+;;
+;; [HARD] setq 가 아니라 setopt 여야 한다. 이 옵션에는
+;; `:set treesit--font-lock-level-setter' 가 걸려 있어(30.2 실측), setq 로 바꾸면
+;; 값만 바뀌고 `treesit-font-lock-recompute-features' 가 불리지 않아 무효다.
+;;
+;; 값의 형태가 버전마다 다르다 — Emacs 30 의 :type 은 `integer' 뿐이고(실측),
+;; (MAJOR-MODE . LEVEL) alist 는 Emacs 31 부터다. 30 에 alist 를 주면
+;; "does not match type integer" 경고가 뜬다. 그래서 버전으로 갈라 쓴다.
+;; 31 에서는 YAML/JSON/HTML 같은 데이터 포맷만 3 으로 남긴다 — 이런 파일에서
+;; 4 는 구분자·괄호까지 전부 칠해 오히려 읽기 어려워진다.
+(when (boundp 'treesit-font-lock-level)
+  (setopt treesit-font-lock-level
+          (if (>= emacs-major-version 31)
+              '((yaml-ts-mode . 3)
+                (json-ts-mode . 3)
+                (html-ts-mode . 3)
+                (t            . 4))
+            4)))
+
+;; [HARD] 문법 자동 다운로드 차단 (Emacs 31+ 에서만 존재하는 옵션).
+;; 31 에 없는 문법을 자동으로 내려받아 빌드하는 기능이 생겼다. 망분리 원칙상
+;; 꺼야 하는데, 허용 값 이름을 실기기에서 확인하지 못했다(NEWS 는 ask/ask-dir/
+;; always 만 언급하고 기본값을 밝히지 않는다). nil 이 빗나가도 setopt 는 경고만
+;; 내고 넘어가므로(30.2 실측) 부팅을 깨지는 않는다. 31 로 올린 뒤
+;; `C-h v treesit-auto-install-grammar' 로 정확한 "끔" 값을 확인해 고칠 것.
+;;
+;; 다만 지금도 구조적으로는 이미 막혀 있다 — `imoogi-treesit-remap-if-available'
+;; 가 `treesit-language-available-p' 로 먼저 거르므로, 문법이 없는 언어는
+;; ts-mode 에 진입 자체를 안 하고 따라서 자동 설치가 발동할 계기가 없다.
+;; `treesit-enabled-modes' 로 모드를 직접 켜게 되면 이 보호가 사라지니 주의.
+(when (boundp 'treesit-auto-install-grammar)
+  (setopt treesit-auto-install-grammar nil))
+
 ;;; JSON — imenu 로 키를 훑을 수 있게
 ;; js-json-mode 는 js-mode 에서 파생돼 JavaScript 용 인덱서
 ;; (`js--imenu-create-index')를 물려받는다. 그건 함수 선언·할당 같은 "코드"를

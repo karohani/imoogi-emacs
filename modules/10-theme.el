@@ -165,6 +165,18 @@ nil 이면 해상도를 보지 않고 `imoogi-font-size' 를 그대로 쓴다.
                       :background "#343a46"
                       :weight 'bold))
 
+;;; Eglot 심볼 하이라이트 — 커서 올린 심볼의 다른 등장 위치 표시
+;; VSCode 에서 변수에 커서를 두면 같은 변수가 전부 표시되는 그 기능이다.
+;; Eglot 은 이미 이걸 한다(LSP documentHighlight → `eglot--highlight-piggyback').
+;; 그런데 기본 face 가 `(:inherit bold)' 뿐이고(실측) doom-themes 는 이 face 를
+;; 정의하지 않아(doom-themes-base.el 에 eglot 항목 0건), 고정폭 폰트에서는
+;; 굵기 차이가 거의 안 보인다. 배경색을 주면 VSCode 처럼 눈에 띈다.
+;; 색은 hl-line(#343a46) 보다 한 단계 밝게 잡아 현재 줄 위에서도 구분된다.
+(with-eval-after-load 'eglot
+  (set-face-attribute 'eglot-highlight-symbol-face nil
+                      :background "#3f4757"
+                      :weight 'normal))
+
 ;;; doom-modeline — 깔끔한 모드라인
 (use-package doom-modeline
   :ensure t
