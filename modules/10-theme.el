@@ -193,9 +193,20 @@ nil 이면 해상도를 보지 않고 `imoogi-font-size' 를 그대로 쓴다.
 ;; 그래서 테마의 의도대로 되돌려 놓으면 고리가 풀린다.
 ;;
 ;; 전체 face 576개를 훑어 순환은 이 한 쌍뿐임을 확인했다(실측) — 다른 gnus face 는
-;; 멀쩡하므로 이 한 줄로 충분하다.
-(with-eval-after-load 'gnus-group
-  (set-face-attribute 'gnus-group-news-low nil :inherit 'gnus-group-mail-1))
+;; 멀쩡하므로 이 한 곳만 고치면 된다.
+;;
+;; [HARD] set-face-attribute 가 아니라 custom-theme-set-faces 여야 한다.
+;; set-face-attribute 는 Custom 의 spec 체계 "바깥"에서 속성만 덮어쓴다. 그래서
+;; 새 프레임이 생기거나 테마가 다시 계산될 때(custom-theme-recalc-face) Custom 이
+;; defface 기본값 + 테마 spec 으로 다시 계산하면서 순환이 되살아나고,
+;; face-spec-set-2 가 그 순간 오류를 낸다(실측: 수정을 넣은 세션에서도 재발).
+;; spec 자체를 바꿔 두면 언제 다시 계산해도 순환이 만들어지지 않는다.
+;;
+;; 고치는 쪽은 -empty 다. doom-themes 의 다른 -empty face 들은 전부
+;; gnus-group-mail-1-empty 를 상속하는데(669행 등) news-low-empty 만 news-low 를
+;; 가리켜 고리를 만든다 — 형제들과 같은 모양으로 맞춘다.
+(custom-theme-set-faces 'doom-one
+  '(gnus-group-news-low-empty ((t (:inherit gnus-group-mail-1-empty :weight normal)))))
 
 ;;; doom-modeline — 깔끔한 모드라인
 (use-package doom-modeline
