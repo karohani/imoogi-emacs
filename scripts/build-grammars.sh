@@ -31,12 +31,23 @@ esac
 GRAMMARS=(
   "json|tree-sitter/tree-sitter-json|v0.24.8|"
   "javascript|tree-sitter/tree-sitter-javascript|v0.23.1|"
+  # Emacs 31 의 js-ts-mode 는 jsdoc 문법을 함께 요구한다. 없으면 .js 를 열 때마다
+  # "File mode specification error: (treesit-load-language-error not-found ...)"
+  # 가 뜬다(31.1 실측 — 30.2 에서는 요구하지 않아 이 항목이 없었다).
+  "jsdoc|tree-sitter/tree-sitter-jsdoc|v0.25.0|"
   "typescript|tree-sitter/tree-sitter-typescript|v0.23.2|typescript/"
   "tsx|tree-sitter/tree-sitter-typescript|v0.23.2|tsx/"
   "python|tree-sitter/tree-sitter-python|v0.23.6|"
   "go|tree-sitter/tree-sitter-go|v0.23.4|"
   "java|tree-sitter/tree-sitter-java|v0.23.5|"
   "yaml|ikatyang/tree-sitter-yaml|v0.5.0|"
+  # 아래 넷은 18-languages.el 이 이미 remap 을 시도하고 있었지만 문법이 없어
+  # 조용히 무효였다 — `imoogi-treesit-remap-if-available' 가
+  # `treesit-language-available-p' 로 거르기 때문에 오류 없이 옛 모드가 쓰였다.
+  "bash|tree-sitter/tree-sitter-bash|v0.25.1|"
+  "rust|tree-sitter/tree-sitter-rust|v0.24.2|"
+  "html|tree-sitter/tree-sitter-html|v0.23.2|"
+  "dockerfile|camdencheek/tree-sitter-dockerfile|v0.2.0|"
   # 아래 둘은 Emacs 에 ts-mode 가 내장돼 있지 않아 패키지(kotlin-ts-mode /
   # clojure-ts-mode)와 짝을 이룬다 — 문법만 넣어도, 패키지만 넣어도 동작하지 않는다.
   "kotlin|fwcd/tree-sitter-kotlin|0.3.8|"
