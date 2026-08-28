@@ -49,6 +49,63 @@ cleanup_mount() {
   rmdir "$MOUNT_POINT" 2>/dev/null || true
 }
 
+# 네이티브 컴파일 예열 --------------------------------------------------------
+#
+# 왜 필요한가: 21-native-compile.el 의 compile-angel 은 로드되는 .el 을 전부
+# 컴파일한다. 네이티브 컴파일이 되는 빌드에서는 이게 첫 부팅에 한꺼번에 몰려
+# GUI 가 몇 분간 멎은 것처럼 느려진다(실측: 한 세션에 .eln 239개 생성). 1회성이고
+# 네트워크도 필요 없지만, 하필 "새로 깐 직후"에 터져서 설치가 잘못된 것처럼 보인다.
+# 그래서 설치 직후 헤드리스로 미리 끝내둔다 — GUI 첫 실행부터 빠르다.
+#
+# 배치 부팅만으로는 부족하다: 네이티브 컴파일은 비동기라 큐에 쌓고 배치 Emacs 는
+# 기다리지 않고 바로 끝난다(실측: 배치 부팅 0초, 그동안 GUI 는 계속 컴파일 중).
+# 그래서 큐가 빌 때까지 명시적으로 기다려야 한다.
+#
+# [HARD] user-emacs-directory 를 바꾸지 말 것. .eln 캐시가 그 아래로 들어가므로,
+# 임시 디렉터리로 돌리면 예열 결과가 GUI 가 보는 곳에 남지 않아 전부 헛일이 된다.
+PREWARM_TIMEOUT="${PREWARM_TIMEOUT:-900}"   # 초. 넘으면 포기하고 안내만 남긴다.
+
+prewarm_native_compilation() {
+  local bin="$1"
+
+  if [[ "${PREWARM:-1}" != "1" ]]; then
+    log "예열 건너뜀 (PREWARM=0)"
+    return 0
+  fi
+
+  # 네이티브 컴파일이 없는 빌드(예: 현재 30.2)에서는 예열할 것이 없다.
+  if ! "$bin" -Q --batch --eval '(kill-emacs (if (native-comp-available-p) 0 1))' 2>/dev/null; then
+    log "이 빌드는 네이티브 컴파일을 지원하지 않아 예열이 필요 없습니다."
+    return 0
+  fi
+
+  log "네이티브 컴파일 예열 중 — 1회성이고 수 분 걸릴 수 있습니다 (Ctrl-C 로 중단 가능)"
+
+  # 부팅만으로는 절반만 덮인다: 배치 Emacs 는 GUI 전용 코드(폰트, treemacs 렌더링,
+  # doom-modeline, nerd-icons 등)를 로드하지 않아 그쪽 .eln 이 안 생긴다
+  # (실측: 배치 부팅 107개 vs 실제 GUI 세션 239개). 그래서 부팅으로 실제 로드
+  # 경로를 덮은 뒤, vendor/elpa 전체를 추가로 큐에 넣어 나머지를 채운다.
+  #
+  # 큐가 빌 때까지 대기. comp-files-queue / comp--async-runnings 는 Emacs 31 에서
+  # comp-run 으로 옮겨졌으므로 그쪽을 먼저 require 한다(30 에서도 무해).
+  "$bin" --batch -l "$ROOT_DIR/boot.el" --eval "
+    (progn
+      (require 'comp-run nil t)
+      (native-compile-async (list \"$ROOT_DIR/vendor/elpa\") 'recursively)
+      (let ((waited 0) (limit $PREWARM_TIMEOUT))
+        (while (and (< waited limit)
+                    (or (bound-and-true-p comp-files-queue)
+                        (and (fboundp 'comp--async-runnings)
+                             (> (comp--async-runnings) 0))))
+          (when (zerop (mod waited 15))
+            (message \"  남은 큐: %d\" (length (bound-and-true-p comp-files-queue))))
+          (sleep-for 1)
+          (setq waited (1+ waited)))
+        (if (>= waited limit)
+            (message \"  시간 초과(%ds) — 남은 분량은 다음 실행 때 이어서 컴파일됩니다.\" limit)
+          (message \"  예열 완료\"))))" 2>&1 | grep -E '남은 큐|예열 완료|시간 초과' || true
+}
+
 install_macos() {
   local url="https://emacsformacosx.com/emacs-builds/Emacs-${EMACS_VERSION}-universal.dmg"
   local dmg="$DIST_DIR/Emacs-${EMACS_VERSION}-universal.dmg"
@@ -123,6 +180,13 @@ install_macos() {
   reported="$("$app/Contents/MacOS/Emacs" --version | head -1)"
   log "설치 확인: $reported"
 
+  # 마운트를 먼저 풀고 예열한다 — 예열은 몇 분 걸릴 수 있어 그동안 디스크
+  # 이미지를 붙들고 있을 이유가 없다.
+  cleanup_mount
+  MOUNT_POINT=""
+
+  prewarm_native_compilation "$app/Contents/MacOS/Emacs"
+
   cat <<EOF
 
 설치 완료: $app
@@ -158,7 +222,24 @@ install_linux() {
   esac
 
   log "설치 확인: $(emacs --version | head -1)"
+  prewarm_native_compilation "$(command -v emacs)"
 }
+
+# --prewarm [emacs 경로] — 설치 없이 예열만 한다. 이미 깔린 Emacs 를 나중에
+# 예열하거나, 예열이 중간에 끊겼을 때 이어서 돌리는 용도.
+if [[ "${1:-}" == "--prewarm" ]]; then
+  bin="${2:-}"
+  if [[ -z "$bin" ]]; then
+    case "$(uname -s)" in
+      Darwin) bin="/Applications/Emacs-${EMACS_VERSION}.app/Contents/MacOS/Emacs" ;;
+      *)      bin="$(command -v emacs || true)" ;;
+    esac
+  fi
+  [[ -x "$bin" ]] || die "Emacs 실행 파일을 찾지 못했습니다: ${bin:-(없음)}
+경로를 직접 주세요: $0 --prewarm /경로/Emacs"
+  prewarm_native_compilation "$bin"
+  exit 0
+fi
 
 case "$(uname -s)" in
   Darwin) install_macos ;;

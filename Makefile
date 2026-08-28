@@ -26,13 +26,14 @@ GO ?= go
 DIST_DIR := .cache/dist
 
 .DEFAULT_GOAL := help
-.PHONY: help emacs-install emacs-where install grammars build fmt fmt-check lint test test-elisp test-go ci-local clean
+.PHONY: help emacs-install emacs-prewarm emacs-where install grammars build fmt fmt-check lint test test-elisp test-go ci-local clean
 
 help: ## 이 도움말
 	@echo "imoogi-emacs"
 	@echo
 	@echo "설치"
 	@echo "  make emacs-install       Emacs 본체 설치 (OS 자동 감지, 기본 $(EMACS_VERSION))"
+	@echo "  make emacs-prewarm       네이티브 컴파일 예열 (설치 시 자동, 끊겼을 때 재실행)"
 	@echo "  make emacs-where         이 머신에서 찾은 Emacs 실행 파일 나열"
 	@echo "  make install             이 저장소를 ~/.emacs.d 에 연결"
 	@echo "  make grammars            tree-sitter 문법 빌드 (온라인 전용)"
@@ -53,6 +54,9 @@ help: ## 이 도움말
 
 emacs-install: ## Emacs 본체를 설치한다 (macOS: emacsformacosx.com, Linux: 배포판 패키지)
 	@EMACS_VERSION=$(EMACS_VERSION) ./scripts/install-emacs.sh
+
+emacs-prewarm: ## 네이티브 컴파일을 미리 끝내둔다 (emacs-install 이 자동으로 하지만, 끊겼을 때 이어서)
+	@EMACS_VERSION=$(EMACS_VERSION) ./scripts/install-emacs.sh --prewarm "$(EMACS)"
 
 emacs-where: ## 이 머신에서 찾은 Emacs 실행 파일을 모두 보여준다
 	@echo "PATH:"

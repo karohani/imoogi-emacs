@@ -13,6 +13,16 @@ cd ~/workspace/imoogi-emacs
 ./scripts/install.sh
 ```
 
+Emacs 자체가 없거나 다른 버전을 나란히 두고 싶으면 `make emacs-install` 을 쓴다.
+macOS 는 [emacsformacosx.com](https://emacsformacosx.com/) 의 universal `.dmg`,
+Linux 는 배포판 패키지를 쓴다. `/Applications/Emacs.app` 을 덮어쓰지 않고
+`/Applications/Emacs-<버전>.app` 으로 따로 설치하므로 기존 버전으로 언제든 돌아갈 수 있다.
+
+```bash
+make emacs-install                    # 기본 버전
+make emacs-install EMACS_VERSION=30.2 # 버전 지정
+```
+
 스크립트는 반복 실행해도 안전하다. 기존 `~/.emacs.d/early-init.el` / `init.el` 이
 있으면 덮어쓰기 전에 타임스탬프를 붙여 백업한다(`init.el.bak.20260822185215` 형태).
 
@@ -37,6 +47,35 @@ cd ~/workspace/imoogi-emacs
 추가로 실행한다. 실행하지 않아도 에디터는 정상 동작하며 LSP 기능만 꺼진 채로 남는다.
 
 모든 패키지가 저장소 안 `vendor/elpa/` 에 동봉돼 있어, **인터넷 없이도 첫 실행부터 그대로 동작한다**(망분리/air-gap 지원).
+
+### 첫 부팅이 느린 경우 — 네이티브 컴파일
+
+새 머신이나 **새 Emacs 버전**에서 처음 띄우면 몇 분간 멎은 것처럼 느려질 수 있다.
+고장이 아니라 예정된 1회성 비용이다.
+
+`21-native-compile.el` 의 compile-angel 은 로드되는 `.el` 을 전부 컴파일하는데,
+바이트 컴파일 결과(`.elc`)는 저장소에 동봉하지만 네이티브 컴파일 결과(`.eln`)는
+**머신·버전별 캐시라 동봉하지 않는다**. 그래서 처음 한 번은 직접 만들어야 한다.
+
+- 캐시 위치: `~/.emacs.d/eln-cache/<버전키>/` — 버전마다 디렉터리가 따로 생기므로
+  Emacs 를 새 버전으로 올리면 **처음부터 다시 만든다**
+- 규모: 이 설정 기준 `.eln` 약 345개 / 30MB (실측)
+- 네트워크는 필요 없다
+
+`make emacs-install` 은 설치 직후 이 예열을 자동으로 수행한다. 중간에 끊겼거나
+이미 깔린 Emacs 를 나중에 예열하려면:
+
+```bash
+make emacs-prewarm                                     # 기본 Emacs
+make emacs-prewarm EMACS=/Applications/Emacs-31.1.app/Contents/MacOS/Emacs
+```
+
+예열은 배치 부팅으로 실제 로드 경로를 덮은 뒤 `vendor/elpa` 전체를 추가로 컴파일한다
+(배치 부팅만으로는 GUI 전용 코드가 빠져 실측 107개에 그친다). 빈 캐시 기준 약 70초,
+이미 예열된 상태에서 재실행하면 20초 안에 끝난다.
+
+네이티브 컴파일이 없는 빌드에서는 예열이 필요 없으므로 자동으로 건너뛴다
+(`native-comp-available-p` 로 판별). `PREWARM=0` 으로 끌 수도 있다.
 
 ## 테스트
 
