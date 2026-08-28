@@ -26,7 +26,7 @@ GO ?= go
 DIST_DIR := .cache/dist
 
 .DEFAULT_GOAL := help
-.PHONY: help emacs-install emacs-prewarm emacs-where install grammars build fmt fmt-check lint test test-elisp test-go ci-local clean
+.PHONY: help emacs-install emacs-prewarm emacs-where install grammars build fmt fmt-check lint test test-elisp test-go ci-local clean-elc clean
 
 help: ## 이 도움말
 	@echo "imoogi-emacs"
@@ -44,6 +44,7 @@ help: ## 이 도움말
 	@echo "  make fmt                 go fmt"
 	@echo "  make build               imoogi-toolchain CLI 빌드"
 	@echo "  make ci-local            pre-push 훅이 부르는 전체 검사"
+	@echo "  make clean-elc           modules 바이트컴파일 산출물 삭제 (버전 올린 뒤 필수)"
 	@echo "  make clean               내려받은 배포본 캐시 삭제"
 	@echo
 	@echo "변수"
@@ -100,6 +101,16 @@ test-go: ## Go 테스트
 test: test-elisp test-go ## 전체 테스트
 
 ci-local: fmt-check lint test ## pre-push 훅 진입점 — 지우지 말 것 (파일 상단 [HARD] 참고)
+
+clean-elc: ## modules 의 바이트컴파일 산출물을 지운다 (다음 부팅에 재생성)
+	@echo "지우기 전 — 어느 Emacs 가 컴파일했는지:"
+	@for f in modules/*.elc modules/lsp/*.elc; do \
+	   [ -e "$$f" ] || continue; \
+	   head -c 200 "$$f" | strings | grep -o 'in Emacs version [0-9.]*' | head -1; \
+	 done | sort | uniq -c | sed 's/^/  /' || true
+	@find modules -name '*.elc' -delete
+	@echo "== modules/**/*.elc 삭제됨 — 다음 Emacs 부팅에서 재생성됩니다"
+	@echo "   (vendor/elpa 의 .elc 는 커밋 대상이라 건드리지 않습니다)"
 
 clean: ## 내려받은 Emacs 배포본 캐시를 지운다
 	@rm -rf $(DIST_DIR)

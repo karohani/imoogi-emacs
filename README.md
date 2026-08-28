@@ -77,6 +77,35 @@ make emacs-prewarm EMACS=/Applications/Emacs-31.1.app/Contents/MacOS/Emacs
 네이티브 컴파일이 없는 빌드에서는 예열이 필요 없으므로 자동으로 건너뛴다
 (`native-comp-available-p` 로 판별). `PREWARM=0` 으로 끌 수도 있다.
 
+### Emacs 버전을 올렸다면 — `.elc` 를 먼저 지운다
+
+```bash
+make clean-elc
+```
+
+**버전을 바꿨을 때 가장 먼저 할 일이다.** `modules/*.elc` 는 `.gitignore` 대상이라
+`git status` 에 보이지 않고, 소스를 고치지 않는 한 재생성되지 않는다. 그래서 낡은
+바이트코드가 조용히 남아 새 Emacs 에서만 이상하게 동작할 수 있다.
+
+실제 사례: Emacs 31.1 을 나란히 깔았더니 `17-lsp` 와 `22-tabs` 두 모듈이
+`Symbol's value as variable is void: imoogi-transient-lsp` 로 로드에 실패했다.
+소스에는 문제가 없었고 — `.elc` 를 지우고 다시 만드니 그대로 사라졌다. 함께
+따라오던 ERT 실패 7건(테스트 수가 79 → 88 로 늘어난 것 포함)도 같은 원인이었다.
+
+`imoogi-require` 의 degradation 설계 덕에 부팅이 죽지는 않고 해당 모듈만 조용히
+빠지므로, **증상이 "LSP 가 안 켜진다" 처럼 엉뚱하게 나타난다.** 버전을 올린 뒤
+무언가 이상하면 `make clean-elc` 를 먼저 해보는 것이 가장 빠르다.
+
+`make clean-elc` 는 지우기 전에 어느 Emacs 가 컴파일했는지 먼저 보여주므로,
+섞여 있는지 확인만 하고 싶을 때도 쓸 수 있다.
+
+> 반대 방향이 더 위험하다: 새 Emacs 로 잠깐 부팅해 `.elc` 가 새 버전으로
+> 다시 컴파일되면, 평소 쓰는 옛 버전이 그 바이트코드를 읽게 된다.
+> `load-prefer-newer` 는 타임스탬프만 보고 컴파일한 버전은 보지 않는다.
+
+`vendor/elpa/**/*.elc` 는 커밋 대상(망분리 반입용)이라 `clean-elc` 가 건드리지
+않는다. 그쪽까지 새 버전으로 맞추려면 온라인 머신에서 vendoring 을 다시 돌린다.
+
 ## 테스트
 
 ```bash
