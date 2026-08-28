@@ -1,4 +1,8 @@
-;;; 22-tabs.el --- tab-bar: tmux 의 window 층 -*- lexical-binding: t; -*-
+;;; 22-tabs.el --- tab-bar: tmux 의 window 층 -*- lexical-binding: t; no-native-compile: t; -*-
+
+;; [HARD] no-native-compile: 17-lsp.el 과 같은 이유다 — Emacs 31.1 네이티브
+;; 컴파일러가 `with-eval-after-load 'imoogi-transient' + transient-define-prefix'
+;; 조합을 깨뜨려 모듈이 통째로 로드에 실패한다. 자세한 경위는 17-lsp.el 머리말 참고.
 
 ;; tmux 를 쓰던 손이 Emacs 에서 비는 자리는 "window" 하나다.
 ;;

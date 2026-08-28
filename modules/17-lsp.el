@@ -1,4 +1,15 @@
-;;; 17-lsp.el --- Eglot LSP 및 xref 공통 설정 -*- lexical-binding: t; -*-
+;;; 17-lsp.el --- Eglot LSP 및 xref 공통 설정 -*- lexical-binding: t; no-native-compile: t; -*-
+
+;; [HARD] no-native-compile: Emacs 31.1 의 네이티브 컴파일러가 이 파일의 아래쪽
+;; `with-eval-after-load 'imoogi-transient' + transient-define-prefix' 조합을
+;; 깨뜨린다. .eln 이 로드되면 모듈 전체가
+;;   Symbol's value as variable is void: imoogi-transient-lsp
+;; 로 실패하고, imoogi-require 의 degradation 때문에 이 모듈만 조용히 빠진다
+;; — 증상이 "31 에서 LSP 가 안 켜진다" 로 나타나 원인을 찾기 어렵다.
+;;
+;; 바이트 컴파일(.elc)은 멀쩡하다. 실측으로 분리했다: .eln 두 개만 지우면
+;; .elc 를 그대로 둔 채로 정상 부팅한다. 30.2 는 네이티브 컴파일이 없어 무관하며,
+;; 이 파일은 설정 배선이라 네이티브 컴파일로 얻는 성능도 없다.
 
 ;; 공통 LSP 수명주기와 xref 진입점만 관리한다. 언어별 서버 연결과
 ;; workspace 설정은 modules/lsp/*.el 에서 독립적으로 로드한다.

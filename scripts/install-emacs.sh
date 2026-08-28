@@ -81,17 +81,32 @@ prewarm_native_compilation() {
 
   log "네이티브 컴파일 예열 중 — 1회성이고 수 분 걸릴 수 있습니다 (Ctrl-C 로 중단 가능)"
 
-  # 부팅만으로는 절반만 덮인다: 배치 Emacs 는 GUI 전용 코드(폰트, treemacs 렌더링,
-  # doom-modeline, nerd-icons 등)를 로드하지 않아 그쪽 .eln 이 안 생긴다
-  # (실측: 배치 부팅 107개 vs 실제 GUI 세션 239개). 그래서 부팅으로 실제 로드
-  # 경로를 덮은 뒤, vendor/elpa 전체를 추가로 큐에 넣어 나머지를 채운다.
+  # 세 겹을 덮어야 한다. 하나라도 빠지면 "설치는 됐는데 쓰다 보면 가끔 멎는다" 가 된다.
+  #
+  #  1) 부팅 경로 — boot.el 을 실제로 로드해 이 설정이 쓰는 코드를 덮는다.
+  #  2) vendor/elpa 전체 — 배치 Emacs 는 화면이 없어 GUI 전용 코드(폰트,
+  #     treemacs 렌더링, doom-modeline, nerd-icons)를 로드하지 않으므로 부팅만으로는
+  #     절반도 안 된다(실측: 배치 107개 vs 실제 GUI 세션 239개).
+  #  3) Emacs 내장 lisp — 배포본에 .eln 이 일부만 동봉된다(31.1 실측: 314개).
+  #     나머지는 그 기능을 처음 쓰는 순간 컴파일되므로, 파일 열기 같은 걸 처음 할 때
+  #     몇 초씩 멎는다(실측: 파일 열기 한 번에 url-handlers/ewoc/log-view/kmacro/
+  #     thingatpt 등이 한꺼번에 컴파일됨). 이미 .eln 이 있는 파일은 알아서 건너뛴다.
+  #     PREWARM_CORE=0 으로 이 겹만 뺄 수 있다.
   #
   # 큐가 빌 때까지 대기. comp-files-queue / comp--async-runnings 는 Emacs 31 에서
   # comp-run 으로 옮겨졌으므로 그쪽을 먼저 require 한다(30 에서도 무해).
+  local core_form=""
+  if [[ "${PREWARM_CORE:-1}" == "1" ]]; then
+    # 내장 lisp 디렉터리는 설치 위치마다 다르므로 subr 을 기준으로 되짚는다.
+    core_form="(when-let* ((d (ignore-errors (file-name-directory (locate-library \"subr\")))))
+                 (native-compile-async (list d) 'recursively))"
+  fi
+
   "$bin" --batch -l "$ROOT_DIR/boot.el" --eval "
     (progn
       (require 'comp-run nil t)
       (native-compile-async (list \"$ROOT_DIR/vendor/elpa\") 'recursively)
+      $core_form
       (let ((waited 0) (limit $PREWARM_TIMEOUT))
         (while (and (< waited limit)
                     (or (bound-and-true-p comp-files-queue)
@@ -104,6 +119,13 @@ prewarm_native_compilation() {
         (if (>= waited limit)
             (message \"  시간 초과(%ds) — 남은 분량은 다음 실행 때 이어서 컴파일됩니다.\" limit)
           (message \"  예열 완료\"))))" 2>&1 | grep -E '남은 큐|예열 완료|시간 초과' || true
+
+  # 예열은 대상 Emacs 로 boot.el 을 실제 로드하므로, compile-angel 이 그 버전으로
+  # modules/*.elc 를 다시 만들 수 있다(실측). 평소 다른 버전을 쓴다면 옛 Emacs 가
+  # 새 바이트코드를 읽게 되므로 — load-prefer-newer 는 시각만 보고 컴파일한 버전은
+  # 보지 않는다 — 정리 방법을 알려준다.
+  warn "예열에 쓴 Emacs 로 modules/*.elc 가 다시 컴파일됐을 수 있습니다."
+  warn "평소 다른 버전을 쓰신다면: make clean-elc  (그 버전으로 한 번 띄우면 재생성)"
 }
 
 install_macos() {
