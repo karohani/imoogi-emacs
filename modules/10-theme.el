@@ -177,6 +177,26 @@ nil 이면 해상도를 보지 않고 `imoogi-font-size' 를 그대로 쓴다.
                       :background "#3f4757"
                       :weight 'normal))
 
+;;; gnus face 상속 순환 끊기
+;;
+;; gnus 를 쓰지 않아도 gnus-group 이 다른 라이브러리에 딸려 로드되면, 화면을 그릴
+;; 때마다 이 오류가 뜬다:
+;;   Face inheritance results in inheritance cycle: gnus-group-news-low
+;;
+;; 두 정의가 서로를 가리켜서 생긴다 — 각각은 멀쩡한데 합쳐지면 고리가 된다.
+;;   gnus 자체       : news-low       가 news-low-empty 를 상속
+;;   doom-themes     : news-low-empty 가 news-low       를 상속
+;;
+;; doom-themes 가 news-low 에 대해 기록해 둔 스펙은 원래
+;;   (:inherit gnus-group-mail-1 :foreground "#5B6268")
+;; 인데, 테마가 적용된 뒤에 gnus 가 로드되면서 defface 기본값이 그 자리를 덮는다.
+;; 그래서 테마의 의도대로 되돌려 놓으면 고리가 풀린다.
+;;
+;; 전체 face 576개를 훑어 순환은 이 한 쌍뿐임을 확인했다(실측) — 다른 gnus face 는
+;; 멀쩡하므로 이 한 줄로 충분하다.
+(with-eval-after-load 'gnus-group
+  (set-face-attribute 'gnus-group-news-low nil :inherit 'gnus-group-mail-1))
+
 ;;; doom-modeline — 깔끔한 모드라인
 (use-package doom-modeline
   :ensure t
