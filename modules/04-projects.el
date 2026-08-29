@@ -156,6 +156,30 @@ perspective 의 `persp-new' 는 interactive 가 아니라 메뉴에 직접 붙�
   :config
   (persp-mode 1)
   (define-key perspective-map (kbd "l") #'persp-switch-last)
+
+  ;; [HARD] 모드라인의 작업공간 표시를 클릭 불가로 만든다.
+  ;;
+  ;; perspective 는 모드라인의 작업공간 이름을 클릭하면 그리로 전환되게 해 뒀다.
+  ;; 그 처리는 클릭 지점의 문자열을 `posn-string' 으로 읽어 그대로
+  ;; `persp-switch' 에 넘기는데, 이름 하나가 나올 것을 기대한 코드다.
+  ;;
+  ;; doom-modeline 은 모드라인 조각을 하나의 문자열로 합쳐 그리므로 이름이 아니라
+  ;; 표시 전체가 넘어온다 — "main" 이 아니라 "[imoogi-emacs|main]" 이 넘어온다.
+  ;; `persp-switch' 는 없는 이름을 받으면 그 이름으로 새로 만들므로, 클릭 한 번에
+  ;; 작업공간 하나가 생기고 모드라인이 그만큼 길어진다. 다음 클릭은 그 늘어난
+  ;; 문자열을 통째로 이름으로 삼아 정확히 두 배가 된다.
+  ;;
+  ;; 실측: 클릭 12번에 이름 40,959자짜리 작업공간까지 12개가 생겼고 모드라인
+  ;; 문자열이 4,107,159자가 되어 화면을 뒤덮었다. 종료 시 상태 파일에 그대로
+  ;; 저장돼(7.8MB) 다음 부팅에도 살아남았다.
+  ;;
+  ;; 바인딩만 떼어 낸다. advice 를 걸지 않으므로 패키지 업데이트에 끌려다니지
+  ;; 않고, 클릭은 모드라인 기본 동작(창 크기 조절)으로 자연스럽게 넘어간다.
+  ;; 키보드로 전환하는 길(C-x x s / l / n / p, C-c h p)은 그대로다.
+  (dolist (map (list persp-mode-line-map persp-header-line-map))
+    (define-key map [mode-line down-mouse-1] nil)
+    (define-key map [header-line down-mouse-1] nil))
+
   (add-hook 'emacs-startup-hook #'imoogi-perspective-state-restore -50)
   (add-hook 'kill-emacs-hook #'imoogi-perspective-state-save))
 
