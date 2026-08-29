@@ -368,19 +368,20 @@ selected, close it.  Otherwise replace any custom tool window and show it."
 ;; M-0 / <s-1> / C-x t t 로 직접 연다 (imoogi-treemacs-toggle-file-tree).
 
 ;;; ------------------------------------------------------------------
-;;; 프로젝트 유일성 — 한 폴더는 한 workspace 에만
+;;; treemacs workspace 조회 도우미
 ;;;
-;;; treemacs 는 원래 중복을 허용한다: workspace 는 서로 독립적인 "뷰"라는 게
-;;; 원설계라, 같은 저장소를 여러 workspace 에 두는 것이 버그가 아니다. 그래서
-;;; 이 유일성은 treemacs 가 주는 보장이 아니라 **이 설정이 얹는 규칙**이고,
-;;; 우리가 지켜야 한다.
+;;; treemacs 는 같은 폴더가 여러 workspace 에 들어가는 것을 허용한다. workspace 는
+;;; 서로 독립적인 "뷰"라는 게 원설계이고, 한 저장소를 두 맥락에서 보는 것(예:
+;;; moai-adk 를 StockTrader 에서도, MOAI-ADK Research 에서도)은 정상적인 사용이다.
 ;;;
-;;; 규칙이 필요한 이유는 아래 perspective 연동이다. 한 프로젝트가 두 workspace 에
-;;; 걸쳐 있으면 "이 프로젝트의 workspace" 라는 질문에 답이 둘이라, 어디로 전환할지
-;;; 정할 수 없다(실측: moai-adk 가 StockTrader 와 MOAI-ADK Research 양쪽에 있었다).
-
-(defvar imoogi-treemacs-unique-projects t
-  "non-nil 이면 한 경로가 두 workspace 에 동시에 들어가는 것을 막는다.")
+;;; 한때 이 파일은 유일성을 강제했다 — 아래 연동이 "이 프로젝트의 workspace" 를
+;;; 하나로 정할 수 있게 하려던 것이었다. 그러나 그 강제는 (1) treemacs 내부 함수에
+;;; advice 를 걸어야 했고, (2) 원래 쓰던 두-맥락 구성을 못 쓰게 만들었으며,
+;;; (3) 정작 필요하지도 않았다. 작업 맥락은 perspective 가 이미 들고 있고, treemacs
+;;; 는 "지금 무엇을 보여줄까" 라는 뷰일 뿐이다.
+;;;
+;;; 대신 연동 쪽에서 애매하면 움직이지 않는다(아래 참고). 그러면 중복이 있어도
+;;; 트리가 임의로 튀지 않으므로 강제가 필요 없어진다.
 
 (defun imoogi-treemacs--canonical (path)
   "PATH 를 비교 가능한 표준형으로 바꾼다. nil 이면 nil."
@@ -404,7 +405,11 @@ selected, close it.  Otherwise replace any custom tool window and show it."
 
 (defun imoogi-treemacs-check-duplicates ()
   "두 개 이상의 workspace 에 걸친 프로젝트를 찾아 보고한다.
-advice 가 새 중복을 막아도 이미 들어 있던 것은 남으므로, 점검 수단이 따로 필요하다."
+
+중복은 금지가 아니라 정보다 — treemacs 가 허용하는 구성이고, 한 저장소를 두
+맥락에서 보려고 일부러 그렇게 두기도 한다. 다만 중복된 프로젝트는 아래 연동이
+어디로 갈지 정하지 못해 트리를 그대로 두므로, \"왜 트리가 안 따라오지\" 싶을 때
+여기서 확인하면 된다."
   (interactive)
   (let ((table (make-hash-table :test 'equal))
         (duplicates nil))
@@ -425,35 +430,12 @@ advice 가 새 중복을 막아도 이미 들어 있던 것은 남으므로, 점
           (insert (format "  %s\n      %s\n\n"
                           (abbreviate-file-name (car entry))
                           (string-join (cdr entry) " / "))))
-        (insert "정리 방법: 남길 workspace 가 아닌 쪽으로 이동한 뒤,\n"
-                "트리에서 그 프로젝트에 커서를 두고\n"
+        (insert "중복 자체는 문제가 아니다. 다만 이 프로젝트로 전환할 때는\n"
+                "연동이 어디로 갈지 정하지 못해 트리를 그대로 둔다.\n"
+                "한 곳만 남기려면 그 프로젝트에 커서를 두고\n"
                 "  M-x treemacs-remove-project-from-workspace\n")
         (goto-char (point-min))
         (display-buffer (current-buffer))))))
-
-(defun imoogi-treemacs--reject-cross-workspace (path)
-  "PATH 가 이미 다른 workspace 에 있으면 거부 사유를 돌려준다(없으면 nil).
-
-반환 형태는 `treemacs-do-add-project-to-workspace' 의 규약을 따른다.
-`duplicate-project' 대신 `invalid-path' 를 쓰는 이유가 있다 — 호출자
-(treemacs-interface.el)의 duplicate-project 가지는
-`(goto-char (treemacs-project->position duplicate))' 를 실행하는데, 다른
-workspace 의 프로젝트는 현재 버퍼에 위치가 없어 그 자체가 오류가 된다.
-invalid-path 가지는 문자열만 쓰므로 안전하다."
-  (when (and imoogi-treemacs-unique-projects path)
-    (when-let* ((others (imoogi-treemacs--workspaces-with
-                         path (ignore-errors (treemacs-current-workspace)))))
-      (list 'invalid-path
-            (format "이미 '%s' workspace 에 있습니다 — 한 폴더는 한 workspace 규칙"
-                    (string-join (mapcar #'treemacs-workspace->name others) " / "))))))
-
-;; 길목이 하나라 여기만 막으면 된다: 대화식 추가, project-follow,
-;; add-and-display-current-project 등 7개 호출 지점이 전부 이 함수를 지난다(실측).
-(define-advice treemacs-do-add-project-to-workspace
-    (:around (original path name) imoogi-unique-projects)
-  "다른 workspace 에 이미 있는 경로면 추가를 거부한다."
-  (or (imoogi-treemacs--reject-cross-workspace path)
-      (funcall original path name)))
 
 ;;; ------------------------------------------------------------------
 ;;; perspective 작업공간 → treemacs workspace 연동
@@ -481,17 +463,24 @@ invalid-path 가지는 문자열만 쓰므로 안전하다."
 (defun imoogi-treemacs-follow-perspective-maybe ()
   "현재 작업공간의 프로젝트를 담은 treemacs workspace 로 전환한다.
 
-세 경우에 아무것도 하지 않는다 — 모르면 가만히 두는 쪽이 기존 동작을 지킨다.
+전환하는 경우는 하나뿐이다 — 그 프로젝트를 담은 workspace 가 **정확히 하나**일 때.
+나머지는 전부 그대로 둔다:
   · 작업공간이 어느 프로젝트인지 알 수 없을 때
   · 지금 workspace 가 이미 그 프로젝트를 담고 있을 때
-  · 그 프로젝트를 담은 workspace 가 하나도 없을 때"
+  · 담은 workspace 가 하나도 없을 때
+  · 담은 workspace 가 여럿일 때 ← 임의로 고르지 않는다
+
+마지막 항목이 유일성 강제를 대신한다. 후보가 여럿일 때 `car' 로 아무거나 집으면
+사용자가 골라 둔 맥락을 코드가 뒤집게 되므로, 아예 움직이지 않는 쪽을 택한다.
+덕분에 한 저장소를 여러 workspace 에 두는 treemacs 본래의 구성을 그대로 쓸 수 있다."
   (when (and imoogi-treemacs-follow-perspective
              (featurep 'treemacs))
     (when-let* ((root (imoogi-treemacs--perspective-project-root))
                 (current (ignore-errors (treemacs-current-workspace))))
       (unless (imoogi-treemacs--workspace-has-p current root)
-        (when-let* ((target (car (imoogi-treemacs--workspaces-with root current))))
-          (treemacs-do-switch-workspace target))))))
+        (let ((candidates (imoogi-treemacs--workspaces-with root current)))
+          (when (= (length candidates) 1)
+            (treemacs-do-switch-workspace (car candidates))))))))
 
 (with-eval-after-load 'perspective
   (add-hook 'persp-switch-hook #'imoogi-treemacs-follow-perspective-maybe))
