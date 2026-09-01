@@ -444,7 +444,7 @@ Bookmarks와 Structure 안에서는 `g`로 새로고침하고 `q`로 닫는다.
 | `auto-package-update` | 네트워크로 자동 업데이트 → **망분리 철학과 정면 충돌**. 업데이트는 온라인 머신 vendoring 으로만. |
 | `treesit-fold` | 폴딩 패키지 추가와 문법 빌드가 필요해 기본 구성에서는 제외. 문법은 `vendor/tree-sitter/` 로 반입 가능. |
 | `inhibit-mouse` | 마우스를 끄는 동작은 과격 — 문서화만. |
-| `evil` (vim 키) | 사용자 선택으로 미사용 (treemacs-evil 의존성으로 vendor 에는 존재). |
+| `evil` / `treemacs-evil` | 의도적으로 미사용·제거했으며 vendor 에 없으므로, 쓰려면 `packages.el` 에 명시 추가 후 온라인 머신에서 재-vendoring 해야 한다. |
 | `easysession` · `quick-sdcv` · `eat` | 선택사항. 필요하면 `packages.el` 에 추가 후 재-vendoring. |
 
 위 미반영 패키지를 쓰려면 `packages.el` 의 `imoogi-required-packages` 에 추가하고 온라인 머신에서 `scripts/vendor.el` 을 재실행하면 된다.

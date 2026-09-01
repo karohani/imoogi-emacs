@@ -16,8 +16,21 @@
 
 (setq package-archives nil)
 
-(load (expand-file-name "boot.el" imoogi-test-root))
+(defvar compile-angel-excluded-path-regexps nil)
+(let ((test-root-regexp (concat "^" (regexp-quote (file-name-as-directory
+                                                    (expand-file-name imoogi-test-root))))))
+  (add-to-list 'compile-angel-excluded-path-regexps test-root-regexp))
 
+(load (expand-file-name "tests/boot-health.el" imoogi-test-root) nil t)
+(declare-function imoogi-boot-health-start-capture "boot-health")
+(declare-function imoogi-boot-health-assert "boot-health")
+(declare-function compile-angel-exclude-directory "compile-angel")
+(imoogi-boot-health-start-capture)
+(load (expand-file-name "boot.el" imoogi-test-root))
+(imoogi-boot-health-assert t)
+
+(when (fboundp 'compile-angel-exclude-directory)
+  (compile-angel-exclude-directory imoogi-test-root))
 (when (fboundp 'compile-angel-on-load-mode)
   (compile-angel-on-load-mode -1))
 
