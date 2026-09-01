@@ -140,6 +140,8 @@ PREFIX가 있으면 전체 `consult-buffer' 소스를 열어 다른 Perspective�
   (read-extended-command-predicate #'command-completion-default-include-p)
   (text-mode-ispell-word-completion nil)
   (tab-always-indent 'complete)
+  (corfu-auto t)
+  (corfu-auto-delay 0.15)
   :config
   (global-corfu-mode))
 

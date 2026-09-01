@@ -272,9 +272,13 @@ Kotlin 과 Clojure 는 Emacs 에 ts-mode 가 내장돼 있지 않아 패키지(`
 | `C-.` / `C-;` | embark-act / embark-dwim — 후보·심볼 컨텍스트 액션 |
 
 ### 버퍼 내 자동완성 (corfu / cape)
+
+프로그래밍·셸 버퍼에서는 입력 후 0.15초가 지나면 Corfu 후보 창이 자동으로 열린다.
+Eglot이 연결된 언어는 LSP 후보를 사용하고, Cape가 단어·파일 후보를 보완한다.
+
 | 키 | 동작 |
 |----|------|
-| `TAB` | 들여쓰기 또는 완성 (`tab-always-indent`) |
+| `TAB` | 자동 팝업과 별개로 들여쓰기 또는 완성을 수동 실행 (`tab-always-indent`) |
 | `C-c e` | cape 접두 맵 (dabbrev/file/elisp 등 보완) |
 
 ### LSP / 코드 탐색 (`eglot` + `xref`)
