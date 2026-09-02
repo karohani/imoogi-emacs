@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# imoogi-editor --- external-editor bridge for Claude Code and Codex
+set -euo pipefail
+
+find_emacsclient() {
+  local candidate
+
+  if [[ -n "${EMACSCLIENT:-}" ]]; then
+    if [[ ! -x "${EMACSCLIENT}" ]]; then
+      echo "imoogi-editor: EMACSCLIENT is not executable: ${EMACSCLIENT}" >&2
+      return 1
+    fi
+    printf '%s\n' "${EMACSCLIENT}"
+    return
+  fi
+
+  if candidate="$(command -v emacsclient 2>/dev/null)"; then
+    printf '%s\n' "${candidate}"
+    return
+  fi
+
+  # emacsformacosx.com installs emacsclient inside the application bundle.
+  # Keep the repository's default parallel-install version first, while
+  # allowing EMACS_VERSION to select another installed build.
+  for candidate in \
+    "/Applications/Emacs-${EMACS_VERSION:-31.1}.app/Contents/MacOS/bin/emacsclient" \
+    "/Applications/Emacs.app/Contents/MacOS/bin/emacsclient" \
+    /Applications/Emacs-*.app/Contents/MacOS/bin/emacsclient; do
+    if [[ -x "${candidate}" ]]; then
+      printf '%s\n' "${candidate}"
+      return
+    fi
+  done
+
+  echo "imoogi-editor: emacsclient not found; install Emacs or set EMACSCLIENT" >&2
+  return 1
+}
+
+emacsclient="$(find_emacsclient)"
+
+# Do not pass --no-wait: Claude Code and Codex must wait until the server
+# buffer is finished (C-x #) before reading the edited temporary file.
+exec "${emacsclient}" --create-frame "$@"

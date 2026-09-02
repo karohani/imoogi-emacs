@@ -28,6 +28,12 @@ make emacs-install EMACS_VERSION=30.2 # 버전 지정
 현재 OS와 아키텍처를 자동 감지해 호환되는 동봉 언어 서버도 함께 설치한다. 해당
 플랫폼용 bundle이 없으면 Emacs 설치는 그대로 완료하고 LSP 설치만 건너뛴다.
 
+설치기는 `~/.local/bin/imoogi-editor`도 연결하고 현재 셸의 시작 파일(zsh는
+`~/.zshrc`, bash는 `~/.bashrc`)에 `VISUAL`과 `EDITOR`를 설정한다. 새 셸에서
+Claude Code나 Codex의 `Ctrl+G`를 누르면 실행 중인 Emacs에 새 프레임이 열리며,
+저장 후 `C-x #`로 편집을 끝내면 터미널로 돌아온다. 별도 위치의 `emacsclient`를
+쓰려면 `EMACSCLIENT=/path/to/emacsclient`를 설정한다.
+
 직접 하려면 `~/.config/imoogi-emacs` 로 심볼릭 링크를 건 뒤 아래 두 파일을 만든다.
 
 `~/.emacs.d/early-init.el`:

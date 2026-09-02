@@ -84,6 +84,8 @@ install_root="${TEST_ROOT}/install"
 install_home="${TEST_ROOT}/home"
 mkdir -p "${install_root}/scripts" "${install_home}"
 cp "${PROJECT_ROOT}/scripts/install.sh" "${install_root}/scripts/install.sh"
+cp "${PROJECT_ROOT}/scripts/imoogi-editor" "${install_root}/scripts/imoogi-editor"
+printf '%s\n' 'export KEEP_ME=yes' >"${install_home}/.zshrc"
 printf '%s\n' ';;; fixture' >"${install_root}/early-init.el"
 printf '%s\n' ';;; fixture' >"${install_root}/boot.el"
 cat >"${install_root}/scripts/setup-toolchain.sh" <<'EOF'
@@ -93,13 +95,38 @@ EOF
 chmod +x "${install_root}/scripts/setup-toolchain.sh"
 
 install_log="${TEST_ROOT}/install-toolchain.log"
-HOME="${install_home}" IMOOGI_FAKE_INSTALL_LOG="${install_log}" \
+HOME="${install_home}" SHELL=/bin/zsh IMOOGI_FAKE_INSTALL_LOG="${install_log}" \
 bash "${install_root}/scripts/install.sh" >/dev/null
 [[ "$(cat "${install_log}")" == "--if-available" ]] || fail "install.sh did not auto-run optional setup"
+[[ -L "${install_home}/.local/bin/imoogi-editor" ]] || fail "external-editor wrapper was not linked"
+[[ "$(readlink "${install_home}/.local/bin/imoogi-editor")" == "${install_home}/.config/imoogi-emacs/scripts/imoogi-editor" ]] || fail "external-editor link target is wrong"
+profile="${install_home}/.zshrc"
+[[ "$(grep -Fxc '# >>> imoogi-emacs external editor >>>' "${profile}")" == "1" ]] || fail "editor block start marker is missing"
+[[ "$(grep -Fxc "export VISUAL=\"${install_home}/.local/bin/imoogi-editor\"" "${profile}")" == "1" ]] || fail "VISUAL was not configured"
+[[ "$(grep -Fxc 'export EDITOR="${VISUAL}"' "${profile}")" == "1" ]] || fail "EDITOR was not configured"
+[[ "$(grep -Fxc 'export KEEP_ME=yes' "${profile}")" == "1" ]] || fail "existing shell configuration was not preserved"
+expected_profile="${TEST_ROOT}/expected-zshrc"
+cp "${profile}" "${expected_profile}"
 
 rm -f "${install_log}"
-HOME="${install_home}" IMOOGI_FAKE_INSTALL_LOG="${install_log}" \
+HOME="${install_home}" SHELL=/bin/zsh IMOOGI_FAKE_INSTALL_LOG="${install_log}" \
 bash "${install_root}/scripts/install.sh" --without-toolchain >/dev/null
 [[ ! -e "${install_log}" ]] || fail "--without-toolchain still ran setup"
+[[ "$(grep -Fxc '# >>> imoogi-emacs external editor >>>' "${profile}")" == "1" ]] || fail "rerun duplicated the editor block"
+cmp -s "${profile}" "${expected_profile}" || fail "rerun changed an up-to-date editor block"
+
+fake_emacsclient="${TEST_ROOT}/fake-emacsclient"
+editor_log="${TEST_ROOT}/editor.log"
+cat >"${fake_emacsclient}" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >"${IMOOGI_FAKE_EDITOR_LOG}"
+EOF
+chmod +x "${fake_emacsclient}"
+EMACSCLIENT="${fake_emacsclient}" IMOOGI_FAKE_EDITOR_LOG="${editor_log}" \
+bash "${PROJECT_ROOT}/scripts/imoogi-editor" "+12:4" "/tmp/file with spaces.txt"
+[[ "$(sed -n '1p' "${editor_log}")" == "--create-frame" ]] || fail "editor did not request a graphical frame"
+[[ "$(sed -n '2p' "${editor_log}")" == "+12:4" ]] || fail "editor did not preserve the line/column argument"
+[[ "$(sed -n '3p' "${editor_log}")" == "/tmp/file with spaces.txt" ]] || fail "editor did not preserve a spaced filename"
+[[ "$(wc -l <"${editor_log}" | tr -d ' ')" == "3" ]] || fail "editor added unexpected arguments"
 
 echo "setup-toolchain tests: PASS"
