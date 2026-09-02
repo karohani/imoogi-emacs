@@ -46,6 +46,12 @@ make emacs-install EMACS_VERSION=30.2 # 버전 지정
 언어 서버(LSP)까지 쓰려면 `docs/toolchains.md` 의 `imoogi-toolchain setup` 을
 추가로 실행한다. 실행하지 않아도 에디터는 정상 동작하며 LSP 기능만 꺼진 채로 남는다.
 
+`make toolchain-setup` 또는 아래 명령으로 OS/아키텍처 경로를 자동 탐지해 setup을 바로 실행할 수 있다:
+
+```bash
+./scripts/setup-toolchain.sh setup
+```
+
 모든 패키지가 저장소 안 `vendor/elpa/` 에 동봉돼 있어, **인터넷 없이도 첫 실행부터 그대로 동작한다**(망분리/air-gap 지원).
 
 ### (선택) tmux 기본 설정

@@ -30,7 +30,7 @@ bundle은 TypeScript 6.0.3을 의도적으로 고정한다.
 모든 명령은 저장소 루트 또는 그 하위 디렉터리에서 실행할 수 있다.
 
 ```sh
-TOOL=vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain
+TOOL=./scripts/setup-toolchain.sh
 $TOOL --help
 $TOOL fetch --help
 $TOOL setup --help
@@ -59,7 +59,7 @@ $TOOL version
 3. 온라인 `darwin/arm64` 빌드 머신에서 fetch를 실행한다.
 
 ```sh
-vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain fetch
+./scripts/setup-toolchain.sh fetch
 ```
 
 CLI 자체를 변경해 새 bootstrap이 필요하면 온라인 머신의 Go로 현재 소스를 먼저
@@ -82,8 +82,8 @@ go run ./cmd/imoogi-toolchain fetch
 ## 폐쇄망 설치와 확인
 
 ```sh
-vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain setup
-vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain version
+./scripts/setup-toolchain.sh setup
+./scripts/setup-toolchain.sh version
 .local/bin/gopls version
 .local/bin/node --version
 .local/bin/tsc --version

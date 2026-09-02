@@ -46,7 +46,7 @@ cat <<'EOF'
 
 설치 완료. Emacs를 재시작하세요.
 
-(선택) 언어 서버(LSP)까지 쓰려면 저장소의 CLI로 한 번 더:
-  vendor/toolchains/cli/<version>/<os-arch>/imoogi-toolchain setup
+(선택) 언어 서버(LSP)까지 쓰려면 아래를 실행:
+  ./scripts/setup-toolchain.sh setup
 자세한 내용은 docs/toolchains.md 를 참고하세요.
 EOF
