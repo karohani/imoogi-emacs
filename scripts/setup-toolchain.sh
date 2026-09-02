@@ -1,62 +1,118 @@
 #!/usr/bin/env bash
-# setup-toolchain.sh --- run vendored imoogi-toolchain with auto path detection
-#
-# Keeps current convention: this repository ships offline artifacts under
-# vendor/toolchains/, and bootstrap is selected from toolchains.json
-# (cli_version + target).
+# setup-toolchain.sh --- locate and run the vendored toolchain bootstrap
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MANIFEST="${REPO_ROOT}/toolchains.json"
-CLI_CMD="${1:-setup}"
+LOCK_FILE="${REPO_ROOT}/toolchains.lock.json"
+CLI_COMMAND="setup"
+IF_AVAILABLE=0
+PRINT_COMMAND=0
 
-if [[ ! -f "${MANIFEST}" ]]; then
-  echo "toolchains.json not found: ${MANIFEST}" >&2
-  exit 1
-fi
+usage() {
+  cat <<'EOF'
+Usage: scripts/setup-toolchain.sh [options] [command [command-options]]
 
-extract_json_field() {
-  local file="$1"
-  local key="$2"
-  local value
-  value="$(sed -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "$file" | head -n 1)"
-  echo "$value"
+Detect this machine's OS and architecture, select the matching vendored
+imoogi-toolchain bootstrap, and run setup by default.
+
+Commands:
+  setup    Install or verify the locked language-server bundle (default)
+  version  Report desired, available, and active bundle versions
+  fetch    Fetch locked artifacts on an online build machine
+
+Options:
+      --if-available  Succeed without setup when no compatible bootstrap is bundled
+      --print-command Print the detected platform and command without changing files
+  -h, --help          Show help
+EOF
 }
 
-cli_version="$(extract_json_field "$MANIFEST" "cli_version")"
-target_os="$(extract_json_field "$MANIFEST" "os")"
-target_arch="$(extract_json_field "$MANIFEST" "arch")"
+while (($#)); do
+  case "$1" in
+    --if-available) IF_AVAILABLE=1 ;;
+    --print-command) PRINT_COMMAND=1 ;;
+    -h|--help) usage; exit 0 ;;
+    *) break ;;
+  esac
+  shift
+done
 
-if [[ -z "$cli_version" || -z "$target_os" || -z "$target_arch" ]]; then
-  echo "toolchains.json 에서 cli_version/os/arch 파싱 실패" >&2
-  echo "  manifest: $MANIFEST" >&2
-  exit 1
+if (($#)); then
+  CLI_COMMAND="$1"
+  shift
 fi
+CLI_ARGS=("$@")
+CLI_ARG_COUNT=$#
 
-toolchain_path="${REPO_ROOT}/vendor/toolchains/cli/${cli_version}/${target_os}-${target_arch}/imoogi-toolchain"
-if [[ ! -x "$toolchain_path" ]]; then
-  echo "지원되는 bootstrap binary를 찾지 못했습니다." >&2
-  echo "  expected: $toolchain_path" >&2
-  echo "  manifest target: ${target_os}/${target_arch}, cli=${cli_version}" >&2
-  echo "  toolchains.json: $MANIFEST" >&2
-  exit 1
-fi
-
-run() {
-  local command="$1"
-  shift || true
-  "$toolchain_path" "$command" "$@"
-}
-
-case "$CLI_CMD" in
-  setup|version|fetch|--help|-h|help)
-    ;;
+case "${CLI_COMMAND}" in
+  setup|version|fetch) ;;
+  help) usage; exit 0 ;;
   *)
-    echo "알 수 없는 명령입니다: $CLI_CMD" >&2
-    echo "사용: $0 [setup|version|fetch|--help]" >&2
+    echo "setup-toolchain.sh: unknown command: ${CLI_COMMAND}" >&2
+    usage >&2
     exit 2
     ;;
 esac
 
-run "$CLI_CMD"
+# Overrides keep platform selection testable. Normal installations use uname.
+uname_os="${IMOOGI_TOOLCHAIN_UNAME_S:-$(uname -s)}"
+uname_arch="${IMOOGI_TOOLCHAIN_UNAME_M:-$(uname -m)}"
 
+case "${uname_os}" in
+  Darwin|darwin) target_os="darwin" ;;
+  Linux|linux) target_os="linux" ;;
+  *) target_os="$(printf '%s' "${uname_os}" | tr '[:upper:]' '[:lower:]')" ;;
+esac
+
+case "${uname_arch}" in
+  arm64|aarch64) target_arch="arm64" ;;
+  x86_64|amd64) target_arch="amd64" ;;
+  *) target_arch="${uname_arch}" ;;
+esac
+
+platform="${target_os}-${target_arch}"
+
+if [[ ! -f "${LOCK_FILE}" ]]; then
+  echo "toolchain setup: missing ${LOCK_FILE}" >&2
+  exit 1
+fi
+
+cli_version="$(awk -F '"' '$2 == "cli_version" { print $4; exit }' "${LOCK_FILE}")"
+if [[ ! "${cli_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "toolchain setup: invalid or missing cli_version in ${LOCK_FILE}" >&2
+  exit 1
+fi
+
+cli_rel="vendor/toolchains/cli/${cli_version}/${platform}/imoogi-toolchain"
+cli_path="${REPO_ROOT}/${cli_rel}"
+
+echo "== toolchain platform: ${target_os}/${target_arch}"
+
+if [[ ! -f "${cli_path}" || ! -x "${cli_path}" || -L "${cli_path}" ]]; then
+  message="toolchain setup: no compatible vendored bootstrap: ${cli_rel}"
+  if ((IF_AVAILABLE)); then
+    echo "== ${message}; language servers skipped"
+    exit 0
+  fi
+  echo "${message}" >&2
+  exit 1
+fi
+
+if ((PRINT_COMMAND)); then
+  printf '== would run: %s %s' "${cli_rel}" "${CLI_COMMAND}"
+  if ((CLI_ARG_COUNT)); then
+    printf ' %q' "${CLI_ARGS[@]}"
+  fi
+  printf '\n'
+  exit 0
+fi
+
+echo "== running ${CLI_COMMAND} with ${cli_rel}"
+(
+  cd "${REPO_ROOT}"
+  if ((CLI_ARG_COUNT)); then
+    exec "${cli_path}" "${CLI_COMMAND}" "${CLI_ARGS[@]}"
+  else
+    exec "${cli_path}" "${CLI_COMMAND}"
+  fi
+)

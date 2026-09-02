@@ -26,7 +26,7 @@ GO ?= go
 DIST_DIR := .cache/dist
 
 .DEFAULT_GOAL := help
-.PHONY: help emacs-install emacs-prewarm emacs-where install toolchain-setup tmux-install tmux-check grammars build fmt fmt-check lint test test-elisp test-go ci-local clean-elc clean
+.PHONY: help emacs-install emacs-prewarm emacs-where install toolchain-setup tmux-install tmux-check grammars build fmt fmt-check lint test test-elisp test-go test-shell ci-local clean-elc clean
 
 help: ## 이 도움말
 	@echo "imoogi-emacs"
@@ -36,7 +36,7 @@ help: ## 이 도움말
 	@echo "  make emacs-prewarm       네이티브 컴파일 예열 (설치 시 자동, 끊겼을 때 재실행)"
 	@echo "  make emacs-where         이 머신에서 찾은 Emacs 실행 파일 나열"
 	@echo "  make install             이 저장소를 ~/.emacs.d 에 연결"
-	@echo "  make toolchain-setup     언어 서버 툴체인 vendored CLI로 setup 실행"
+	@echo "  make toolchain-setup     OS/아키텍처를 감지해 동봉 언어 서버 설치"
 	@echo "  make tmux-install        tmux 기본 설정 연결 (선택 — 안 해도 Emacs 는 동작)"
 	@echo "  make tmux-check          tmux 설정만 검사 (아무것도 바꾸지 않음)"
 	@echo "  make grammars            tree-sitter 문법 빌드 (온라인 전용)"
@@ -74,8 +74,8 @@ emacs-where: ## 이 머신에서 찾은 Emacs 실행 파일을 모두 보여준�
 install: ## 이 저장소를 ~/.emacs.d 로 연결한다
 	@./scripts/install.sh
 
-toolchain-setup: ## vendored toolchain CLI를 OS/arch 자동 탐지로 실행한다
-	@./scripts/setup-toolchain.sh setup
+toolchain-setup: ## OS/아키텍처를 감지해 호환되는 동봉 언어 서버를 설치한다
+	@./scripts/setup-toolchain.sh
 
 tmux-install: ## tmux 기본 설정을 ~/.tmux.conf 로 연결한다 (선택 사항)
 	@./scripts/install-tmux.sh
@@ -110,7 +110,10 @@ test-elisp: ## elisp 테스트 (check-parens + 오프라인 부팅 + ert)
 test-go: ## Go 테스트
 	@$(GO) test ./...
 
-test: test-elisp test-go ## 전체 테스트
+test-shell: ## 설치/플랫폼 감지 셸 테스트
+	@bash ./tests/setup-toolchain-test.sh
+
+test: test-elisp test-go test-shell ## 전체 테스트
 
 ci-local: fmt-check lint test ## pre-push 훅 진입점 — 지우지 말 것 (파일 상단 [HARD] 참고)
 

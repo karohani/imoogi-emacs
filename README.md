@@ -25,6 +25,8 @@ make emacs-install EMACS_VERSION=30.2 # 버전 지정
 
 스크립트는 반복 실행해도 안전하다. 기존 `~/.emacs.d/early-init.el` / `init.el` 이
 있으면 덮어쓰기 전에 타임스탬프를 붙여 백업한다(`init.el.bak.20260822185215` 형태).
+현재 OS와 아키텍처를 자동 감지해 호환되는 동봉 언어 서버도 함께 설치한다. 해당
+플랫폼용 bundle이 없으면 Emacs 설치는 그대로 완료하고 LSP 설치만 건너뛴다.
 
 직접 하려면 `~/.config/imoogi-emacs` 로 심볼릭 링크를 건 뒤 아래 두 파일을 만든다.
 
@@ -43,14 +45,9 @@ make emacs-install EMACS_VERSION=30.2 # 버전 지정
 이후 Emacs 를 재시작하면 첫 부팅 때 동봉 폰트가 사용자 폰트 디렉터리로 복사되고,
 다음 재시작부터 폰트가 적용된다.
 
-언어 서버(LSP)까지 쓰려면 `docs/toolchains.md` 의 `imoogi-toolchain setup` 을
-추가로 실행한다. 실행하지 않아도 에디터는 정상 동작하며 LSP 기능만 꺼진 채로 남는다.
-
-`make toolchain-setup` 또는 아래 명령으로 OS/아키텍처 경로를 자동 탐지해 setup을 바로 실행할 수 있다:
-
-```bash
-./scripts/setup-toolchain.sh setup
-```
+언어 서버 설치를 원하지 않으면 `./scripts/install.sh --without-toolchain`을 사용한다.
+나중에 별도로 설치하거나 다시 검증하려면 `make toolchain-setup`만 실행하면 된다.
+자세한 무결성·rollback 절차는 [`docs/toolchains.md`](docs/toolchains.md)를 따른다.
 
 모든 패키지가 저장소 안 `vendor/elpa/` 에 동봉돼 있어, **인터넷 없이도 첫 실행부터 그대로 동작한다**(망분리/air-gap 지원).
 
@@ -301,9 +298,10 @@ Eglot이 연결된 언어는 LSP 후보를 사용하고, Cape가 단어·파일 
 JavaScript/TypeScript, Go, Python, Rust, Clojure, Java, Kotlin 설정이 있으며,
 새 언어는 같은 폴더에 설정 파일 하나를 추가하면 `17-lsp`가 자동으로 로드한다.
 Go/TypeScript 서버는 저장소의 `vendor/toolchains/`에 고정된 artifact를 사용한다.
-온라인 머신에서는 `vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain fetch`로
+온라인 머신에서는 동봉 CLI의 `fetch`로
 `toolchains.lock.json`과 artifact를 갱신하고, 폐쇄망 타겟에서는 같은 bootstrap의
-`setup`만 실행한다. `setup`은 `.local/toolchains/<bundle>/`에 검증 후 설치하고
+`setup`만 실행한다. 일반 설치는 OS·아키텍처와 CLI 버전을 자동으로 찾아 실행하며,
+수동 재설치는 `make toolchain-setup`을 쓴다. `setup`은 `.local/toolchains/<bundle>/`에 검증 후 설치하고
 상대 symlink `.local/bin`을 활성화한다. `17-lsp`는 부팅 중 설치나 다운로드 없이
 활성 `.local/bin`이 있을 때만 `exec-path`와 `PATH` 앞에 둔다. 서버가 없어도
 메이저 모드와 xref fallback은 그대로 동작한다.

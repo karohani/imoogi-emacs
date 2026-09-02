@@ -27,7 +27,20 @@ bundle은 TypeScript 6.0.3을 의도적으로 고정한다.
 
 ## 명령 경계
 
-모든 명령은 저장소 루트 또는 그 하위 디렉터리에서 실행할 수 있다.
+일반 설치와 재설치는 플랫폼이나 CLI 버전 경로를 직접 입력하지 않는다. wrapper가
+`uname`과 `toolchains.lock.json`을 읽어 현재 머신에 맞는 동봉 bootstrap을 고른다.
+
+```sh
+./scripts/install.sh       # Emacs 연결 + 호환되는 언어 서버 자동 setup
+make toolchain-setup       # 언어 서버만 별도로 setup/재검증
+```
+
+호환 bootstrap이 동봉되지 않은 플랫폼에서 `install.sh`은 Emacs 연결을 완료하고
+언어 서버만 건너뛴다. `make toolchain-setup`은 이 경우 실패하므로 반입 누락을
+명확하게 확인할 수 있다. 언어 서버가 필요 없으면
+`./scripts/install.sh --without-toolchain`을 사용한다.
+
+낮은 수준의 CLI 명령은 저장소 루트 또는 그 하위 디렉터리에서 실행할 수 있다.
 
 ```sh
 TOOL=./scripts/setup-toolchain.sh
@@ -82,7 +95,7 @@ go run ./cmd/imoogi-toolchain fetch
 ## 폐쇄망 설치와 확인
 
 ```sh
-./scripts/setup-toolchain.sh setup
+make toolchain-setup
 ./scripts/setup-toolchain.sh version
 .local/bin/gopls version
 .local/bin/node --version
