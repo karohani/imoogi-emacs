@@ -42,6 +42,16 @@ const (
 	CodeStateUnreadable           = "state_unreadable"
 	CodeDeleteSuppressed          = "delete_suppressed"
 	CodeDeleteCandidateUnowned    = "delete_candidate_unowned"
+
+	// The card-styling SPEC's own codes (design.md §5). They are declared
+	// with the client surface they describe rather than with the milestones
+	// that first raise them, because the front end's code-to-message table
+	// and its contract test are keyed on this constant set: a code added
+	// later than its table entry, or earlier, breaks the pairing either way.
+	CodeModelInstallFailed = "model_install_failed"
+	CodeMediaFileNotFound  = "media_file_not_found"
+	CodeMediaUploadFailed  = "media_upload_failed"
+	CodeMigrationAddFailed = "migration_add_failed"
 )
 
 // Request is the document the front end writes to the binary's stdin.

@@ -51,7 +51,15 @@
     ("delete_suppressed" .
      "Deletion was suppressed for this run because a safety check could not be completed -- either the scan of the sync root was incomplete, or Anki could not confirm the notes that were candidates for removal. Nothing was deleted.")
     ("delete_candidate_unowned" .
-     "A note that looked like an orphan was skipped rather than deleted, because its content in Anki no longer matches what imoogi last recorded for it. Review it by hand if it should be removed."))
+     "A note that looked like an orphan was skipped rather than deleted, because its content in Anki no longer matches what imoogi last recorded for it. Review it by hand if it should be removed.")
+    ("model_install_failed" .
+     "imoogi's own note types could not be installed or brought up to date in Anki. Your notes were left untouched. Confirm Anki is running and responsive, then run the sync again; if it keeps failing, check whether a note type whose name begins with `imoogi-' was edited by hand in Anki (Tools -> Manage Note Types) and restore or delete it.")
+    ("media_file_not_found" .
+     "An image referenced by this entry could not be read, so the entry was skipped. Either the file does not exist at the path the entry names, it sits outside the configured sync root, or it is not readable. Check the link in the Org entry, and move the image inside the sync root if it lives elsewhere.")
+    ("media_upload_failed" .
+     "An image was found and readable, but Anki would not accept it into the collection's media folder. Nothing was written for this entry. Confirm Anki is running and has space for the file, then run the sync again.")
+    ("migration_add_failed" .
+     "A note being migrated to imoogi's own note type could not be recreated in Anki, so the migration was abandoned for it. The original note, its registry record, and the Org heading were all left exactly as they were -- nothing was lost. Confirm Anki is responsive and run the migration again."))
   "plan.md D-5's code -> user-facing message table (REQ-018).
 
 Every value names the missing prerequisite or the problem and states a

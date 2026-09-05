@@ -19,10 +19,16 @@
     "note_id_duplicated"
     "state_unreadable"
     "delete_suppressed"
-    "delete_candidate_unowned")
-  "The `Code...' string constants internal/protocol/protocol.go declares
-today (lines 31-42 there, as of this writing) -- hardcoded here because
-this suite has no Go parser available.
+    "delete_candidate_unowned"
+    "model_install_failed"
+    "media_file_not_found"
+    "media_upload_failed"
+    "migration_add_failed")
+  "The `Code...' string constants internal/anki/protocol/protocol.go
+declares today -- hardcoded here because this suite has no Go parser
+available.  The last four are the card-styling SPEC's own codes
+(design.md SS 5), declared alongside the AnkiConnect client surface they
+describe rather than with the milestones that first raise them.
 `imoogi-error-test-codes-match-source-file' below cross-checks this
 list against the actual source file by regexp, so drift between the
 two is caught as a test failure rather than silently assumed away.

@@ -53,6 +53,16 @@ type AnkiConnector interface {
 	NotesInfo(ctx context.Context, noteIDs []int) ([]NoteInfo, error)
 	ChangeDeck(ctx context.Context, cardIDs []int, deck string) error
 	DeleteNotes(ctx context.Context, noteIDs []int) error
+
+	// The note-type and media surface (design.md §8.1). These five exist so
+	// the install step and the media pass have something to drive; no
+	// synchronization path calls any of them, and acceptance.md AC-C-003a
+	// asserts that as a standing property of every sync run.
+	ModelNames(ctx context.Context) ([]string, error)
+	CreateModel(ctx context.Context, name string, inOrderFields []string, css string, isCloze bool, templates []CardTemplate) error
+	UpdateModelStyling(ctx context.Context, name, css string) error
+	UpdateModelTemplates(ctx context.Context, name string, templates []CardTemplate) error
+	StoreMediaFile(ctx context.Context, filename, absPath string) (string, error)
 }
 
 var _ AnkiConnector = (*Client)(nil)
@@ -357,4 +367,136 @@ func (c *Client) ChangeDeck(ctx context.Context, cardIDs []int, deck string) err
 func (c *Client) DeleteNotes(ctx context.Context, noteIDs []int) error {
 	_, err := c.call(ctx, "deleteNotes", map[string]any{"notes": noteIDs})
 	return err
+}
+
+// CardTemplate is one card template of a note type: the template's own name
+// plus its two sides. The JSON field names are capitalized because
+// AnkiConnect's createModel expects them that way — this is the add-on's own
+// casing, not Go's exported-field casing leaking onto the wire (design.md
+// §8.1).
+type CardTemplate struct {
+	Name  string `json:"Name"`
+	Front string `json:"Front"`
+	Back  string `json:"Back"`
+}
+
+// ModelNames lists every note type in the collection (action "modelNames").
+// The install step probes with this to decide, per note type, between the
+// absent branch (createModel) and the present branch (updateModelStyling +
+// updateModelTemplates) — REQ-C-002.
+func (c *Client) ModelNames(ctx context.Context) ([]string, error) {
+	raw, err := c.call(ctx, "modelNames", nil)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	if err := json.Unmarshal(raw, &names); err != nil {
+		return nil, &ProtocolError{Op: "modelNames", Body: string(raw), Err: err}
+	}
+	return names, nil
+}
+
+type createModelParams struct {
+	ModelName     string         `json:"modelName"`
+	InOrderFields []string       `json:"inOrderFields"`
+	CSS           string         `json:"css"`
+	IsCloze       bool           `json:"isCloze"`
+	CardTemplates []CardTemplate `json:"cardTemplates"`
+}
+
+// CreateModel creates a note type (action "createModel"). Its parameters are
+// flat, and cardTemplates is an ARRAY of templates each carrying its own
+// Name — deliberately unlike UpdateModelTemplates below, whose templates are
+// an object keyed by card name (design.md §8.1).
+func (c *Client) CreateModel(ctx context.Context, name string, inOrderFields []string, css string, isCloze bool, templates []CardTemplate) error {
+	if inOrderFields == nil {
+		inOrderFields = []string{}
+	}
+	if templates == nil {
+		templates = []CardTemplate{}
+	}
+	_, err := c.call(ctx, "createModel", createModelParams{
+		ModelName:     name,
+		InOrderFields: inOrderFields,
+		CSS:           css,
+		IsCloze:       isCloze,
+		CardTemplates: templates,
+	})
+	return err
+}
+
+type updateModelStylingParams struct {
+	Model updateModelStylingBody `json:"model"`
+}
+
+type updateModelStylingBody struct {
+	Name string `json:"name"`
+	CSS  string `json:"css"`
+}
+
+// UpdateModelStyling replaces a note type's stylesheet (action
+// "updateModelStyling"; params.model = {name, css}). Styling is
+// per-note-type, so this touches no other type's appearance and never the
+// collection-wide styling — the ownership scoping AC-C-003b asserts.
+func (c *Client) UpdateModelStyling(ctx context.Context, name, css string) error {
+	_, err := c.call(ctx, "updateModelStyling", updateModelStylingParams{
+		Model: updateModelStylingBody{Name: name, CSS: css},
+	})
+	return err
+}
+
+type updateModelTemplatesParams struct {
+	Model updateModelTemplatesBody `json:"model"`
+}
+
+type updateModelTemplatesBody struct {
+	Name      string                  `json:"name"`
+	Templates map[string]templateSide `json:"templates"`
+}
+
+// templateSide is one card template's two sides WITHOUT its name — the name
+// is the map key in updateModelTemplates' request, so carrying it in the
+// value too would put it on the wire twice.
+type templateSide struct {
+	Front string `json:"Front"`
+	Back  string `json:"Back"`
+}
+
+// UpdateModelTemplates replaces a note type's card templates (action
+// "updateModelTemplates"; params.model = {name, templates{cardName:{Front,
+// Back}}}). The templates are an OBJECT keyed by card name here, whereas
+// CreateModel sends an ARRAY — the two shapes genuinely differ in
+// AnkiConnect and must not be unified behind one serializer (design.md §8.1).
+func (c *Client) UpdateModelTemplates(ctx context.Context, name string, templates []CardTemplate) error {
+	byName := make(map[string]templateSide, len(templates))
+	for _, tpl := range templates {
+		byName[tpl.Name] = templateSide{Front: tpl.Front, Back: tpl.Back}
+	}
+	_, err := c.call(ctx, "updateModelTemplates", updateModelTemplatesParams{
+		Model: updateModelTemplatesBody{Name: name, Templates: byName},
+	})
+	return err
+}
+
+type storeMediaFileParams struct {
+	Filename string `json:"filename"`
+	Path     string `json:"path"`
+}
+
+// StoreMediaFile copies a local file into the collection's media folder
+// (action "storeMediaFile") and returns the filename Anki actually stored,
+// which need not equal the requested one. The action accepts data (base64),
+// path, or url; path is used, so a local file needs no base64 encoding
+// (design.md §8.1). absPath must be a local absolute path — confining it to
+// the sync root is the caller's responsibility (REQ-C-012, REQ-C-015).
+func (c *Client) StoreMediaFile(ctx context.Context, filename, absPath string) (string, error) {
+	raw, err := c.call(ctx, "storeMediaFile", storeMediaFileParams{Filename: filename, Path: absPath})
+	if err != nil {
+		return "", err
+	}
+	var stored string
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return "", &ProtocolError{Op: "storeMediaFile", Body: string(raw), Err: err}
+	}
+	return stored, nil
 }

@@ -365,6 +365,26 @@ func TestErrorCodeConstantsMatchWireStrings(t *testing.T) {
 	}
 }
 
+// design.md §5 — the four codes the note-type install, media, and migration
+// paths emit. The constants land in M1 with the client surface they describe,
+// ahead of the milestones that raise them, because the Elisp table and its
+// contract test are keyed on the constant set rather than on its use.
+func TestCardSPECErrorCodeConstantsMatchWireStrings(t *testing.T) {
+	for _, tt := range []struct {
+		got  string
+		want string
+	}{
+		{protocol.CodeModelInstallFailed, "model_install_failed"},
+		{protocol.CodeMediaFileNotFound, "media_file_not_found"},
+		{protocol.CodeMediaUploadFailed, "media_upload_failed"},
+		{protocol.CodeMigrationAddFailed, "migration_add_failed"},
+	} {
+		if tt.got != tt.want {
+			t.Errorf("code = %q, want %q", tt.got, tt.want)
+		}
+	}
+}
+
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
