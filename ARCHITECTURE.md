@@ -104,6 +104,11 @@ boot.el의 `dolist`에서 정의된 순서대로 로딩된다. 의존성이 있�
 19. **19-folding** — kirigami, outline-indent, 내장 outline/hs-minor
 20. **20-terminal** — ghostel + ghostel-ime (모듈은 vendor/ghostel-module/ 동봉)
 21. **21-native-compile** — compile-angel (소급 컴파일하므로 마지막)
+22. **22-tabs** — tab-bar 기반 tmux window 대응
+24. **24-anki** — Org → Anki 단방향 동기화
+25. **25-flashcards** — Anki 미설치 폐쇄망용 Emacs-native flashcard fallback.
+    Org의 `IMOOGI_FLASHCARD_ID`/`IMOOGI_FLASHCARD_KIND`가 source of truth이고,
+    SQLite는 projection, review state, immutable review log만 보관한다.
 
 언어별 LSP 설정은 `modules/lsp/` 아래의 이름 기반 파일로 분리한다. `17-lsp`가
 `*.el`을 정렬해 자동 로드하고 각 파일의 실패를 격리하므로, 새 언어는

@@ -155,6 +155,7 @@
                    ("T" . imoogi-transient-tab)
                    ("a" . imoogi-anki-transient)
                    ("c" . imoogi-transient-code)
+                   ("f" . imoogi-flashcards-transient)
                    ("g" . imoogi-transient-git)
                    ("l" . imoogi-transient-lsp)
                    ("p" . imoogi-transient-project)
@@ -194,6 +195,42 @@
     (org-mode)
     (let ((keys (org-buffer-property-keys nil t t)))
       (dolist (name imoogi-anki-property-names)
+        (should (member name keys))))))
+
+;;; 모듈이 스스로 등록한 로컬 flashcards 메뉴 (modules/25-flashcards.el)
+
+(ert-deftest imoogi-transient-flashcards-is-registered-on-master ()
+  (should (eq (plist-get (cdr (transient-get-suffix 'imoogi-transient-master "f"))
+                         :command)
+              #'imoogi-flashcards-transient))
+  (should (eq (imoogi-test--dispatch 'imoogi-transient-master
+                                      'imoogi-flashcards-transient)
+              #'transient--do-stack)))
+
+(ert-deftest imoogi-flashcards-prefix-map-is-bound-in-org-buffers ()
+  "C-c f 접두 맵이 org-mode-map 에 붙어 있고, Anki 의 C-c a 는 그대로 둔다."
+  (require 'org)
+  (should (eq (lookup-key org-mode-map (kbd "C-c a")) imoogi-anki-map))
+  (should (eq (lookup-key org-mode-map (kbd "C-c f")) imoogi-flashcards-map))
+  (dolist (pair '(("b" . imoogi-flashcards-mark-basic)
+                  ("c" . imoogi-flashcards-mark-cloze)
+                  ("x" . imoogi-flashcards-unmark)
+                  ("z" . imoogi-flashcards-cloze-region)
+                  ("s" . imoogi-flashcards-sync-buffer)
+                  ("S" . imoogi-flashcards-sync-root)
+                  ("r" . imoogi-flashcards-review)
+                  ("f" . imoogi-flashcards-transient)))
+    (should (eq (lookup-key imoogi-flashcards-map (kbd (car pair)))
+                (cdr pair)))))
+
+(ert-deftest imoogi-flashcards-property-names-are-completion-candidates ()
+  "C-c C-x p 의 이름 후보에 IMOOGI_FLASHCARD_* 가 들어 있다."
+  (require 'org)
+  (with-temp-buffer
+    (org-mode)
+    (let ((keys (org-buffer-property-keys nil t t)))
+      (dolist (name (list imoogi-flashcards-id-property
+                          imoogi-flashcards-kind-property))
         (should (member name keys))))))
 
 ;;; 모듈이 스스로 등록한 LSP 메뉴 (modules/17-lsp.el)

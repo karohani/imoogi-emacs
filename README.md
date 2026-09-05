@@ -445,6 +445,7 @@ Bookmarks와 Structure 안에서는 `g`로 새로고침하고 `q`로 닫는다.
 | `19-folding` | kirigami · outline-indent (+내장 outline/hs-minor) | 코드 폴딩 (`C-c z` 접두) |
 | `20-terminal` | ghostel (+ghostel-ime) | libghostty-vt 터미널 (`C-c t`). 모듈은 vendor 동봉, S-SPC 한글 동작 |
 | `21-native-compile` | compile-angel | 로드 시 바이트/네이티브 컴파일 |
+| `25-flashcards` | SQLite · Org (Emacs 내장) | Anki 미설치 폐쇄망용 로컬 flashcard fallback (`C-c f`) |
 | `00-defaults` | (내장) | 상대 줄번호, 줄:열 표시, treesit 레벨4, pixel-scroll, fringe |
 
 ### 이미 반영돼 있던 추천 (중복 도입 안 함)
