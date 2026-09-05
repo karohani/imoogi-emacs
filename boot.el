@@ -87,7 +87,10 @@ tests/assert-boot.el 이 이 값을 설치 검증의 판정 근거로 쓴다.")
                   "22-tabs"
                   ;; Anki 동기화는 14-org 에 의존한다. 23-org-preview 와 같은
                   ;; 이유로 기존 번호를 건드리지 않고 뒤에 붙인다.
-                  "24-anki"))
+                  "24-anki"
+                  ;; Anki 가 없는 폐쇄망용 Emacs-native flashcard fallback.
+                  ;; 24-anki 와 상태를 공유하지 않고, sqlite 가 없으면 이 모듈만 건너뛴다.
+                  "25-flashcards"))
   (condition-case err
       (load (expand-file-name (concat "modules/" module) imoogi-emacs-dir))
     (error
