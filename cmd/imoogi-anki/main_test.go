@@ -488,6 +488,16 @@ type wireRecorder struct {
 	deckName   string
 	fields     map[string]string
 	tags       []string
+
+	// models is the stub collection's note-type name set, answered by
+	// modelNames. It is seeded per test so the install step's probe-then-act
+	// branch can be driven from either side.
+	//
+	// It must be answered EXPLICITLY rather than left to the default arm: the
+	// default returns a null result, which unmarshals into a []string as nil
+	// with no error, so an untaught stub would silently look like an empty
+	// collection and the absent branch would pass by accident.
+	models []string
 }
 
 func newWireRecorder(assignedID int) *wireRecorder {
@@ -592,6 +602,29 @@ func (w *wireRecorder) answer(t *testing.T, action string, params json.RawMessag
 			t.Fatalf("modelFieldNames: unexpected model %q", p.ModelName)
 			return nil
 		}
+
+	case "modelNames":
+		if w.models == nil {
+			return []string{}
+		}
+		return append([]string(nil), w.models...)
+
+	case "createModel":
+		// The created type joins the collection, so a second install against
+		// this same stub observes it and takes the update branch — the shape
+		// REQ-C-002.2's idempotence claim actually rests on.
+		var p struct {
+			ModelName string `json:"modelName"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			t.Errorf("stub: createModel params are not the documented shape: %v\ngot: %s", err, params)
+			return nil
+		}
+		w.models = append(w.models, p.ModelName)
+		return map[string]any{"id": 1234567890, "name": p.ModelName}
+
+	case "updateModelStyling", "updateModelTemplates":
+		return nil
 
 	case "addNote":
 		var p struct {

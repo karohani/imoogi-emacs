@@ -103,6 +103,29 @@ type Entry struct {
 	Body string `json:"body"`
 }
 
+// InstallRequest is the document the front end writes to the install-models
+// subcommand's stdin (spec.md §2 "Install request document", design.md §6).
+// It is a NEW document rather than a field added to Request, which is what
+// keeps REQ-C-018's wire-stability clause true: the sync request and response
+// documents gain nothing and Version is unchanged.
+//
+// The response side is deliberately NOT new — install-models answers with the
+// existing Response, one Result per note type, so the front end's existing
+// response reader and diagnostic table need no second shape.
+//
+// The endpoint key is spelled anki_connect_url, matching Config's spelling of
+// the same value since the parent SPEC. design.md §6 sketches it as
+// ankiconnect_url; that is read as a typo rather than as a second spelling,
+// because one value carrying two spellings on one wire is itself the defect.
+type InstallRequest struct {
+	ProtocolVersion int    `json:"protocol_version"`
+	AnkiConnectURL  string `json:"anki_connect_url"`
+	// UserCSS is the user stylesheet's contents, or the empty string when no
+	// such file exists (REQ-C-008). The Go binary reads no stylesheet from
+	// disk itself; the front end is the only reader.
+	UserCSS string `json:"user_css"`
+}
+
 // Response is the document the binary writes to stdout.
 type Response struct {
 	ProtocolVersion int      `json:"protocol_version"`

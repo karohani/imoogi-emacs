@@ -12,6 +12,7 @@ import (
 	"os"
 
 	"github.com/karohani/imoogi-emacs/internal/anki/ankiconnect"
+	"github.com/karohani/imoogi-emacs/internal/anki/model"
 	"github.com/karohani/imoogi-emacs/internal/anki/planner"
 	"github.com/karohani/imoogi-emacs/internal/anki/protocol"
 	"github.com/karohani/imoogi-emacs/internal/anki/registry"
@@ -19,11 +20,17 @@ import (
 
 const version = "imoogi version 0.1.0-dev"
 
+// install-models is deliberately listed here but is not a documented user
+// entry point (design.md §6). Installation rides imoogi-anki-setup, so a user
+// following the existing setup instructions ends up with the models
+// installed; the Go binary still needs a verb to dispatch on, and it is named
+// for what it does.
 const usage = `usage: imoogi <command>
 
 commands:
-  sync        read a JSON request document on stdin, write a JSON response on stdout
-  --version   print the version and exit
+  sync             read a JSON request document on stdin, write a JSON response on stdout
+  install-models   read an install request document on stdin, install imoogi's note types
+  --version        print the version and exit
 `
 
 func main() {
@@ -52,6 +59,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	case "sync":
 		return runSync(stdin, stdout, stderr)
+	case "install-models":
+		return runInstall(stdin, stdout, stderr)
 	default:
 		_, _ = fmt.Fprintf(stderr, "imoogi: unknown command %q\n\n%s", args[0], usage)
 		return 2
@@ -65,30 +74,8 @@ func runSync(stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	// The version is probed before the body is decoded, because the case this
-	// field exists for is a request whose shape this binary does not know: a
-	// full decode would fail on the shape and never reach the comparison.
-	var probe struct {
-		ProtocolVersion int `json:"protocol_version"`
-	}
-	if err := json.Unmarshal(raw, &probe); err != nil {
-		_, _ = fmt.Fprintf(stderr, "imoogi: request could not be decoded: %v\n", err)
-		return 1
-	}
-
-	if probe.ProtocolVersion != protocol.Version {
-		resp := newResponse(false)
-		resp.Errors = append(resp.Errors, protocol.Error{
-			Code: protocol.CodeBinaryIncompatible,
-			Message: fmt.Sprintf(
-				"request protocol_version %d, binary speaks %d",
-				probe.ProtocolVersion, protocol.Version),
-			Key: nil,
-		})
-		if err := writeResponse(stdout, resp); err != nil {
-			_, _ = fmt.Fprintf(stderr, "imoogi: response could not be written: %v\n", err)
-		}
-		return 1
+	if code, ok := probeProtocolVersion(raw, stdout, stderr); !ok {
+		return code
 	}
 
 	var req protocol.Request
@@ -133,6 +120,98 @@ func runSync(stdin io.Reader, stdout, stderr io.Writer) int {
 	resp.Errors = append(resp.Errors, errs...)
 	if err := writeResponse(stdout, resp); err != nil {
 		_, _ = fmt.Fprintf(stderr, "imoogi: response could not be written: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+// probeProtocolVersion reads only the protocol_version field of a request
+// document and compares it against the version this binary speaks. It returns
+// the exit code to use and whether the caller may proceed.
+//
+// The version is probed before the body is decoded, because the case this
+// field exists for is a request whose shape this binary does not know: a full
+// decode would fail on the shape and never reach the comparison. Both
+// subcommands' request documents carry the field at the same place and for
+// the same reason, so both probe through here — a second copy of this logic
+// is how the two would silently drift apart.
+func probeProtocolVersion(raw []byte, stdout, stderr io.Writer) (int, bool) {
+	var probe struct {
+		ProtocolVersion int `json:"protocol_version"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		_, _ = fmt.Fprintf(stderr, "imoogi: request could not be decoded: %v\n", err)
+		return 1, false
+	}
+	if probe.ProtocolVersion != protocol.Version {
+		resp := newResponse(false)
+		resp.Errors = append(resp.Errors, protocol.Error{
+			Code: protocol.CodeBinaryIncompatible,
+			Message: fmt.Sprintf(
+				"request protocol_version %d, binary speaks %d",
+				probe.ProtocolVersion, protocol.Version),
+			Key: nil,
+		})
+		if err := writeResponse(stdout, resp); err != nil {
+			_, _ = fmt.Fprintf(stderr, "imoogi: response could not be written: %v\n", err)
+		}
+		return 1, false
+	}
+	return 0, true
+}
+
+// runInstall is the install step's process boundary (design.md §6): read one
+// install request document on stdin, install imoogi's two note types, write
+// one response document on stdout.
+//
+// It reads no stylesheet from disk. The user stylesheet arrives as text in
+// the request; the front end is its only reader (REQ-C-008).
+//
+// The ownership announcement (REQ-C-002.3) goes to STDERR, because stdout
+// carries the response document and nothing else — the same invariant every
+// diagnostic in this file observes.
+func runInstall(stdin io.Reader, stdout, stderr io.Writer) int {
+	raw, err := io.ReadAll(stdin)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "imoogi: request could not be read: %v\n", err)
+		return 1
+	}
+
+	if code, ok := probeProtocolVersion(raw, stdout, stderr); !ok {
+		return code
+	}
+
+	var req protocol.InstallRequest
+	if err := json.Unmarshal(raw, &req); err != nil {
+		_, _ = fmt.Fprintf(stderr, "imoogi: request could not be decoded: %v\n", err)
+		return 1
+	}
+
+	ctx := context.Background()
+
+	// The same handshake runSync performs, for the same reason and with the
+	// same two codes: an unreachable endpoint and a host that answers without
+	// being AnkiConnect are distinguishable only here, before any other
+	// request is attempted. The install step is not where a second
+	// unreachability taxonomy gets invented.
+	client := ankiconnect.NewClient(req.AnkiConnectURL, nil)
+	if err := client.Handshake(ctx); err != nil {
+		return failRun(stdout, stderr, handshakeErrorCode(err), err.Error())
+	}
+
+	results, errs := model.Install(ctx, client, req.UserCSS, stderr)
+
+	// ok is false only when NOTHING could be installed. One type failing
+	// while the other succeeds is a partial success the front end can act on,
+	// not a failed run.
+	resp := newResponse(len(results) > 0)
+	resp.Results = append(resp.Results, results...)
+	resp.Errors = append(resp.Errors, errs...)
+	if err := writeResponse(stdout, resp); err != nil {
+		_, _ = fmt.Fprintf(stderr, "imoogi: response could not be written: %v\n", err)
+		return 1
+	}
+	if !resp.OK {
 		return 1
 	}
 	return 0
