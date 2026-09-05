@@ -153,6 +153,7 @@
   (should (equal (imoogi-test--layout-bindings 'imoogi-transient-master)
                  '(("R" . imoogi-reload)
                    ("T" . imoogi-transient-tab)
+                   ("a" . imoogi-anki-transient)
                    ("c" . imoogi-transient-code)
                    ("g" . imoogi-transient-git)
                    ("l" . imoogi-transient-lsp)
@@ -161,6 +162,39 @@
                    ("t" . imoogi-treemacs-toggle-file-tree)
                    ("w" . imoogi-transient-window)
                    ("z" . imoogi-transient-zoom)))))
+
+;;; 모듈이 스스로 등록한 Anki 메뉴 (modules/24-anki.el)
+
+(ert-deftest imoogi-transient-anki-is-registered-on-master ()
+  (should (eq (plist-get (cdr (transient-get-suffix 'imoogi-transient-master "a"))
+                         :command)
+              #'imoogi-anki-transient))
+  (should (eq (imoogi-test--dispatch 'imoogi-transient-master 'imoogi-anki-transient)
+              #'transient--do-stack)))
+
+(ert-deftest imoogi-anki-prefix-map-is-bound-in-org-buffers ()
+  "C-c a 접두 맵이 org-mode-map 에 붙어 있고, 각 키가 의도한 명령을 가리킨다."
+  (require 'org)
+  (should (eq (lookup-key org-mode-map (kbd "C-c a")) imoogi-anki-map))
+  (dolist (pair '(("b" . imoogi-anki-mark-basic)
+                  ("c" . imoogi-anki-mark-cloze)
+                  ("x" . imoogi-anki-unmark)
+                  ("d" . imoogi-anki-set-deck)
+                  ("t" . imoogi-anki-set-tags)
+                  ("z" . imoogi-anki-cloze-region)
+                  ("s" . imoogi-sync)
+                  ("a" . imoogi-anki-transient)))
+    (should (eq (lookup-key imoogi-anki-map (kbd (car pair))) (cdr pair)))))
+
+(ert-deftest imoogi-anki-property-names-are-completion-candidates ()
+  "C-c C-x p 의 이름 후보에 ANKI_* 가 들어 있다.
+등록하지 않으면 버퍼에 이미 쓰인 프로퍼티만 후보로 나온다(실측)."
+  (require 'org)
+  (with-temp-buffer
+    (org-mode)
+    (let ((keys (org-buffer-property-keys nil t t)))
+      (dolist (name imoogi-anki-property-names)
+        (should (member name keys))))))
 
 ;;; 모듈이 스스로 등록한 LSP 메뉴 (modules/17-lsp.el)
 

@@ -25,8 +25,12 @@ EMACS ?= $(shell command -v emacs 2>/dev/null || echo /Applications/Emacs.app/Co
 GO ?= go
 DIST_DIR := .cache/dist
 
+# Org→Anki 백엔드 바이너리 설치 위치. 24-anki.el 은 이 바이너리를
+# `exec-path' 에서 이름으로 찾으므로, 여기가 PATH 에 있어야 한다.
+ANKI_PREFIX ?= $(HOME)/.local/bin
+
 .DEFAULT_GOAL := help
-.PHONY: help emacs-install emacs-prewarm emacs-where install toolchain-setup tmux-install tmux-check grammars build fmt fmt-check lint test test-elisp test-go test-shell ci-local clean-elc clean
+.PHONY: help emacs-install emacs-prewarm emacs-where install toolchain-setup tmux-install tmux-check grammars build build-anki fmt fmt-check lint test test-elisp test-go test-shell ci-local clean-elc clean
 
 help: ## 이 도움말
 	@echo "imoogi-emacs"
@@ -46,6 +50,7 @@ help: ## 이 도움말
 	@echo "  make lint                go vet"
 	@echo "  make fmt                 go fmt"
 	@echo "  make build               imoogi-toolchain CLI 빌드"
+	@echo "  make build-anki          Org→Anki 백엔드를 $(ANKI_PREFIX) 에 설치"
 	@echo "  make ci-local            pre-push 훅이 부르는 전체 검사"
 	@echo "  make clean-elc           modules 바이트컴파일 산출물 삭제 (버전 올린 뒤 필수)"
 	@echo "  make clean               내려받은 배포본 캐시 삭제"
@@ -90,6 +95,15 @@ grammars: ## tree-sitter 문법을 vendor/tree-sitter/ 로 빌드한다 (온라�
 
 build: ## imoogi-toolchain CLI 를 빌드한다
 	@$(GO) build ./...
+
+build-anki: ## Org→Anki 백엔드 바이너리를 ANKI_PREFIX 에 설치한다
+	@mkdir -p "$(ANKI_PREFIX)"
+	@$(GO) build -o "$(ANKI_PREFIX)/imoogi-anki" ./cmd/imoogi-anki
+	@echo "설치됨: $(ANKI_PREFIX)/imoogi-anki"
+	@case ":$$PATH:" in \
+	  *":$(ANKI_PREFIX):"*) echo "PATH 에 이미 포함돼 있다 — 24-anki.el 이 바로 찾는다." ;; \
+	  *) echo "주의: $(ANKI_PREFIX) 가 PATH 에 없다. PATH 에 넣거나 (setq imoogi-binary-path \"$(ANKI_PREFIX)/imoogi-anki\") 로 지정할 것." ;; \
+	esac
 
 fmt: ## Go 코드를 포맷한다
 	@$(GO) fmt ./...

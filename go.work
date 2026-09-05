@@ -1,0 +1,10 @@
+// vendor/ 는 Emacs 패키지(elpa, tree-sitter, toolchains)를 담는 디렉터리이지
+// Go 의존성 vendor 디렉터리가 아니다. Go 는 모듈 루트에 vendor/ 가 있으면
+// 자동으로 vendor 모드를 켜기 때문에, 의존성이 하나라도 생기는 순간
+// "inconsistent vendoring" 으로 빌드가 실패한다.
+//
+// 이 go.work 는 워크스페이스 모드를 켜서 vendor/ 를 무시하게 만든다.
+// make 뿐 아니라 맨손 `go test ./...` 과 gopls(eglot) 에도 똑같이 적용된다.
+go 1.26
+
+use .

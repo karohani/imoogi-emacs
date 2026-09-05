@@ -84,7 +84,10 @@ tests/assert-boot.el 이 이 값을 설치 검증의 판정 근거로 쓴다.")
                   "19-folding"
                   "20-terminal"
                   "21-native-compile"
-                  "22-tabs"))
+                  "22-tabs"
+                  ;; Anki 동기화는 14-org 에 의존한다. 23-org-preview 와 같은
+                  ;; 이유로 기존 번호를 건드리지 않고 뒤에 붙인다.
+                  "24-anki"))
   (condition-case err
       (load (expand-file-name (concat "modules/" module) imoogi-emacs-dir))
     (error
