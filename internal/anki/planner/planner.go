@@ -12,10 +12,13 @@ package planner
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/karohani/imoogi-emacs/internal/anki/ankiconnect"
 	"github.com/karohani/imoogi-emacs/internal/anki/hashing"
+	"github.com/karohani/imoogi-emacs/internal/anki/media"
 	"github.com/karohani/imoogi-emacs/internal/anki/orgdoc"
 	"github.com/karohani/imoogi-emacs/internal/anki/protocol"
 	"github.com/karohani/imoogi-emacs/internal/anki/registry"
@@ -30,7 +33,13 @@ import (
 // not this function's, so Run performs no file I/O of its own and stays a
 // pure decision layer over the client and registry it is handed).
 func Run(ctx context.Context, req protocol.Request, reg *registry.Registry, client ankiconnect.AnkiConnector) ([]protocol.Result, []protocol.Error) {
-	r := &runner{ctx: ctx, client: client, reg: reg, defaultDeck: req.Config.DefaultDeck}
+	r := &runner{
+		ctx:         ctx,
+		client:      client,
+		reg:         reg,
+		defaultDeck: req.Config.DefaultDeck,
+		syncRoot:    expandTilde(req.Config.SyncRoot),
+	}
 
 	// Snapshot which identifiers the registry ALREADY held before this run
 	// touches anything. A note added (or reconcile-adopted) THIS run is
@@ -118,6 +127,16 @@ type runner struct {
 	client      ankiconnect.AnkiConnector
 	reg         *registry.Registry
 	defaultDeck string
+
+	// syncRoot is the configured sync root, tilde-expanded. It is both the
+	// base every entry's own directory is derived from and the boundary
+	// every resolved media path is confined to (REQ-C-012.2).
+	syncRoot string
+
+	// uploaded records the stored media filenames this run has already sent,
+	// so a file referenced by several entries is uploaded once however many
+	// reference it (REQ-C-014.2).
+	uploaded map[string]bool
 
 	decksLoaded bool
 	knownDecks  map[string]bool
@@ -240,6 +259,21 @@ func (r *runner) processEntry(entry protocol.Entry) (*protocol.Result, []protoco
 			[]protocol.Error{{Code: protocol.CodeOrgParseError, Message: err.Error(), Key: &key}}
 	}
 
+	// The media pass runs HERE — after rendering, BEFORE hashing
+	// (REQ-C-016.1). Every content transform this SPEC introduces is
+	// therefore already applied to fields when the hash below is taken,
+	// which is what makes the text sent to AnkiConnect byte-identical to the
+	// text whose hash the registry records. Uploading is deliberately NOT
+	// done here: it rides the add/update branches instead (REQ-C-014.1), so
+	// a no-op entry issues no media request at all.
+	fields, uploads, mediaErr := media.Rewrite(mediaBaseDir(r.syncRoot, entry.SourcePath), r.syncRoot, fields)
+	if mediaErr != nil {
+		// REQ-C-015: skip, create or update no note, leave this entry's
+		// existing registry hash untouched, and continue the run.
+		return &protocol.Result{Key: &key, Action: protocol.ActionSkipped, NoteID: entry.NoteID},
+			[]protocol.Error{{Code: protocol.CodeMediaFileNotFound, Message: mediaErr.Error(), Key: &key}}
+	}
+
 	contentHash := hashing.Hash(entry.NoteType, fields, resolvedDeck, entry.Tags)
 
 	if entry.NoteID == nil {
@@ -248,7 +282,7 @@ func (r *runner) processEntry(entry protocol.Entry) (*protocol.Result, []protoco
 		if fieldErr != nil {
 			return &protocol.Result{Key: &key, Action: protocol.ActionFailed, NoteID: nil}, []protocol.Error{*fieldErr}
 		}
-		return r.addNewNote(entry, resolved, resolvedDeck, contentHash, key)
+		return r.addNewNote(entry, resolved, resolvedDeck, contentHash, key, uploads)
 	}
 
 	noteID := *entry.NoteID
@@ -259,7 +293,7 @@ func (r *runner) processEntry(entry protocol.Entry) (*protocol.Result, []protoco
 		if fieldErr != nil {
 			return &protocol.Result{Key: &key, Action: protocol.ActionFailed, NoteID: &noteID}, []protocol.Error{*fieldErr}
 		}
-		return r.reconcile(entry, resolved, resolvedDeck, contentHash, key, noteID)
+		return r.reconcile(entry, resolved, resolvedDeck, contentHash, key, noteID, uploads)
 	}
 
 	if regEntry.NoteType != entry.NoteType {
@@ -287,7 +321,7 @@ func (r *runner) processEntry(entry protocol.Entry) (*protocol.Result, []protoco
 	if fieldErr != nil {
 		return &protocol.Result{Key: &key, Action: protocol.ActionFailed, NoteID: &noteID}, []protocol.Error{*fieldErr}
 	}
-	return r.updateNote(entry, resolved, resolvedDeck, contentHash, key, noteID, regEntry)
+	return r.updateNote(entry, resolved, resolvedDeck, contentHash, key, noteID, regEntry, uploads)
 }
 
 // addNewNote implements REQ-009's add branch: ensure the deck exists
@@ -295,7 +329,12 @@ func (r *runner) processEntry(entry protocol.Entry) (*protocol.Result, []protoco
 // the fallback path for REQ-012's reconciliation when the identifier does
 // not resolve to an owned, type-matching note in the collection — in that
 // case the STALE identifier is simply discarded; a fresh one is assigned.
-func (r *runner) addNewNote(entry protocol.Entry, fields map[string]string, resolvedDeck, contentHash, key string) (*protocol.Result, []protocol.Error) {
+func (r *runner) addNewNote(entry protocol.Entry, fields map[string]string, resolvedDeck, contentHash, key string, uploads []media.Upload) (*protocol.Result, []protocol.Error) {
+	// Upload BEFORE anything is written, so a failed upload leaves no deck,
+	// no note, and no registry entry behind (REQ-C-015).
+	if upErr := r.uploadMedia(uploads, key); upErr != nil {
+		return &protocol.Result{Key: &key, Action: protocol.ActionSkipped, NoteID: nil}, []protocol.Error{*upErr}
+	}
 	if deckErr := r.ensureDeck(resolvedDeck); deckErr != nil {
 		deckErr.Key = &key
 		return &protocol.Result{Key: &key, Action: protocol.ActionFailed, NoteID: nil}, []protocol.Error{*deckErr}
@@ -325,20 +364,25 @@ func (r *runner) addNewNote(entry protocol.Entry, fields map[string]string, reso
 // deck placement as well as its content (plan.md D-3's registry-loss
 // recovery story). Otherwise, treat the target as unsynchronized and add a
 // new note: a lost registry costs a redundant update, never a duplicate.
-func (r *runner) reconcile(entry protocol.Entry, fields map[string]string, resolvedDeck, contentHash, key string, staleNoteID int) (*protocol.Result, []protocol.Error) {
+func (r *runner) reconcile(entry protocol.Entry, fields map[string]string, resolvedDeck, contentHash, key string, staleNoteID int, uploads []media.Upload) (*protocol.Result, []protocol.Error) {
 	infos, err := r.client.NotesInfo(r.ctx, []int{staleNoteID})
 	if err != nil {
 		// The identifier cannot even be checked; treat conservatively as
 		// unsynchronized rather than block the whole run on a transient
 		// query failure — the add path is always available as a fallback.
-		return r.addNewNote(entry, fields, resolvedDeck, contentHash, key)
+		return r.addNewNote(entry, fields, resolvedDeck, contentHash, key, uploads)
 	}
 	info := infos[0]
 	if !info.Exists || info.ModelName != entry.NoteType {
-		return r.addNewNote(entry, fields, resolvedDeck, contentHash, key)
+		return r.addNewNote(entry, fields, resolvedDeck, contentHash, key, uploads)
 	}
 
 	// Matched: adopt and force both the content update and the deck move.
+	// The upload precedes the write here for the same reason it does on the
+	// other two dispatching branches (REQ-C-015).
+	if upErr := r.uploadMedia(uploads, key); upErr != nil {
+		return &protocol.Result{Key: &key, Action: protocol.ActionSkipped, NoteID: &staleNoteID}, []protocol.Error{*upErr}
+	}
 	if err := r.client.UpdateNoteFields(r.ctx, staleNoteID, fields); err != nil {
 		return &protocol.Result{Key: &key, Action: protocol.ActionFailed, NoteID: &staleNoteID},
 			[]protocol.Error{{Code: protocol.CodeAnkiConnectError, Message: err.Error(), Key: &key}}
@@ -372,7 +416,12 @@ func (r *runner) reconcile(entry protocol.Entry, fields map[string]string, resol
 // recorded last-synced deck — retrieve the note's card identifiers and
 // move those cards. Where the two decks already agree, neither notesInfo
 // nor changeDeck is issued at all (acceptance.md AC-016).
-func (r *runner) updateNote(entry protocol.Entry, fields map[string]string, resolvedDeck, contentHash, key string, noteID int, prior registry.Entry) (*protocol.Result, []protocol.Error) {
+func (r *runner) updateNote(entry protocol.Entry, fields map[string]string, resolvedDeck, contentHash, key string, noteID int, prior registry.Entry, uploads []media.Upload) (*protocol.Result, []protocol.Error) {
+	// Upload before the note write, so a failed upload updates nothing and
+	// leaves the registry's recorded hash as it was (REQ-C-015).
+	if upErr := r.uploadMedia(uploads, key); upErr != nil {
+		return &protocol.Result{Key: &key, Action: protocol.ActionSkipped, NoteID: &noteID}, []protocol.Error{*upErr}
+	}
 	if err := r.client.UpdateNoteFields(r.ctx, noteID, fields); err != nil {
 		return &protocol.Result{Key: &key, Action: protocol.ActionFailed, NoteID: &noteID},
 			[]protocol.Error{{Code: protocol.CodeAnkiConnectError, Message: err.Error(), Key: &key}}
@@ -564,6 +613,70 @@ func (r *runner) confirmAndDelete(candidates []int, scanComplete bool) ([]protoc
 		}
 	}
 	return results, errs
+}
+
+// uploadMedia issues storeMediaFile for every upload this run has not
+// already sent, deduplicating by stored filename across the whole run
+// (REQ-C-014.2). It is called only from the three dispatching branches and
+// never from the no-op or skip paths — which is REQ-C-014.1, and the reason
+// an unchanged re-sync issues zero media requests.
+//
+// The filename Anki echoes back is deliberately ignored: the field text is
+// already committed to the locally computed name (REQ-C-012.3), so a
+// server-side rename would have nothing left to correct.
+func (r *runner) uploadMedia(uploads []media.Upload, key string) *protocol.Error {
+	if len(uploads) == 0 {
+		return nil
+	}
+	if r.uploaded == nil {
+		r.uploaded = make(map[string]bool, len(uploads))
+	}
+	for _, u := range uploads {
+		if r.uploaded[u.Filename] {
+			continue
+		}
+		if _, err := r.client.StoreMediaFile(r.ctx, u.Filename, u.Path); err != nil {
+			return &protocol.Error{
+				Code:    protocol.CodeMediaUploadFailed,
+				Message: fmt.Sprintf("media %q (%s): %v", u.Filename, u.Path, err),
+				Key:     &key,
+			}
+		}
+		r.uploaded[u.Filename] = true
+	}
+	return nil
+}
+
+// mediaBaseDir is the directory an entry's media references resolve
+// against: the directory of the entry's OWN Org file (REQ-C-012.2). Entry
+// source paths arrive relative to the sync root — that is the form the
+// front end's scan records — so the two are joined and the file component
+// dropped.
+func mediaBaseDir(syncRoot, sourcePath string) string {
+	return filepath.Dir(filepath.Join(expandTilde(syncRoot), sourcePath))
+}
+
+// expandTilde expands a leading "~" to the current user's home directory.
+//
+// The front end passes sync_root through as the user configured it, and a
+// defcustom holding "~/notes" is entirely ordinary; left unexpanded, every
+// media reference under it would fail confinement. A "~user" form names
+// somebody else's home and is left alone — resolving it is not this
+// binary's business. A failure to determine the home directory returns the
+// path unchanged rather than erroring: the confinement check downstream is
+// what keeps an unresolved path safe.
+func expandTilde(p string) string {
+	if p != "~" && !strings.HasPrefix(p, "~"+string(filepath.Separator)) {
+		return p
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return p
+	}
+	if p == "~" {
+		return home
+	}
+	return filepath.Join(home, p[2:])
 }
 
 func fieldValuesToStrings(fields map[string]ankiconnect.FieldValue) map[string]string {

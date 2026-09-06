@@ -57,6 +57,13 @@ type fakeClient struct {
 	notesInfoErr   error
 	deleteNotesErr error
 
+	// storeMediaFileErr, when set, makes every StoreMediaFile call fail. It
+	// drives REQ-C-015's upload-failure branch (media_upload_failed): the
+	// entry is skipped, and — the part worth asserting — no note-mutating
+	// request is issued for it, because the media pass runs BEFORE the
+	// note write on every dispatching branch.
+	storeMediaFileErr error
+
 	// modelFields is the stub collection's note-type -> field-name map. A
 	// real Anki profile's field names are whatever the user made them, and
 	// a customized "Basic" carrying lowercase front/back is the observed
@@ -289,6 +296,9 @@ func (f *fakeClient) UpdateModelTemplates(ctx context.Context, name string, temp
 // stub does not rename on its own, so the common case stays predictable.
 func (f *fakeClient) StoreMediaFile(ctx context.Context, filename, absPath string) (string, error) {
 	f.storeMediaFileCalls = append(f.storeMediaFileCalls, storeMediaFileCall{filename: filename, path: absPath})
+	if f.storeMediaFileErr != nil {
+		return "", f.storeMediaFileErr
+	}
 	return filename, nil
 }
 
