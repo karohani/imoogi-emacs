@@ -423,8 +423,17 @@ func TestRun_Media_MissingFileSkipsWithCodeAndLeavesRegistryHashUnchanged(t *tes
 			t.Errorf("updateNoteFields issued for the skipped entry")
 		}
 	}
-	if got := mustLookup(t, reg, 41).ContentHash; got != priorHash {
-		t.Errorf("registry hash changed for the skipped entry: %s -> %s", priorHash, got)
+	// Every synchronization-bearing field of the skipped entry must survive
+	// the run, not merely its hash. SourcePath is deliberately excluded:
+	// step 10a refreshes it from the census for every reported identifier,
+	// skip or not, and that is a local registry write REQ-C-015 does not
+	// reach.
+	after := mustLookup(t, reg, 41)
+	if after.ContentHash != priorHash {
+		t.Errorf("registry hash changed for the skipped entry: %s -> %s", priorHash, after.ContentHash)
+	}
+	if after.NoteType != "Basic" || after.ResolvedDeck != "Inbox" {
+		t.Errorf("registry entry mutated for the skipped entry: %+v", after)
 	}
 
 	// The healthy sibling was still processed.
