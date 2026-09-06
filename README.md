@@ -417,6 +417,60 @@ Bookmarks와 Structure 안에서는 `g`로 새로고침하고 `q`로 닫는다.
 - **`C-c h`** — 마스터 hydra (→ `w` 창, `p` 프로젝트, `g` Git, `z` 줌, `t` treemacs)
 - **`C-x p`** — project.el, **`C-x x`** — Perspective, **`C-c l`** — LSP/xref, **`C-c z`** — 폴딩, **`C-c e`** — cape, **`C-c t`** — 터미널
 
+### Org 기본 폴더 설정
+
+`M-x imoogi-org-setup`을 실행하면 홈 디렉터리에 `~/notes/`를 만들고
+Org 기본 폴더(`org-directory`)로 설정한다. 기존 폴더와 파일은 보존하며 여러 번 실행해도 된다.
+재시작 후에도 기본 Org 폴더는 `~/notes/`다. 폴더 생성은 이 명령을 실행할 때만 수행한다.
+
+Anki에도 이 폴더를 포함하려면 `M-x imoogi-anki-register-directory`로 `~/notes/`를 등록한다.
+`imoogi-org-setup` 자체는 Anki 설정이나 동기화를 실행하지 않는다.
+
+### Anki 동기화 대상 등록
+
+`M-x imoogi-sync`는 `imoogi-anki-setup`에서 지정한 기존 폴더와 이 PC에
+추가 등록한 폴더·파일을 함께 동기화한다. 등록 목록은 프로젝트가 아닌
+Emacs 사용자 설정 디렉터리의 `imoogi-targets.json`(기본 `~/.emacs.d/imoogi-targets.json`)에
+저장되어 재시작 후에도 유지된다. 저장 위치는 `imoogi-targets-file`로 변경할 수 있다.
+
+| 명령 | Org 단축키 | 동작 |
+| --- | --- | --- |
+| `imoogi-anki-register-directory` | `C-c a D` | 폴더 등록: 하위 폴더의 `.org` 파일도 포함 |
+| `imoogi-anki-register-file` | `C-c a F` | `.org` 파일 하나 등록: 같은 폴더의 다른 파일은 제외 |
+| `imoogi-anki-list-targets` | `C-c a l` | 등록 목록과 경로 상태 확인 |
+| `imoogi-anki-list-files` | `C-c a L` | 기본 폴더·등록 폴더 안의 `.org`와 개별 등록 파일을 중복 없이 펼쳐 보기 |
+| `imoogi-anki-unregister-target` | `C-c a u` | 추가 등록 해제: 원본 파일과 Anki 카드는 유지 |
+| `imoogi-sync` | `C-c a s` | 기존 폴더와 추가 등록 대상을 모두 동기화 |
+
+사용 순서:
+
+1. `M-x imoogi-anki-register-directory`로 동기화할 폴더를 선택한다.
+2. 다른 위치의 파일도 포함하려면 `M-x imoogi-anki-register-file`로 해당 `.org` 파일을 선택한다.
+3. `M-x imoogi-anki-list-targets`로 등록 목록을 확인한다.
+4. Org 파일을 저장하고 `M-x imoogi-sync`를 실행한다. 등록 명령 자체는 동기화를 실행하지 않는다.
+
+`M-x` 명령은 어느 버퍼에서든 사용할 수 있고, 위 단축키는 Org 버퍼에서 사용한다.
+Anki 메뉴(`C-c a a`)의 **동기화 대상**에서도 같은 명령을 실행할 수 있다.
+
+등록 목록의 **파일 목록 펼치기** 또는 `M-x imoogi-anki-list-files`로 실제 파일을 확인한다.
+파일 목록에서 `RET`로 파일을 열고, `g`로 새로고침하며, `q`로 닫는다.
+제외 패턴에 걸린 파일은 `[제외]`, 누락되었거나 읽을 수 없는 경로는 `[확인 실패]`로 표시한다.
+카드 heading이 없는 `.org` 파일도 목록에는 표시되며, 목록 조회는 Anki 동기화를 실행하지 않는다.
+
+예를 들어 `~/notes/` 폴더와 `~/work/vocabulary.org` 파일을 각각 등록하면
+어느 버퍼에서 실행하든 둘 다 처리한다. 기존 폴더 설정 없이 추가 등록만으로도
+동기화할 수 있다. Anki 연결과 전용 노트 타입 준비는 기존 setup과 같다.
+파일을 먼저 저장한 뒤 동기화한다. 카드로 표시한 제목(`ANKI_NOTE_TYPE`)만 대상이며,
+겹치는 폴더·파일과 심볼릭 링크는 같은 파일을 중복 처리하지 않는다.
+
+추가 등록 대상의 동기화 상태는 사용자 설정 디렉터리의 `imoogi-target-state/`에
+보관한다. 추가 대상은 카드 추가·갱신만 하며, 제목이나 파일을 없애거나 등록을
+해제해도 Anki 카드를 자동 삭제하지 않는다. 기존 setup 폴더의 삭제 규칙은 유지한다.
+읽지 못한 대상이 있으면 보고하고 해당 실행의 자동 삭제는 억제한다.
+서로 다른 제목이 같은 `ANKI_NOTE_ID`를 사용하면 해당 카드들의 갱신을 막고
+충돌을 보고하며, 그 실행에서는 자동 삭제도 억제한다.
+이미지는 등록 폴더 안에서 참조하며, 개별 파일은 그 파일이 있는 폴더를 기준으로 한다.
+
 ## 패키지 관리
 
 - **package.el + use-package** — 모든 패키지를 단일 메커니즘으로 관리

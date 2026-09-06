@@ -1,0 +1,36 @@
+;;; org-setup-test.el --- Org directory setup tests -*- lexical-binding: t; -*-
+
+(require 'ert)
+(require 'cl-lib)
+(ert-deftest imoogi-org-setup-creates-directory-and-preserves-notes ()
+  (let* ((home (make-temp-file "imoogi-org-home-" t))
+         (notes (expand-file-name "notes/" home))
+         (org-directory "/previous/")
+         (expand (symbol-function 'expand-file-name)))
+    (unwind-protect
+        (cl-letf (((symbol-function 'expand-file-name)
+                   (lambda (name &optional base)
+                     (if (equal name "~/notes/") notes (funcall expand name base)))))
+          (should (equal (imoogi-org-setup) notes))
+          (should (file-directory-p notes))
+          (should (equal org-directory notes))
+          (with-temp-file (concat notes "existing.org") (insert "* Keep me\n"))
+          (imoogi-org-setup)
+          (should (equal (with-temp-buffer
+                           (insert-file-contents (concat notes "existing.org"))
+                           (buffer-string)) "* Keep me\n")))
+      (delete-directory home t))))
+(ert-deftest imoogi-org-setup-file-collision-preserves-setting ()
+  (let* ((home (make-temp-file "imoogi-org-home-" t))
+         (notes (expand-file-name "notes/" home))
+         (org-directory "/previous/")
+         (expand (symbol-function 'expand-file-name)))
+    (unwind-protect
+        (progn
+          (with-temp-file (directory-file-name notes) (insert "Keep"))
+          (cl-letf (((symbol-function 'expand-file-name)
+                     (lambda (name &optional base)
+                       (if (equal name "~/notes/") notes (funcall expand name base)))))
+            (should-error (imoogi-org-setup) :type 'file-error)
+            (should (equal org-directory "/previous/"))))
+      (delete-directory home t))))

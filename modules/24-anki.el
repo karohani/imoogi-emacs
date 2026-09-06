@@ -17,6 +17,10 @@
 
 (imoogi-require "24-anki" 'org 'json 'seq 'url 'url-http)
 
+;; compile-angel compiles this file in a fresh Emacs process.  Expand the
+;; menu macro there too, before the deferred runtime registration executes.
+(eval-when-compile (require 'transient))
+
 (defvar imoogi-anki-lisp-dir
   (expand-file-name "modules/anki/" imoogi-emacs-dir)
   "Directory holding the Org-to-Anki implementation files.")
@@ -234,7 +238,6 @@ ANKI_NOTE_TYPE 이 아직 없으면 Cloze 로 지정해 준다 (프로퍼티를 
     (define-key map (kbd "t") #'imoogi-anki-set-tags)
     (define-key map (kbd "z") #'imoogi-anki-cloze-region)
     (define-key map (kbd "s") #'imoogi-sync)
-    (define-key map (kbd "a") #'imoogi-anki-transient)
     map)
   "Anki 명령 접두 맵.  Org 버퍼에서 `C-c a' 에 붙는다.
 
@@ -244,6 +247,14 @@ ANKI_NOTE_TYPE 이 아직 없으면 Cloze 로 지정해 준다 (프로퍼티를 
 
 (with-eval-after-load 'org
   (define-key org-mode-map (kbd "C-c a") imoogi-anki-map))
+
+;; Also update the existing prefix map when this module is reloaded.
+(dolist (binding '(("D" . imoogi-anki-register-directory)
+                   ("F" . imoogi-anki-register-file)
+                   ("l" . imoogi-anki-list-targets)
+                   ("L" . imoogi-anki-list-files)
+                   ("u" . imoogi-anki-unregister-target)))
+  (define-key imoogi-anki-map (kbd (car binding)) (cdr binding)))
 
 ;;; transient 메뉴
 
@@ -255,7 +266,7 @@ ANKI_NOTE_TYPE 이 아직 없으면 Cloze 로 지정해 준다 (프로퍼티를 
 (with-eval-after-load 'imoogi-transient
   (transient-define-prefix imoogi-anki-transient ()
     "Org → Anki 카드."
-    :column-widths '(20 22 16)
+    :column-widths '(20 22 16 22)
     [["표시 -------------"
       ("b" "imoogi-Basic 카드로" imoogi-anki-mark-basic)
       ("c" "imoogi-Cloze 카드로" imoogi-anki-mark-cloze)
@@ -267,7 +278,15 @@ ANKI_NOTE_TYPE 이 아직 없으면 Cloze 로 지정해 준다 (프로퍼티를 
      ["실행 -----------"
       ("s" "동기화" imoogi-sync)
       ("S" "최초 설정" imoogi-anki-setup)
-      ("q" "종료" transient-quit-one)]])
+      ("q" "종료" transient-quit-one)]
+     ["동기화 대상 ---------"
+      ("D" "폴더 등록" imoogi-anki-register-directory)
+      ("F" "파일 등록" imoogi-anki-register-file)
+      ("l" "등록 목록" imoogi-anki-list-targets)
+      ("L" "파일 목록" imoogi-anki-list-files)
+      ("u" "등록 해제" imoogi-anki-unregister-target)]])
+
+  (define-key imoogi-anki-map (kbd "a") #'imoogi-anki-transient)
 
   (transient-append-suffix 'imoogi-transient-master "t"
     '("a" "Anki" imoogi-anki-transient)))

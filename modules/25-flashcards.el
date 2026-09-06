@@ -11,6 +11,9 @@
 
 (imoogi-require "25-flashcards" 'org 'sqlite 'seq)
 
+;; Deferred menu registration still needs its macro during byte compilation.
+(eval-when-compile (require 'transient))
+
 (require 'sqlite)
 (unless (sqlite-available-p)
   (error "[25-flashcards] sqlite module is present but SQLite support is unavailable"))
@@ -89,7 +92,6 @@
     (define-key map (kbd "s") #'imoogi-flashcards-sync-buffer)
     (define-key map (kbd "S") #'imoogi-flashcards-sync-root)
     (define-key map (kbd "r") #'imoogi-flashcards-review)
-    (define-key map (kbd "f") #'imoogi-flashcards-transient)
     map)
   "Local flashcards command prefix map.  Org buffers bind it at C-c f.")
 
@@ -113,6 +115,8 @@
      ["복습 -----------"
       ("r" "due 복습" imoogi-flashcards-review)
       ("q" "종료" transient-quit-one)]])
+
+  (define-key imoogi-flashcards-map (kbd "f") #'imoogi-flashcards-transient)
 
   (transient-append-suffix 'imoogi-transient-master "a"
     '("f" "Flashcards" imoogi-flashcards-transient)))

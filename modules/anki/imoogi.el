@@ -34,13 +34,13 @@ A relative value (the default) is resolved on `exec-path'."
 (defcustom imoogi-sync-root nil
   "Absolute path to the directory imoogi recursively scans for sync targets.
 
-Unset (nil) by default.  A sync run stops rather than guessing a root
-when this is unset -- see `imoogi-sync'."
+Unset (nil) by default.  Host-registered folders/files can be used
+without this legacy root -- see `imoogi-sync'."
   :type '(choice (const :tag "Unset" nil) directory)
   :group 'imoogi)
 
 (defcustom imoogi-exclude-patterns nil
-  "List of path-pattern strings, relative to `imoogi-sync-root'.
+  "List of path-pattern strings, relative to each target's sync root.
 
 A file whose relative path matches any pattern here is excluded from
 sync-target eligibility.  It is still scanned for the identifier
@@ -102,6 +102,8 @@ dropped key."
     ""))
 
 (require 'imoogi-scan)
+(require 'imoogi-targets)
+(require 'imoogi-target-scan)
 (require 'imoogi-props)
 (require 'imoogi-writeback)
 (require 'imoogi-process)
@@ -164,85 +166,123 @@ failing entry's :key."
   (seq-filter (lambda (err) (null (plist-get err :key)))
               (plist-get response :errors)))
 
+(defun imoogi--sync-scan (binary root registry-path scan &optional registered duplicate-ids)
+  "Sync SCAN under ROOT with BINARY and REGISTRY-PATH.
+REGISTERED protects host-registered cards from orphan deletion.
+DUPLICATE-IDS names identifiers claimed across multiple target groups."
+  (let* ((entries (plist-get scan :entries))
+         (duplicates (seq-filter
+                      (lambda (entry) (memq (plist-get entry :note-id) duplicate-ids))
+                      entries))
+         (config (list :default-deck imoogi-default-deck
+                       :anki-connect-url imoogi-anki-connect-url
+                       :registry-path registry-path
+                       :sync-root root
+                       ;; ../ protects legacy cards moved to an external target.
+                       :exclude-patterns (cons "../" imoogi-exclude-patterns)
+                       ;; Registrations are selections, not an exhaustive root:
+                       ;; removing a selection never authorizes orphan deletion.
+                       :scan-complete (and (not registered)
+                                           (null duplicate-ids)
+                                           (plist-get scan :scan-complete))))
+         (response (imoogi-process-run
+                    binary config
+                    ;; Keep conflicted IDs out of reconciliation too.  The
+                    ;; incomplete-scan gate above protects them from deletion.
+                    (seq-remove (lambda (entry)
+                                  (memq (plist-get entry :note-id) duplicate-ids))
+                                (plist-get scan :census))
+                    (seq-difference entries duplicates #'equal))))
+    (if (null response)
+        "imoogi: sync run failed -- no response from binary"
+      (when (eq (plist-get response :ok) t)
+        ;; A complete registered selection intentionally disables deletion.
+        ;; Report that policy below rather than counting it as a scan failure.
+        (when (and registered (plist-get scan :scan-complete))
+          (setf (plist-get response :errors)
+                (seq-remove (lambda (err)
+                              (and (null (plist-get err :key))
+                                   (equal (plist-get err :code) "delete_suppressed")))
+                            (plist-get response :errors))))
+        (dolist (entry duplicates)
+          (push (list :key (plist-get entry :key) :code "note_id_duplicated")
+                (plist-get response :errors))
+          (push (list :key (plist-get entry :key) :action "failed"
+                      :note-id (plist-get entry :note-id))
+                (plist-get response :results))))
+      (let* ((needs-save (imoogi-writeback-apply root (plist-get response :results)))
+             (nil-key-errors (imoogi--nil-key-errors response))
+             (unreadable (plist-get scan :unreadable-files))
+             (base (if (not (eq (plist-get response :ok) t))
+                       (imoogi-error-message (plist-get (car nil-key-errors) :code))
+                     (concat
+                      (format "imoogi: sync complete (%d results, %d errors)"
+                              (length (plist-get response :results))
+                              (length (plist-get response :errors)))
+                      (mapconcat
+                       (lambda (err)
+                         (concat " " (imoogi-error-message (plist-get err :code))))
+                       nil-key-errors "")))))
+        (concat base
+                (when registered " (등록 대상: 추가·갱신만)")
+                (imoogi--keyed-error-lines response entries)
+                (when unreadable
+                  (format " Unreadable and skipped: %s."
+                          (mapconcat #'identity unreadable ", ")))
+                (when needs-save
+                  (format "; needs save: %s" (mapconcat #'identity needs-save ", "))))))))
+
+(defun imoogi--target-registry-path (root)
+  "Return the host-local state file for registered ROOT."
+  (let ((directory (expand-file-name "imoogi-target-state/"
+                                     (file-name-directory imoogi-targets-file))))
+    (make-directory directory t)
+    (expand-file-name (concat (secure-hash 'sha256 root) ".json") directory)))
+
+(defun imoogi--target-duplicate-ids (groups)
+  "Return identifiers claimed by more than one heading in GROUPS."
+  (let ((counts (make-hash-table :test #'eql)) duplicates)
+    (dolist (group groups)
+      (dolist (entry (plist-get (plist-get group :scan) :entries))
+        (when-let* ((id (plist-get entry :note-id)))
+          (puthash id (1+ (gethash id counts 0)) counts))))
+    (maphash (lambda (id count) (when (> count 1) (push id duplicates))) counts)
+    duplicates))
+
 ;;;###autoload
 (defun imoogi-sync ()
-  "Run one imoogi sync: scan, resolve, dispatch, write back, report.
-
-Stops before dispatch (REQ-018 preconditions) when `imoogi-binary-path'
-does not resolve to an executable, or when `imoogi-sync-root' is
-unset -- both rendered through `imoogi-error-message' (imoogi-error.el)
-rather than as a raw format string, per REQ-018.
-
-Returns the human-readable report string (also shown via `message')."
+  "Sync the legacy root and every host-registered folder or Org file.
+Register additional targets with `imoogi-anki-register-directory' or
+`imoogi-anki-register-file'.  Host registrations do not delete orphan
+Anki cards.  With no registrations, retain the legacy root workflow."
   (interactive)
   (let* ((binary (executable-find imoogi-binary-path))
+         (targets (imoogi-targets-load))
          (report
           (cond
-           ((null binary)
-            (imoogi-error-message "binary_not_found"))
-           ((null imoogi-sync-root)
-            (imoogi-error-message "sync_root_unset"))
+           ((null binary) (imoogi-error-message "binary_not_found"))
+           ((and (null imoogi-sync-root) (null targets))
+            (concat (imoogi-error-message "sync_root_unset")
+                    " Or register a folder/file with imoogi-anki-register-directory/file."))
+           ((null targets)
+            (imoogi--sync-scan binary imoogi-sync-root
+                               (imoogi--registry-path imoogi-sync-root)
+                               (imoogi-scan-root imoogi-sync-root imoogi-exclude-patterns)))
            (t
-            (let* ((scan (imoogi-scan-root imoogi-sync-root imoogi-exclude-patterns))
-                   (entries (plist-get scan :entries))
-                   (unreadable (plist-get scan :unreadable-files))
-                   (config (list :default-deck imoogi-default-deck
-                                  :anki-connect-url imoogi-anki-connect-url
-                                  :registry-path (imoogi--registry-path imoogi-sync-root)
-                                  :sync-root imoogi-sync-root
-                                  :exclude-patterns imoogi-exclude-patterns
-                                  :scan-complete (plist-get scan :scan-complete)))
-                   (response (imoogi-process-run binary config
-                                                  (plist-get scan :census)
-                                                  entries)))
-              (cond
-               ((null response)
-                "imoogi: sync run failed -- no response from binary")
-               (t
-                (let* ((needs-save
-                        (imoogi-writeback-apply imoogi-sync-root
-                                                 (plist-get response :results)))
-                       (nil-key-errors (imoogi--nil-key-errors response))
-                       (unreadable-note
-                        (when unreadable
-                          (format " Unreadable and skipped: %s."
-                                  (mapconcat #'identity unreadable ", "))))
-                       (base
-                        (if (not (eq (plist-get response :ok) t))
-                            ;; REQ-018's Go-side triggers: a whole-run
-                            ;; failure (anki_unreachable /
-                            ;; ankiconnect_missing) rendered through the
-                            ;; same table the Elisp-side preconditions
-                            ;; above use -- never the code's own raw
-                            ;; :message text.  design.md SS3 step 13: a
-                            ;; run this far along (`ok: false') never
-                            ;; carries results, so the summary line
-                            ;; would report nothing anyway.
-                            (imoogi-error-message
-                             (plist-get (car nil-key-errors) :code))
-                          ;; An `ok: true' run may still carry whole-run
-                          ;; ADVISORY diagnostics that name no single
-                          ;; entry (delete_suppressed,
-                          ;; delete_candidate_unowned) -- these are
-                          ;; additive information, not a reason to
-                          ;; discard the results/errors summary the way
-                          ;; a genuine run-level failure is.
-                          (concat
-                           (format "imoogi: sync complete (%d results, %d errors)"
-                                   (length (plist-get response :results))
-                                   (length (plist-get response :errors)))
-                           (mapconcat
-                            (lambda (err)
-                              (concat " " (imoogi-error-message (plist-get err :code))))
-                            nil-key-errors
-                            "")))))
-                  (concat base
-                          (imoogi--keyed-error-lines response entries)
-                          (or unreadable-note "")
-                          (if needs-save
-                              (format "; needs save: %s"
-                                      (mapconcat #'identity needs-save ", "))
-                            ""))))))))))
+            (let* ((groups (imoogi-target-scan imoogi-sync-root targets
+                                               imoogi-exclude-patterns))
+                   (duplicates (imoogi--target-duplicate-ids groups)))
+              (mapconcat
+               (lambda (group)
+                 (let* ((root (plist-get group :root))
+                        (legacy (plist-get group :legacy))
+                        (registry (if legacy (imoogi--registry-path root)
+                                    (imoogi--target-registry-path root))))
+                   (concat root "\n"
+                           (imoogi--sync-scan binary root registry
+                                              (plist-get group :scan)
+                                              (not legacy) duplicates))))
+               groups "\n"))))))
     (message "%s" report)
     report))
 
