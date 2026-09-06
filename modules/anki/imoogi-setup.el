@@ -124,7 +124,7 @@ that the type's CSS is replaced wholesale so a hand edit made inside
 Anki is known to be discarded, and renders any failure through
 `imoogi-error-message' -- never through the Go error's own text."
   (if (null response)
-      "노트 타입 설치: 바이너리에서 응답을 받지 못했습니다."
+      "Note-type install: no response from the binary."
     (let* ((results (plist-get response :results))
            (errors (plist-get response :errors))
            (lines (mapconcat
@@ -133,14 +133,14 @@ Anki is known to be discarded, and renders any failure through
            (failures (mapconcat
                       (lambda (e)
                         (format "\n  %s: %s"
-                                (or (plist-get e :key) "(전체)")
+                                (or (plist-get e :key) "(whole run)")
                                 (imoogi-error-message (plist-get e :code))))
                       errors "")))
-      (concat (format "노트 타입 설치: %d개 처리, %d개 실패."
+      (concat (format "Note-type install: %d installed or updated, %d failed."
                       (length results) (length errors))
               lines failures
               (when results
-                "\n  (설치·갱신은 그 타입의 CSS 를 통째로 바꿔 씁니다 -- CSS is replaced wholesale, so an edit made by hand inside Anki is discarded.)")))))
+                "\n  (Each type's CSS is replaced wholesale, so an edit made by hand inside Anki is discarded.)")))))
 
 (defun imoogi-setup--install-step (binary)
   "Read the user stylesheet and run the install step (design.md SS6).
@@ -153,10 +153,10 @@ Returns the report string."
 
 (defun imoogi-setup--migrate-prompt (count)
   "REQ-C-019's confirmation text: it names COUNT and the loss."
-  (format (concat "스톡 노트 타입으로 기록된 항목이 %d개 있습니다. "
-                  "imoogi 자신의 노트 타입으로 옮길까요? "
-                  "옮기면 그 노트들의 복습 이력과 다음 복습 일정이 사라집니다 "
-                  "(review history and scheduling state are discarded). ")
+  (format (concat "%d entries are recorded on a stock note type. "
+                  "Migrate them onto imoogi's own note types? "
+                  "Migrating discards each migrated note's review history "
+                  "and scheduling state. ")
           count))
 
 (defun imoogi-setup--migrate-step (binary root)
@@ -170,7 +170,7 @@ without --dry-run and writes back both properties (REQ-C-020.3).
 
 Returns the report string."
   (if (not (and root (file-directory-p root)))
-      "마이그레이션 검사: 동기화 루트가 아직 없어 건너뛰었습니다."
+      "Migration check: skipped -- no sync root exists yet."
     (let* ((scan (imoogi-setup--call
                   (lambda () (imoogi-scan-root root imoogi-exclude-patterns))))
            (entries (plist-get scan :entries))
@@ -186,16 +186,16 @@ Returns the report string."
                                                (plist-get scan :census)
                                                entries t)))))
       (cond
-       ((null dry) "마이그레이션 검사: 바이너리에서 응답을 받지 못했습니다.")
+       ((null dry) "Migration check: no response from the binary.")
        (t
         (let ((count (length (imoogi-process-migrate-candidates dry))))
           (cond
            ;; Step 2 -- no candidates, so no prompt.  The count is still
            ;; reported: "0" is the answer to a question the user would
            ;; otherwise have to ask again next time.
-           ((zerop count) "마이그레이션 대상: 0개 -- 옮길 것이 없습니다.")
+           ((zerop count) "Migration candidates: 0 -- nothing to migrate.")
            ((not (y-or-n-p (imoogi-setup--migrate-prompt count)))
-            (format "마이그레이션 대상 %d개 -- 사용자가 취소해 아무것도 옮기지 않았습니다." count))
+            (format "Migration candidates: %d -- declined, so nothing was migrated." count))
            (t
             (let ((response (imoogi-setup--call
                              (lambda ()
@@ -203,21 +203,21 @@ Returns the report string."
                                                            (plist-get scan :census)
                                                            entries nil)))))
               (if (null response)
-                  "마이그레이션: 바이너리에서 응답을 받지 못했습니다."
+                  "Migration: no response from the binary."
                 (let ((needs-save (imoogi-writeback-apply-migration root
                                                                     (plist-get response :results))))
                   (concat
-                   (format "마이그레이션: 대상 %d개 중 %d개 처리, %d개 실패."
+                   (format "Migration: %d candidates, %d migrated, %d failed."
                            count
                            (length (plist-get response :results))
                            (length (plist-get response :errors)))
                    (mapconcat (lambda (e)
                                 (format "\n  %s: %s"
-                                        (or (plist-get e :key) "(전체)")
+                                        (or (plist-get e :key) "(whole run)")
                                         (imoogi-error-message (plist-get e :code))))
                               (plist-get response :errors) "")
                    (if needs-save
-                       (format " 저장 필요: %s" (mapconcat #'identity needs-save ", "))
+                       (format " Needs save: %s" (mapconcat #'identity needs-save ", "))
                      "")))))))))))))
 
 ;;;###autoload
