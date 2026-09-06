@@ -2,6 +2,7 @@ package protocol_test
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -354,6 +355,39 @@ func TestActionConstantsMatchWireEnum(t *testing.T) {
 		if got != wire {
 			t.Errorf("action constant for %q = %q", wire, got)
 		}
+	}
+}
+
+// AC-C-018a — the migrate subcommand's wire stability. The card-styling SPEC
+// adds exactly ONE thing to the wire: a sixth `action` VALUE. Not a field, not
+// a document, not a version bump.
+//
+// The three assertions below are the three halves of that clause that can be
+// checked mechanically from the Go side. The fourth — that the Elisp pinned
+// version constant is likewise unchanged — is the contract test's, in M6.
+func TestMigrateCandidateIsTheOnlyWireAddition(t *testing.T) {
+	if protocol.ActionMigrateCandidate != "migrate_candidate" {
+		t.Errorf("ActionMigrateCandidate = %q, want %q", protocol.ActionMigrateCandidate, "migrate_candidate")
+	}
+
+	// The version constant is unchanged. TestVersionConstantIsOne asserts
+	// the same value for the parent SPEC's reason; this restates it under
+	// REQ-C-018's own clause, because the two would have to be un-asserted
+	// separately for the wire contract to drift silently.
+	if protocol.Version != 1 {
+		t.Errorf("protocol.Version = %d, want 1 — REQ-C-018 leaves it unchanged", protocol.Version)
+	}
+
+	// Result gained no field. A `migrate_candidate` result is an ordinary
+	// result: {key, action, note_id} and nothing else, which is what lets
+	// the candidate count be len(results) rather than a new response field.
+	var got []string
+	rt := reflect.TypeOf(protocol.Result{})
+	for i := 0; i < rt.NumField(); i++ {
+		got = append(got, rt.Field(i).Tag.Get("json"))
+	}
+	if want := []string{"key", "action", "note_id"}; !equalStrings(got, want) {
+		t.Errorf("Result wire fields = %v, want exactly %v", got, want)
 	}
 }
 

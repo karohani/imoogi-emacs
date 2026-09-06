@@ -19,6 +19,7 @@ import (
 	"github.com/karohani/imoogi-emacs/internal/anki/ankiconnect"
 	"github.com/karohani/imoogi-emacs/internal/anki/hashing"
 	"github.com/karohani/imoogi-emacs/internal/anki/media"
+	"github.com/karohani/imoogi-emacs/internal/anki/model"
 	"github.com/karohani/imoogi-emacs/internal/anki/orgdoc"
 	"github.com/karohani/imoogi-emacs/internal/anki/protocol"
 	"github.com/karohani/imoogi-emacs/internal/anki/registry"
@@ -248,7 +249,7 @@ func (r *runner) processEntry(entry protocol.Entry) (*protocol.Result, []protoco
 	key := entry.Key
 	resolvedDeck := resolveDeck(entry.Deck, r.defaultDeck)
 
-	fields, err := orgdoc.Render(entry.NoteType, entry.Title, entry.Body)
+	fields, err := orgdoc.Render(renderType(entry.NoteType), entry.Title, entry.Body)
 	if err != nil {
 		if _, ok := err.(*orgdoc.ClozeMarkerMissingError); ok {
 			// REQ-019 / AC-025: skip, create no note, continue processing.
@@ -322,6 +323,40 @@ func (r *runner) processEntry(entry protocol.Entry) (*protocol.Result, []protoco
 		return &protocol.Result{Key: &key, Action: protocol.ActionFailed, NoteID: &noteID}, []protocol.Error{*fieldErr}
 	}
 	return r.updateNote(entry, resolved, resolvedDeck, contentHash, key, noteID, regEntry, uploads)
+}
+
+// renderType maps a declared note type onto the name orgdoc.Render
+// dispatches on (REQ-C-005.1: "the Go renderer shall recognize both names in
+// its note-type dispatch"). The two imoogi-owned types mirror their stock
+// counterparts' field names exactly (REQ-C-001.2), so rendering
+// `imoogi-Basic` IS rendering `Basic` — one map, one shape, byte-identical
+// output. Any other name passes through unchanged and reaches Render's own
+// default arm, which is where an unrecognized type belongs.
+//
+// The mapping lives here rather than in orgdoc because the renderer's own
+// constants are M6's to switch (plan.md M6, REQ-C-005.3); this is the
+// smallest change that makes the counterpart name reach a dispatch arm.
+//
+// Two callers depend on it. processEntry, so a heading hand-edited to the
+// counterpart name reaches the registry-type comparison and is reported as
+// note_type_change_unsupported (AC-C-020b) rather than as an org_parse_error
+// failure — a different code, pointing the user at their Org markup instead
+// of at imoogi-anki-setup. And the migration path, which renders every
+// candidate under the counterpart type.
+//
+// Note it does NOT touch hashing: the hash keeps taking the type name as
+// given, because the note type is a hash input and the two names must hash
+// differently — that difference is what makes a migrated entry's recorded
+// hash match what the next ordinary sync recomputes.
+func renderType(noteType string) string {
+	switch noteType {
+	case model.BasicName:
+		return orgdoc.NoteTypeBasic
+	case model.ClozeName:
+		return orgdoc.NoteTypeCloze
+	default:
+		return noteType
+	}
 }
 
 // addNewNote implements REQ-009's add branch: ensure the deck exists

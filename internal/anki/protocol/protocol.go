@@ -19,6 +19,19 @@ const (
 	ActionSkipped = "skipped"
 	ActionDeleted = "deleted"
 	ActionFailed  = "failed"
+
+	// ActionMigrateCandidate is the card-styling SPEC's one new action value
+	// (design.md §5.1, REQ-C-018). It is emitted ONLY by `migrate --dry-run`,
+	// one per candidate entry, carrying that entry's EXISTING note
+	// identifier — so the candidate count the confirmation prompt needs is
+	// len(results) and no response field had to be added for it. The front
+	// end counts it and does nothing else: it triggers no write-back and no
+	// property edit.
+	//
+	// A successful migration does NOT use this value. It reports `added`
+	// carrying the NEW identifier, which is the value the front end's
+	// existing write-back already acts on.
+	ActionMigrateCandidate = "migrate_candidate"
 )
 
 // Diagnostic codes the back end emits. Each has a matching entry in the front

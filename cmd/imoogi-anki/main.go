@@ -30,6 +30,8 @@ const usage = `usage: imoogi <command>
 commands:
   sync             read a JSON request document on stdin, write a JSON response on stdout
   install-models   read an install request document on stdin, install imoogi's note types
+  migrate          re-home stock-note-type entries onto imoogi's own note types
+    --dry-run      report the candidates and their count; write nothing
   --version        print the version and exit
 `
 
@@ -61,13 +63,65 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runSync(stdin, stdout, stderr)
 	case "install-models":
 		return runInstall(stdin, stdout, stderr)
+	case "migrate":
+		return runMigrate(args[1:], stdin, stdout, stderr)
 	default:
 		_, _ = fmt.Fprintf(stderr, "imoogi: unknown command %q\n\n%s", args[0], usage)
 		return 2
 	}
 }
 
+// runSync is the `sync` subcommand: the full per-entry decision pass plus
+// census reconciliation and orphan deletion.
 func runSync(stdin io.Reader, stdout, stderr io.Writer) int {
+	return runOverSyncRequest(stdin, stdout, stderr, true, planner.Run)
+}
+
+// runMigrate is the `migrate` subcommand (design.md §7.1). It reads the SAME
+// request document `sync` reads and writes the SAME response schema — the
+// only thing that distinguishes the two on the wire is which verb was
+// invoked, which is REQ-C-018's wire-stability clause.
+//
+// `--dry-run` is the ONLY flag it accepts, and anything else is a usage
+// error rather than a silently ignored argument: a mistyped flag that fell
+// through to the writing path would migrate a collection the user meant to
+// inspect, and that is not a mistake this command can afford to absorb.
+func runMigrate(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	dryRun := false
+	for _, arg := range args {
+		if arg != "--dry-run" {
+			_, _ = fmt.Fprintf(stderr, "imoogi: unknown migrate flag %q\n\n%s", arg, usage)
+			return 2
+		}
+		dryRun = true
+	}
+
+	// The registry is persisted only on the writing run. A dry run must
+	// leave it byte-unchanged (AC-C-018c) — it decided nothing, so it has
+	// nothing to record, and rewriting the same content would still churn
+	// the file's mtime for a command that promised to write nothing.
+	return runOverSyncRequest(stdin, stdout, stderr, !dryRun,
+		func(ctx context.Context, req protocol.Request, reg *registry.Registry, client ankiconnect.AnkiConnector) ([]protocol.Result, []protocol.Error) {
+			return planner.Migrate(ctx, req, reg, client, dryRun)
+		})
+}
+
+// planPass is the decision layer one subcommand runs over a sync request:
+// planner.Run for `sync`, planner.Migrate for `migrate`. Both take the same
+// inputs and return the same pair, which is what lets the two subcommands
+// share the process boundary below instead of forking it.
+type planPass func(context.Context, protocol.Request, *registry.Registry, ankiconnect.AnkiConnector) ([]protocol.Result, []protocol.Error)
+
+// runOverSyncRequest is the process boundary both sync-request subcommands
+// share: read stdin, probe the protocol version, decode, handshake, load the
+// registry, run the pass, optionally persist, write one response.
+//
+// It is one function rather than two near-identical ones because every step
+// before and after the pass is a contract the two subcommands must agree on
+// exactly — the same two handshake codes, the same state_unreadable path,
+// the same best-effort save diagnosis, the same response shape. Two copies
+// are how those silently drift apart.
+func runOverSyncRequest(stdin io.Reader, stdout, stderr io.Writer, persist bool, pass planPass) int {
 	raw, err := io.ReadAll(stdin)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "imoogi: request could not be read: %v\n", err)
@@ -103,16 +157,18 @@ func runSync(stdin io.Reader, stdout, stderr io.Writer) int {
 		return failRun(stdout, stderr, protocol.CodeStateUnreadable, err.Error())
 	}
 
-	results, errs := planner.Run(ctx, req, reg, client)
+	results, errs := pass(ctx, req, reg, client)
 
-	if err := reg.Save(); err != nil {
-		// The registry write is best-effort diagnosed on stderr only: no
-		// plan.md D-5 code is reserved for a SAVE failure specifically (only
-		// state_unreadable, which names a READ failure), and inventing one
-		// here would leave it absent from the front end's own code table —
-		// exactly the defect D-5's own rationale warns against. The results
-		// already computed this run are still reported.
-		_, _ = fmt.Fprintf(stderr, "imoogi: registry could not be saved: %v\n", err)
+	if persist {
+		if err := reg.Save(); err != nil {
+			// The registry write is best-effort diagnosed on stderr only: no
+			// plan.md D-5 code is reserved for a SAVE failure specifically (only
+			// state_unreadable, which names a READ failure), and inventing one
+			// here would leave it absent from the front end's own code table —
+			// exactly the defect D-5's own rationale warns against. The results
+			// already computed this run are still reported.
+			_, _ = fmt.Fprintf(stderr, "imoogi: registry could not be saved: %v\n", err)
+		}
 	}
 
 	resp := newResponse(true)

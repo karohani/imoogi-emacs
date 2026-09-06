@@ -28,6 +28,20 @@ type fakeClient struct {
 	notes  map[int]*fakeNote
 	nextID int
 
+	// writeSequence is the ORDER in which write actions were issued this
+	// run, one action name per call, across every write endpoint. The
+	// per-action logs above cannot express an ordering between two
+	// different actions, and AC-C-019a is exactly such an assertion — the
+	// addNote under the counterpart type must PRECEDE the deleteNotes of
+	// the original, and a delete-first implementation would satisfy every
+	// per-action count while violating the requirement.
+	//
+	// Reads are deliberately absent from it. AC-C-018b scopes its
+	// zero-writes assertion to writes, because the Handshake
+	// requestPermission and the ownership-confirming notesInfo are reads
+	// the dry run is permitted to perform.
+	writeSequence []string
+
 	// Call logs, one per AnkiConnect action, in call order.
 	addCalls          []addCall
 	createDeckCalls   []string
@@ -56,6 +70,14 @@ type fakeClient struct {
 	// Configurable failures for the suppression-path tests (AC-022).
 	notesInfoErr   error
 	deleteNotesErr error
+
+	// addNoteErr, when set, makes every AddNote call fail without planting
+	// a note. It drives REQ-C-022's migration add-failure branch
+	// (migration_add_failed): the entry is skipped, and — the part worth
+	// asserting — the original note, its registry entry, and the delete log
+	// are all left exactly as they were, because the add precedes the
+	// delete on the migration path (design.md §7.2).
+	addNoteErr error
 
 	// storeMediaFileErr, when set, makes every StoreMediaFile call fail. It
 	// drives REQ-C-015's upload-failure branch (media_upload_failed): the
@@ -160,6 +182,16 @@ func (f *fakeClient) ModelFieldNames(ctx context.Context, modelName string) ([]s
 		return []string{"Front", "Back"}, nil
 	case "Cloze":
 		return []string{"Text", "Extra"}, nil
+	// The imoogi-owned types mirror their stock counterparts' field names
+	// exactly (REQ-C-001.2), which is what lets a migrated entry reuse the
+	// renderer's output map shape unchanged. imoogi-Cloze's second field is
+	// "Back Extra" rather than stock Cloze's "Extra"; the renderer emits
+	// neither, so the difference is invisible to the field-resolution layer
+	// and is reproduced here only so the stub is not lying about the model.
+	case "imoogi-Basic":
+		return []string{"Front", "Back"}, nil
+	case "imoogi-Cloze":
+		return []string{"Text", "Back Extra"}, nil
 	default:
 		return nil, errors.New("fake: unknown model " + modelName)
 	}
@@ -174,12 +206,21 @@ func (f *fakeClient) DeckNames(ctx context.Context) ([]string, error) {
 }
 
 func (f *fakeClient) CreateDeck(ctx context.Context, name string) error {
+	f.writeSequence = append(f.writeSequence, "createDeck")
 	f.createDeckCalls = append(f.createDeckCalls, name)
 	f.decks[name] = true
 	return nil
 }
 
 func (f *fakeClient) AddNote(ctx context.Context, deck, modelName string, fields map[string]string, tags []string) (int, error) {
+	f.writeSequence = append(f.writeSequence, "addNote")
+	if f.addNoteErr != nil {
+		// The request WAS issued, so it is logged; it simply did not
+		// create a note. A test asserting "the original survives a failed
+		// add" needs both halves of that to be true.
+		f.addCalls = append(f.addCalls, addCall{deck: deck, modelName: modelName, fields: cloneStringMap(fields), tags: cloneStringSlice(tags)})
+		return 0, f.addNoteErr
+	}
 	f.nextID++
 	id := f.nextID
 	f.addCalls = append(f.addCalls, addCall{deck: deck, modelName: modelName, fields: cloneStringMap(fields), tags: cloneStringSlice(tags)})
@@ -193,6 +234,7 @@ func (f *fakeClient) AddNote(ctx context.Context, deck, modelName string, fields
 }
 
 func (f *fakeClient) UpdateNoteFields(ctx context.Context, noteID int, fields map[string]string) error {
+	f.writeSequence = append(f.writeSequence, "updateNoteFields")
 	f.updateFieldsCalls = append(f.updateFieldsCalls, updateFieldsCall{noteID: noteID, fields: cloneStringMap(fields)})
 	if n, ok := f.notes[noteID]; ok {
 		n.fields = cloneStringMap(fields)
@@ -201,6 +243,7 @@ func (f *fakeClient) UpdateNoteFields(ctx context.Context, noteID int, fields ma
 }
 
 func (f *fakeClient) UpdateNoteTags(ctx context.Context, noteID int, tags []string) error {
+	f.writeSequence = append(f.writeSequence, "updateNoteTags")
 	f.updateTagsCalls = append(f.updateTagsCalls, updateTagsCall{noteID: noteID, tags: cloneStringSlice(tags)})
 	if n, ok := f.notes[noteID]; ok {
 		n.tags = cloneStringSlice(tags)
@@ -239,11 +282,13 @@ func (f *fakeClient) NotesInfo(ctx context.Context, noteIDs []int) ([]ankiconnec
 }
 
 func (f *fakeClient) ChangeDeck(ctx context.Context, cardIDs []int, deck string) error {
+	f.writeSequence = append(f.writeSequence, "changeDeck")
 	f.changeDeckCalls = append(f.changeDeckCalls, changeDeckCall{cardIDs: append([]int(nil), cardIDs...), deck: deck})
 	return nil
 }
 
 func (f *fakeClient) DeleteNotes(ctx context.Context, noteIDs []int) error {
+	f.writeSequence = append(f.writeSequence, "deleteNotes")
 	f.deleteCalls = append(f.deleteCalls, append([]int(nil), noteIDs...))
 	if f.deleteNotesErr != nil {
 		return f.deleteNotesErr
@@ -267,6 +312,7 @@ func (f *fakeClient) ModelNames(ctx context.Context) ([]string, error) {
 }
 
 func (f *fakeClient) CreateModel(ctx context.Context, name string, inOrderFields []string, css string, isCloze bool, templates []ankiconnect.CardTemplate) error {
+	f.writeSequence = append(f.writeSequence, "createModel")
 	f.createModelCalls = append(f.createModelCalls, createModelCall{
 		name:          name,
 		inOrderFields: cloneStringSlice(inOrderFields),
@@ -279,11 +325,13 @@ func (f *fakeClient) CreateModel(ctx context.Context, name string, inOrderFields
 }
 
 func (f *fakeClient) UpdateModelStyling(ctx context.Context, name, css string) error {
+	f.writeSequence = append(f.writeSequence, "updateModelStyling")
 	f.updateModelStylingCalls = append(f.updateModelStylingCalls, updateModelStylingCall{name: name, css: css})
 	return nil
 }
 
 func (f *fakeClient) UpdateModelTemplates(ctx context.Context, name string, templates []ankiconnect.CardTemplate) error {
+	f.writeSequence = append(f.writeSequence, "updateModelTemplates")
 	f.updateModelTemplatesCalls = append(f.updateModelTemplatesCalls, updateModelTemplatesCall{
 		name:      name,
 		templates: cloneCardTemplates(templates),
@@ -295,6 +343,7 @@ func (f *fakeClient) UpdateModelTemplates(ctx context.Context, name string, temp
 // needs to exercise the renamed-by-Anki case sets its own expectation; the
 // stub does not rename on its own, so the common case stays predictable.
 func (f *fakeClient) StoreMediaFile(ctx context.Context, filename, absPath string) (string, error) {
+	f.writeSequence = append(f.writeSequence, "storeMediaFile")
 	f.storeMediaFileCalls = append(f.storeMediaFileCalls, storeMediaFileCall{filename: filename, path: absPath})
 	if f.storeMediaFileErr != nil {
 		return "", f.storeMediaFileErr
