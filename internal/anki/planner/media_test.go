@@ -260,7 +260,11 @@ func TestRun_Media_ImageEditUpdates_ByteIdenticalIsNoOp(t *testing.T) {
 // four the parent SPEC's D-6 fixes. A new parameter — image bytes, a file
 // path, a media list — breaks this compile-time assertion.
 func TestHashInputSetIsUnchangedByTheMediaPass(t *testing.T) {
-	var _ func(noteType string, fields map[string]string, deck string, tags []string) string = hashing.Hash
+	// Named so the assertion reads as the contract it is: adding a fifth
+	// parameter — image bytes, a file path, a media list — stops compiling
+	// here rather than silently widening the hash's input set.
+	type parentSPECHashInputs = func(noteType string, fields map[string]string, deck string, tags []string) string
+	_ = parentSPECHashInputs(hashing.Hash)
 }
 
 // ---- AC-C-014: gating and dedupe ----
@@ -568,7 +572,7 @@ func TestRun_Media_EscapeAboveSyncRootIsSkipped(t *testing.T) {
 	if err := os.WriteFile(outside, []byte("OUTSIDE"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Remove(outside) })
+	t.Cleanup(func() { _ = os.Remove(outside) })
 
 	reg := newTestRegistry(t)
 	client := newFakeClient()
