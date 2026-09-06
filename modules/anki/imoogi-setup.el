@@ -27,6 +27,9 @@
 (require 'imoogi)
 (require 'imoogi-config)
 (require 'imoogi-error)
+(require 'imoogi-process)
+(require 'imoogi-scan)
+(require 'imoogi-writeback)
 
 ;; `imoogi-binary-path' and `imoogi-anki-connect-url' are the real
 ;; defcustoms from imoogi.el, `require'd above -- NOT forward-declared.
@@ -102,6 +105,121 @@ Returns one of:
             (kill-buffer buffer))))
     (error 'unreachable)))
 
+(defun imoogi-setup--call (thunk)
+  "Run THUNK, degrading any signal to nil.
+
+The subprocess calls below reach a binary whose behavior on a
+half-written stdin (an immediate exit, a closed pipe) is not this
+command's business to distinguish: every failure lands on the same
+user-facing outcome -- no usable response -- and the report says so.
+Letting a raw signal escape would surface an Emacs backtrace, which
+REQ-018 forbids outright."
+  (condition-case nil (funcall thunk) (error nil)))
+
+(defun imoogi-setup--install-report (response)
+  "Render the per-type outcome of an `install-models' RESPONSE (REQ-C-002).
+
+Names each note type and the branch it took (added or updated), states
+that the type's CSS is replaced wholesale so a hand edit made inside
+Anki is known to be discarded, and renders any failure through
+`imoogi-error-message' -- never through the Go error's own text."
+  (if (null response)
+      "노트 타입 설치: 바이너리에서 응답을 받지 못했습니다."
+    (let* ((results (plist-get response :results))
+           (errors (plist-get response :errors))
+           (lines (mapconcat
+                   (lambda (r) (format "\n  %s: %s" (plist-get r :key) (plist-get r :action)))
+                   results ""))
+           (failures (mapconcat
+                      (lambda (e)
+                        (format "\n  %s: %s"
+                                (or (plist-get e :key) "(전체)")
+                                (imoogi-error-message (plist-get e :code))))
+                      errors "")))
+      (concat (format "노트 타입 설치: %d개 처리, %d개 실패."
+                      (length results) (length errors))
+              lines failures
+              (when results
+                "\n  (설치·갱신은 그 타입의 CSS 를 통째로 바꿔 씁니다 -- CSS is replaced wholesale, so an edit made by hand inside Anki is discarded.)")))))
+
+(defun imoogi-setup--install-step (binary)
+  "Read the user stylesheet and run the install step (design.md SS6).
+Returns the report string."
+  (let* ((user-css (imoogi-user-stylesheet-contents))
+         (response (imoogi-setup--call
+                    (lambda ()
+                      (imoogi-process-run-install binary imoogi-anki-connect-url user-css)))))
+    (imoogi-setup--install-report response)))
+
+(defun imoogi-setup--migrate-prompt (count)
+  "REQ-C-019's confirmation text: it names COUNT and the loss."
+  (format (concat "스톡 노트 타입으로 기록된 항목이 %d개 있습니다. "
+                  "imoogi 자신의 노트 타입으로 옮길까요? "
+                  "옮기면 그 노트들의 복습 이력과 다음 복습 일정이 사라집니다 "
+                  "(review history and scheduling state are discarded). ")
+          count))
+
+(defun imoogi-setup--migrate-step (binary root)
+  "design.md SS7.1 steps 1-4 and 11, front-end half.
+
+Dry-run for the candidate count; zero candidates finish silently; a
+non-zero count is put to the user with `y-or-n-p' naming both the count
+and the scheduling loss; a decline issues NO writing `migrate' request
+at all (AC-C-018c); a confirmation issues the same request document
+without --dry-run and writes back both properties (REQ-C-020.3).
+
+Returns the report string."
+  (if (not (and root (file-directory-p root)))
+      "마이그레이션 검사: 동기화 루트가 아직 없어 건너뛰었습니다."
+    (let* ((scan (imoogi-setup--call
+                  (lambda () (imoogi-scan-root root imoogi-exclude-patterns))))
+           (entries (plist-get scan :entries))
+           (config (list :default-deck imoogi-default-deck
+                         :anki-connect-url imoogi-anki-connect-url
+                         :registry-path (imoogi--registry-path root)
+                         :sync-root root
+                         :exclude-patterns imoogi-exclude-patterns
+                         :scan-complete (plist-get scan :scan-complete)))
+           (dry (imoogi-setup--call
+                 (lambda ()
+                   (imoogi-process-run-migrate binary config
+                                               (plist-get scan :census)
+                                               entries t)))))
+      (cond
+       ((null dry) "마이그레이션 검사: 바이너리에서 응답을 받지 못했습니다.")
+       (t
+        (let ((count (length (imoogi-process-migrate-candidates dry))))
+          (cond
+           ;; Step 2 -- no candidates, so no prompt.  The count is still
+           ;; reported: "0" is the answer to a question the user would
+           ;; otherwise have to ask again next time.
+           ((zerop count) "마이그레이션 대상: 0개 -- 옮길 것이 없습니다.")
+           ((not (y-or-n-p (imoogi-setup--migrate-prompt count)))
+            (format "마이그레이션 대상 %d개 -- 사용자가 취소해 아무것도 옮기지 않았습니다." count))
+           (t
+            (let ((response (imoogi-setup--call
+                             (lambda ()
+                               (imoogi-process-run-migrate binary config
+                                                           (plist-get scan :census)
+                                                           entries nil)))))
+              (if (null response)
+                  "마이그레이션: 바이너리에서 응답을 받지 못했습니다."
+                (let ((needs-save (imoogi-writeback-apply-migration root
+                                                                    (plist-get response :results))))
+                  (concat
+                   (format "마이그레이션: 대상 %d개 중 %d개 처리, %d개 실패."
+                           count
+                           (length (plist-get response :results))
+                           (length (plist-get response :errors)))
+                   (mapconcat (lambda (e)
+                                (format "\n  %s: %s"
+                                        (or (plist-get e :key) "(전체)")
+                                        (imoogi-error-message (plist-get e :code))))
+                              (plist-get response :errors) "")
+                   (if needs-save
+                       (format " 저장 필요: %s" (mapconcat #'identity needs-save ", "))
+                     "")))))))))))))
+
 ;;;###autoload
 (defun imoogi-anki-setup (&optional sync-root default-deck config-file)
   "Verify the binary and AnkiConnect, prompt for a sync root and a
@@ -127,8 +245,16 @@ Returns the human-readable report string (also shown via `message')."
                 (imoogi-config-write target root deck)
                 (setq imoogi-sync-root root)
                 (setq imoogi-default-deck deck)
-                (format "imoogi setup complete: binary check succeeded, AnkiConnect check succeeded. Config written to %s."
-                        target))
+                ;; The tail (design.md SS6 and SS7.1): install imoogi's own
+                ;; note types, then offer the migration.  It is APPENDED to
+                ;; the configuration line rather than replacing it -- setup
+                ;; having succeeded is the thing the user came for, and a
+                ;; failing install step must not read as a failing setup.
+                (concat
+                 (format "imoogi setup complete: binary check succeeded, AnkiConnect check succeeded. Config written to %s."
+                         target)
+                 "\n" (imoogi-setup--install-step binary)
+                 "\n" (imoogi-setup--migrate-step binary root)))
                ((eq status 'unreachable) (imoogi-error-message "anki_unreachable"))
                (t (imoogi-error-message "ankiconnect_missing")))))))
     (message "imoogi: %s" report)

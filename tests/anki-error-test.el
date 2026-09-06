@@ -3,6 +3,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'seq)
 (require 'imoogi-error)
 
 (defconst imoogi-error-test--go-emitted-codes
@@ -81,6 +82,47 @@ Go-source parse proves awkward from Elisp."
         (should found)
         (should (equal (sort (copy-sequence found) #'string<)
                         (sort (copy-sequence imoogi-error-test--go-emitted-codes) #'string<)))))))
+
+(defconst imoogi-error-test--elisp-only-codes
+  '("binary_not_found" "sync_root_unset" "note_id_unknown")
+  "Table entries that legitimately have no `protocol.Code*' constant.
+
+The first two are Elisp-side preconditions (plan.md D-5): `imoogi-sync'
+stops before the subprocess is invoked, so the Go binary never emits
+them and never should.  `note_id_unknown' is D-5's Go-origin code that
+the binary does not currently emit (REQ-012 reconciles the case as an
+ordinary add) -- it stays in the table because D-5 names it, and it
+stays here because the Go side declaring it would be a change, not a
+fix.  Everything NOT on this list must be paired with a Go constant.")
+
+(ert-deftest imoogi-error-test-table-entries-are-all-paired-with-a-go-constant ()
+  "AC-C-021c (REQ-C-023), the reverse direction: an entry added to the
+Elisp table with no matching `protocol.Code*' constant fails.
+
+Until this SPEC the contract ran one way only -- every Go code needed a
+table entry, but an Elisp-only entry failed nothing -- so the pairing
+REQ-C-023 requires was enforceable from one side alone.  The
+`imoogi-error-test--elisp-only-codes' allowlist is what keeps the
+assertion honest rather than merely strict: the three codes on it are
+paired with a documented reason instead of a constant, and adding a
+fourth is a deliberate edit to this file."
+  (dolist (entry imoogi-error-table)
+    (let ((code (car entry)))
+      (should (or (member code imoogi-error-test--go-emitted-codes)
+                  (member code imoogi-error-test--elisp-only-codes))))))
+
+(ert-deftest imoogi-error-test-reverse-assertion-rejects-an-unpaired-entry ()
+  "The reverse assertion above is only worth having if it can fail.
+Run its predicate over a table carrying one unpaired entry and confirm
+it rejects -- so a future refactor that quietly widens the allowlist to
+everything is caught here rather than by nothing."
+  (let ((imoogi-error-table (cons '("invented_code" . "no Go constant declares this")
+                                   imoogi-error-table)))
+    (should-not (seq-every-p
+                 (lambda (entry)
+                   (or (member (car entry) imoogi-error-test--go-emitted-codes)
+                       (member (car entry) imoogi-error-test--elisp-only-codes)))
+                 imoogi-error-table))))
 
 (ert-deftest imoogi-error-test-full-d5-table-present ()
   "Every code named in plan.md D-5's table (REQ-018) has an entry,

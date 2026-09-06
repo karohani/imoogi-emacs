@@ -66,6 +66,41 @@ present but empty at some level)."
   :type 'file
   :group 'imoogi)
 
+(defcustom imoogi-user-stylesheet-file
+  (expand-file-name "imoogi-anki.css"
+                    (file-name-directory imoogi-config-file))
+  "Path to the user's own Anki stylesheet, appended after imoogi's base
+stylesheet on every install run (REQ-C-008).
+
+Beside `imoogi-config-file' by default.  The file is optional: when it
+does not exist the install step uploads the base stylesheet alone and
+reports nothing -- an absent file is a configuration choice, not an
+error.
+
+Read by the FRONT END, never by the Go binary: its contents travel in
+the install request's `user_css' field.  That split is deliberate
+(design.md SS11) -- path expansion already lives here, the wire
+contract's \"the binary reads no configuration file of its own\"
+property survives, and no new diagnostic code is needed for a missing
+file."
+  :type 'file
+  :group 'imoogi)
+
+(defun imoogi-user-stylesheet-contents ()
+  "Return the contents of `imoogi-user-stylesheet-file', or \"\" when
+no readable file sits at that path (REQ-C-008).
+
+Never nil: the install request carries `user_css' as a JSON string on
+both branches, so the absent case is the empty string rather than a
+dropped key."
+  (if (and imoogi-user-stylesheet-file
+           (file-readable-p imoogi-user-stylesheet-file))
+      (with-temp-buffer
+        (let ((coding-system-for-read 'utf-8))
+          (insert-file-contents imoogi-user-stylesheet-file))
+        (buffer-string))
+    ""))
+
 (require 'imoogi-scan)
 (require 'imoogi-props)
 (require 'imoogi-writeback)

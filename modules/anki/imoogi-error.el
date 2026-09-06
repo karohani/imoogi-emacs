@@ -33,7 +33,7 @@
     ("org_parse_error" .
      "One entry's body could not be parsed as Org text, so it was skipped. Check that entry's content for malformed markup.")
     ("cloze_marker_missing" .
-     "A Cloze entry has no {{cN::...}} marker anywhere in its body, so no card was created for it. Add at least one cloze marker to the entry, or change its ANKI_NOTE_TYPE to Basic.")
+     "A Cloze entry has no {{cN::...}} marker anywhere in its body, so no card was created for it. Add at least one cloze marker to the entry, or change its ANKI_NOTE_TYPE to `imoogi-Basic'.")
     ("deck_create_failed" .
      "The target Anki deck could not be created. Check the deck name for characters Anki rejects, and confirm Anki is responsive.")
     ("deck_move_failed" .
@@ -41,7 +41,7 @@
     ("note_id_unknown" .
      "This entry's ANKI_NOTE_ID names a note that no longer exists in the collection. imoogi will treat it as unsynchronized and create a new note on the next run.")
     ("note_type_change_unsupported" .
-     "This entry's ANKI_NOTE_TYPE has changed since it was last synced, and imoogi does not convert an existing note from one type to another. Delete the note in Anki, remove its ANKI_NOTE_ID property from the Org heading, then sync again to recreate it under the new type.")
+     "This entry's ANKI_NOTE_TYPE has changed since it was last synced, and an ordinary sync does not convert an existing note from one type to another. If the change was from a stock `Basic' or `Cloze' to imoogi's own `imoogi-Basic' or `imoogi-Cloze', run `imoogi-anki-setup': it offers to migrate exactly those notes, stating first how many there are and that migrating discards their review history and scheduling state. For any other type change, delete the note in Anki, remove its ANKI_NOTE_ID property from the Org heading, then sync again to recreate it under the new type.")
     ("note_field_missing" .
      "This heading's note type has no field to put the rendered content in -- most often because the note type's fields were renamed in Anki. The message names the note type and the fields it actually has. Either rename the field back in Anki (Tools -> Manage Note Types -> Fields), or point the heading's ANKI_NOTE_TYPE at a note type that carries the expected fields. Nothing was written for this heading.")
     ("note_id_duplicated" .
@@ -59,7 +59,7 @@
     ("media_upload_failed" .
      "An image was found and readable, but Anki would not accept it into the collection's media folder. Nothing was written for this entry. Confirm Anki is running and has space for the file, then run the sync again.")
     ("migration_add_failed" .
-     "A note being migrated to imoogi's own note type could not be recreated in Anki, so the migration was abandoned for it. The original note, its registry record, and the Org heading were all left exactly as they were -- nothing was lost. Confirm Anki is responsive and run the migration again."))
+     "A note being migrated to imoogi's own note type could not be recreated in Anki, so the migration was abandoned for it. The original note, its registry record, and the Org heading were all left exactly as they were -- nothing was lost. Confirm Anki is responsive, then run `imoogi-anki-setup' again to retry the migration; do not edit the heading's ANKI_NOTE_TYPE by hand, since the note in Anki is still on its original type."))
   "plan.md D-5's code -> user-facing message table (REQ-018).
 
 Every value names the missing prerequisite or the problem and states a

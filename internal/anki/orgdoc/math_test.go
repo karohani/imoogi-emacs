@@ -156,6 +156,21 @@ func TestRender_Math_LineBreakInsideFragmentBecomesBr(t *testing.T) {
 			body: "$$a\nb$$",
 			want: "<p>\\[a<br>b\\]</p>\n",
 		},
+		// The rows above all enter through a `$`-delimited source form. A
+		// fragment the author already wrote as `\(..\)` or `\[..\]` takes a
+		// different branch of the transform, and REQ-C-010.3 makes no
+		// distinction between the two source forms -- so the normalization
+		// is asserted on both, not inferred from the `$` case.
+		{
+			name: "one line break inside an already-parenthesized inline fragment",
+			body: "a \\(x\ny\\) b",
+			want: "<p>a \\(x<br>y\\) b</p>\n",
+		},
+		{
+			name: "a line break inside an already-bracketed display fragment",
+			body: "\\[a\nb\\]",
+			want: "<p>\\[a<br>b\\]</p>\n",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

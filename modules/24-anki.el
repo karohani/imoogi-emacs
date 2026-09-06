@@ -48,11 +48,33 @@
     (add-to-list 'org-default-properties name t))
 
   ;; 값 후보: `PROP_ALL' 은 org 가 값을 Lisp 로 읽으므로 공백·괄호가 없는
-  ;; 값에만 쓸 수 있다.  ANKI_NOTE_TYPE 은 Basic/Cloze 둘 뿐이라 적합하다.
+  ;; 값에만 쓸 수 있다.  ANKI_NOTE_TYPE 은 imoogi-Basic/imoogi-Cloze 둘
+  ;; 뿐이라 적합하다 (REQ-C-005.1 — imoogi 가 소유한 타입이 새 heading 의
+  ;; 기본값이다).  손으로 쓴 스톡 Basic/Cloze heading 도 그대로 동기화되므로
+  ;; (REQ-C-005.2) 후보에서 빠지는 것이 곧 금지는 아니다 — 후보는 편의일
+  ;; 뿐이고, 값은 직접 입력해도 된다.
   ;; ANKI_DECK 은 적합하지 않다 — "(PROGRAMMER)::(GO)" 같은 실제 덱 이름이
   ;; ("???" "::" "???") 로 깨진다(실측).  덱은 아래 `imoogi-anki-set-deck'
   ;; 이 completing-read 로 처리한다.
-  (add-to-list 'org-global-properties '("ANKI_NOTE_TYPE_ALL" . "Basic Cloze")))
+  (add-to-list 'org-global-properties
+               '("ANKI_NOTE_TYPE_ALL" . "imoogi-Basic imoogi-Cloze")))
+
+;;; 노트 타입 이름 (REQ-C-005)
+
+(defconst imoogi-anki-basic-note-type "imoogi-Basic"
+  "새로 표시하는 Basic heading 이 받는 노트 타입 이름 (REQ-C-005.1).")
+
+(defconst imoogi-anki-cloze-note-type "imoogi-Cloze"
+  "새로 표시하는 Cloze heading 이 받는 노트 타입 이름 (REQ-C-005.1).")
+
+(defun imoogi-anki-cloze-note-type-p (type)
+  "TYPE 이 Cloze 계열이면 non-nil.
+
+스톡 \"Cloze\" 와 imoogi 소유 \"imoogi-Cloze\" 를 모두 받아들인다
+(REQ-C-005.2).  손으로 스톡 Cloze 를 쓴 heading 이 지금도 그대로 동기화
+되므로, 빈칸 자동 표시가 그 heading 을 \"다른 타입\" 이라고 잘못 알리면
+안 된다."
+  (and type (member type (list "Cloze" imoogi-anki-cloze-note-type)) t))
 
 ;;; 명령
 
@@ -63,20 +85,25 @@
   (org-back-to-heading t))
 
 (defun imoogi-anki-mark-basic ()
-  "이 heading 을 Basic 카드로 표시한다(제목이 앞면, 본문이 뒷면)."
+  "이 heading 을 imoogi-Basic 카드로 표시한다(제목이 앞면, 본문이 뒷면).
+
+imoogi 가 소유한 타입을 쓴다(REQ-C-005.1) — 스톡 Basic 은 Anki 가 소유한
+타입이라 imoogi 가 그 모양(템플릿·CSS)에 손대지 않는다.  이미 스톡으로
+쓰인 heading 은 그대로 동기화되고(REQ-C-005.2), `imoogi-anki-setup' 이
+옮길지 물어본다."
   (interactive)
   (imoogi-anki--at-heading)
-  (org-set-property "ANKI_NOTE_TYPE" "Basic")
-  (message "imoogi: Basic 카드로 표시했습니다"))
+  (org-set-property "ANKI_NOTE_TYPE" imoogi-anki-basic-note-type)
+  (message "imoogi: %s 카드로 표시했습니다" imoogi-anki-basic-note-type))
 
 (defun imoogi-anki-mark-cloze ()
-  "이 heading 을 Cloze 카드로 표시한다.
+  "이 heading 을 imoogi-Cloze 카드로 표시한다(REQ-C-005.1).
 제목과 본문이 한 필드로 들어가며, `{{cN::...}}' 표식이 하나도 없으면
 동기화에서 이 heading 만 건너뛴다."
   (interactive)
   (imoogi-anki--at-heading)
-  (org-set-property "ANKI_NOTE_TYPE" "Cloze")
-  (message "imoogi: Cloze 카드로 표시했습니다"))
+  (org-set-property "ANKI_NOTE_TYPE" imoogi-anki-cloze-note-type)
+  (message "imoogi: %s 카드로 표시했습니다" imoogi-anki-cloze-note-type))
 
 (defun imoogi-anki-unmark ()
   "이 heading 의 카드 표시를 해제한다(ANKI_NOTE_TYPE 만 지운다).
@@ -184,9 +211,13 @@ ANKI_NOTE_TYPE 이 아직 없으면 Cloze 로 지정해 준다 (프로퍼티를 
       (let ((type (org-entry-get (point) "ANKI_NOTE_TYPE")))
         (cond
          ((null type)
-          (org-set-property "ANKI_NOTE_TYPE" "Cloze")
-          (message "imoogi: c%d 빈칸을 만들고 이 heading 을 Cloze 카드로 표시했습니다" n))
-         ((string= type "Cloze")
+          (org-set-property "ANKI_NOTE_TYPE" imoogi-anki-cloze-note-type)
+          (message "imoogi: c%d 빈칸을 만들고 이 heading 을 %s 카드로 표시했습니다"
+                   n imoogi-anki-cloze-note-type))
+         ;; 스톡 "Cloze" 든 "imoogi-Cloze" 든 이미 Cloze 계열이면 건드리지
+         ;; 않는다 (REQ-C-005.2) — 손으로 쓴 스톡 heading 을 조용히 다시
+         ;; 타이핑하는 것은 사용자가 정하지 않은 변경이다.
+         ((imoogi-anki-cloze-note-type-p type)
           (message "imoogi: c%d 빈칸을 만들었습니다" n))
          (t
           (message "imoogi: c%d 빈칸을 만들었지만 이 heading 은 %s 카드입니다 — 이대로 동기화하면 표식이 글자 그대로 들어갑니다. Cloze 로 바꾸려면 C-c a c"
@@ -226,8 +257,8 @@ ANKI_NOTE_TYPE 이 아직 없으면 Cloze 로 지정해 준다 (프로퍼티를 
     "Org → Anki 카드."
     :column-widths '(20 22 16)
     [["표시 -------------"
-      ("b" "Basic 카드로" imoogi-anki-mark-basic)
-      ("c" "Cloze 카드로" imoogi-anki-mark-cloze)
+      ("b" "imoogi-Basic 카드로" imoogi-anki-mark-basic)
+      ("c" "imoogi-Cloze 카드로" imoogi-anki-mark-cloze)
       ("x" "표시 해제" imoogi-anki-unmark)]
      ["내용 ---------------"
       ("d" "덱 지정" imoogi-anki-set-deck)

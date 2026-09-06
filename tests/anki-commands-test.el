@@ -27,15 +27,18 @@
     (list beg end)))
 
 (ert-deftest imoogi-anki-cloze-region-sets-cloze-when-type-absent ()
-  "카드 표식이 없는 heading 에서 빈칸을 만들면 ANKI_NOTE_TYPE 이 Cloze 가 된다.
-빈칸을 만든다는 행위 자체가 \"이건 Cloze 카드\" 라는 뜻이므로, 프로퍼티를
-따로 달게 시키지 않는다 (카드 t10)."
+  "카드 표식이 없는 heading 에서 빈칸을 만들면 ANKI_NOTE_TYPE 이
+imoogi-Cloze 가 된다.  빈칸을 만든다는 행위 자체가 \"이건 Cloze 카드\"
+라는 뜻이므로, 프로퍼티를 따로 달게 시키지 않는다 (카드 t10).
+
+이름이 스톡 \"Cloze\" 에서 \"imoogi-Cloze\" 로 바뀐 것은 REQ-C-005.1 —
+새로 표시하는 heading 의 기본값이 imoogi 소유 타입이 되었다."
   (imoogi-anki-test--with-org "* 제목\n\n유럽에서 가장 긴 강은 볼가강이다.\n"
     (let ((r (imoogi-anki-test--select "볼가강")))
       (imoogi-anki-cloze-region (car r) (cadr r)))
     (should (string-match-p "{{c1::볼가강}}" (buffer-string)))
     (org-back-to-heading t)
-    (should (equal (org-entry-get (point) "ANKI_NOTE_TYPE") "Cloze"))))
+    (should (equal (org-entry-get (point) "ANKI_NOTE_TYPE") "imoogi-Cloze"))))
 
 (ert-deftest imoogi-anki-cloze-region-leaves-basic-alone ()
   "이미 Basic 인 heading 은 덮어쓰지 않는다 -- 사용자가 \"없으면\" 이라고
