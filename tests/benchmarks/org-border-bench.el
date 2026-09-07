@@ -16,6 +16,7 @@
 (defvar-local imoogi-border-bench--overlays nil)
 
 (defun imoogi-border-bench--clear ()
+  (when (fboundp 'imoogi-org-border--clear) (imoogi-org-border--clear))
   (mapc #'delete-overlay imoogi-border-bench--overlays)
   (setq imoogi-border-bench--overlays nil
         imoogi-border-bench--bounds nil))
@@ -60,6 +61,9 @@ edges remain open. It is not a semantic Org parser or a refile helper."
 
 (defun imoogi-border-bench--update (variant)
   "Compare parsing, rendering and bounded local outline lookup separately."
+  (if (eq variant 'production)
+      (let ((imoogi-org-border-mode t))
+        (imoogi-org-border--refresh (current-buffer)))
   (setq imoogi-border-bench--edges '(t . t))
   (pcase variant
     ('bounded (imoogi-border-bench--bounded-bounds))
@@ -71,7 +75,7 @@ edges remain open. It is not a semantic Org parser or a refile helper."
            imoogi-border-bench--edges '(nil . nil)))
     (_ (imoogi-border-bench--org-bounds (eq variant 'rescan))))
   (unless (eq variant 'parser-only)
-    (imoogi-border-bench--draw)))
+    (imoogi-border-bench--draw))))
 
 (defun imoogi-border-bench--draw ()
   (let* ((start (max (marker-position (car imoogi-border-bench--bounds))
@@ -133,7 +137,9 @@ edges remain open. It is not a semantic Org parser or a refile helper."
           (push (* 1000 (- update-end operation-end)) update-times)
           (push (* 1000 (- (float-time) update-end)) display-times)
           (push (* 1000 (- (float-time) start)) times))
-        (setq peak (max peak (length imoogi-border-bench--overlays)))))
+        (setq peak (max peak (+ (length imoogi-border-bench--overlays)
+                                      (if (boundp 'imoogi-org-border--overlays)
+                                          (length imoogi-org-border--overlays) 0))))))
     (when (and (eq action 'edit) (= (% (+ count 5) 2) 1))
       (delete-char -1))
     `((action . ,action) (samples . ,count) (timing . ,(imoogi-border-bench--stats times))
@@ -172,6 +178,8 @@ Restore the window configuration and kill all generated buffers."
                     (let ((chunk (apply #'concat (make-list 100 "Long body paragraph 한글 with ordinary text.\n"))))
                       (dotimes (_ (/ lines 100)) (insert chunk)))))
                 (let ((org-startup-folded nil) (org-inhibit-startup t)) (org-mode))
+                (when (bound-and-true-p imoogi-org-border-mode)
+                  (imoogi-org-border-mode -1))
                 (when imoogi-border-bench-disable-org-menu
                   (let ((map (copy-keymap (current-local-map))))
                     (define-key map [menu-bar] nil)

@@ -6,6 +6,14 @@
 
 (imoogi-require "14-org" 'org 'org-appear 'hl-line)
 
+(defvar imoogi-org-lisp-dir
+  (expand-file-name "org/" (file-name-directory (or load-file-name buffer-file-name)))
+  "Directory holding extra Org display implementation files.")
+
+(add-to-list 'load-path imoogi-org-lisp-dir)
+
+(require 'imoogi-org-border)
+
 ;;;###autoload
 (defun imoogi-org-setup ()
   "Create ~/notes and use it as the default Org directory.
@@ -40,6 +48,9 @@ Existing notes are preserved.  This command does not run Anki setup or sync."
      (org-fold-core-get-folding-spec-from-alias alias) :ellipsis org-ellipsis))
   (when (fboundp 'hl-line-unhighlight) (hl-line-unhighlight))
   (when (fboundp 'global-hl-line-unhighlight) (global-hl-line-unhighlight))
+  (when (and imoogi-org-border-enabled
+             (not (local-variable-p 'imoogi-org-border-mode)))
+    (imoogi-org-border-mode 1))
   (font-lock-flush))
 
 ;;; org-mode (내장)

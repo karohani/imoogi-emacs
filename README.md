@@ -426,6 +426,22 @@ Org 기본 폴더(`org-directory`)로 설정한다. 기존 폴더와 파일은 �
 Anki에도 이 폴더를 포함하려면 `M-x imoogi-anki-register-directory`로 `~/notes/`를 등록한다.
 `imoogi-org-setup` 자체는 Anki 설정이나 동기화를 실행하지 않는다.
 
+Org 버퍼에는 현재 제목 영역의 테두리가 기본으로 표시된다. 제목 깊이에 따라
+빨강·파랑·초록·노랑을 사용하며, `M-x imoogi-org-border-mode`로 해당 버퍼에서
+켜거나 끌 수 있다. 0.1초 동안 입력이 멈추면 화면에 보이는 부분만 갱신한다.
+
+대용량 문서를 위해 양쪽 20,000글자와 창당 200줄까지 처리한다. 경계를 찾지
+못하면 가로선을 닫지 않고, 제목을 확인할 수 없으면 중립색을 쓴다. 접힌
+본문은 장식하지 않으며, 줄바꿈 표시(`truncate-lines`가 nil)에서는 테두리를
+생략한다. `imoogi-org-border-idle-delay`, `imoogi-org-border-scan-limit`,
+`imoogi-org-border-line-limit`으로 조절할 수 있다.
+
+기본 활성화를 끄려면 사용자 설정에서 다음을 실행한다.
+
+```elisp
+(setq imoogi-org-border-enabled nil)
+```
+
 ### Anki 동기화 대상 등록
 
 `M-x imoogi-sync`는 `imoogi-anki-setup`에서 지정한 기존 폴더와 이 PC에

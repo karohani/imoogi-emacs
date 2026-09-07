@@ -15,7 +15,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--timeout", type=float, default=60)
     parser.add_argument("--variants", nargs="+", default=["baseline", "cached", "parser-only", "render-only", "bounded"],
-                        choices=["baseline", "cached", "parser-only", "render-only", "bounded"])
+                        choices=["baseline", "cached", "parser-only", "render-only", "bounded", "production"])
     parser.add_argument("--sizes", nargs="+", type=int, default=[10000, 100000, 1000000])
     parser.add_argument("--without-org-menu", action="store_true")
     args = parser.parse_args()
