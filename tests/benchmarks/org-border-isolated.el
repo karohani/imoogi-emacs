@@ -1,0 +1,21 @@
+;;; org-border-isolated.el --- Dedicated GUI benchmark entry point -*- lexical-binding: t; -*-
+
+(setq user-emacs-directory (file-name-as-directory (getenv "BENCH_HOME"))
+      package-user-dir (expand-file-name "vendor/elpa/" (getenv "BENCH_ROOT"))
+      package-archives nil)
+(require 'package)
+(package-initialize)
+(require 'use-package)
+(setq use-package-always-ensure nil)
+(defun imoogi-require (_module &rest packages)
+  (dolist (package packages) (unless (locate-library (symbol-name package)) (error "Missing %s" package))))
+(load (expand-file-name "modules/14-org.el" (getenv "BENCH_ROOT")))
+(load (expand-file-name "tests/benchmarks/org-border-bench.el" (getenv "BENCH_ROOT")))
+(setq imoogi-border-bench-disable-org-menu
+      (equal (getenv "BENCH_NO_ORG_MENU") "1"))
+(set-frame-size nil 160 60)
+(imoogi-border-bench-run (getenv "BENCH_OUTPUT")
+ (list (intern (getenv "BENCH_SHAPE")))
+ (list (string-to-number (getenv "BENCH_LINES")))
+ (read (getenv "BENCH_VARIANTS")) 20)
+(kill-emacs 0)

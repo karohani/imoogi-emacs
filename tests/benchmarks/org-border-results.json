@@ -1,0 +1,1615 @@
+{
+  "date": "2026-09-07",
+  "status": [
+    {
+      "case": "many-headings-10000-forward",
+      "status": 0,
+      "elapsed_seconds": 2.656
+    },
+    {
+      "case": "many-headings-10000-reverse",
+      "status": 0,
+      "elapsed_seconds": 2.616
+    },
+    {
+      "case": "many-headings-100000-forward",
+      "status": 0,
+      "elapsed_seconds": 3.298
+    },
+    {
+      "case": "many-headings-100000-reverse",
+      "status": 0,
+      "elapsed_seconds": 3.342
+    },
+    {
+      "case": "many-headings-1000000-forward",
+      "status": 0,
+      "elapsed_seconds": 7.251
+    },
+    {
+      "case": "many-headings-1000000-reverse",
+      "status": 0,
+      "elapsed_seconds": 7.269
+    },
+    {
+      "case": "long-subtree-10000-forward",
+      "status": 0,
+      "elapsed_seconds": 2.847
+    },
+    {
+      "case": "long-subtree-10000-reverse",
+      "status": 0,
+      "elapsed_seconds": 2.932
+    },
+    {
+      "case": "long-subtree-100000-forward",
+      "status": 0,
+      "elapsed_seconds": 3.768
+    },
+    {
+      "case": "long-subtree-100000-reverse",
+      "status": 0,
+      "elapsed_seconds": 3.814
+    },
+    {
+      "case": "long-subtree-1000000-forward",
+      "status": 0,
+      "elapsed_seconds": 9.423
+    },
+    {
+      "case": "long-subtree-1000000-reverse",
+      "status": 0,
+      "elapsed_seconds": 9.235
+    }
+  ],
+  "runs": [
+    {
+      "case": "many-headings-10000-forward",
+      "metadata": {
+        "emacs": "31.1",
+        "system": "darwin",
+        "columns": 160,
+        "rows": 58,
+        "gc_threshold": 800000,
+        "note": "Synthetic local operations + redisplay; not end-to-end keyboard/compositor latency. Cached prototype lacks structural-edit invalidation."
+      },
+      "results": [
+        {
+          "shape": "many-headings",
+          "lines": 10000,
+          "characters": 424000,
+          "bytes": 460000,
+          "variant": "baseline",
+          "entry_ms": 0.186920166015625,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.8637905120849609,
+                "p95_ms": 1.1799335479736328,
+                "max_ms": 1.3720989227294922
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.13208389282226562,
+                "p95_ms": 0.13709068298339844,
+                "max_ms": 0.15020370483398438
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.3971328735351562,
+                "p95_ms": 1.7268657684326172,
+                "max_ms": 1.8949508666992188
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.7418861389160156,
+                "p95_ms": 2.2101402282714844,
+                "max_ms": 2.440929412841797
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        },
+        {
+          "shape": "many-headings",
+          "lines": 10000,
+          "characters": 424000,
+          "bytes": 460000,
+          "variant": "cached",
+          "entry_ms": 4.149913787841797,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 2.1240711212158203,
+                "p95_ms": 2.4611949920654297,
+                "max_ms": 2.5141239166259766
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.2369155883789062,
+                "p95_ms": 1.3108253479003906,
+                "max_ms": 1.611948013305664
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 2.3360252380371094,
+                "p95_ms": 2.624988555908203,
+                "max_ms": 2.6259422302246094
+              },
+              "peak_overlays": 8,
+              "gc_count": 1,
+              "gc_seconds": 0.013008999999999993
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 2.6268959045410156,
+                "p95_ms": 3.612041473388672,
+                "max_ms": 3.7779808044433594
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "many-headings-10000-reverse",
+      "metadata": {
+        "emacs": "31.1",
+        "system": "darwin",
+        "columns": 160,
+        "rows": 58,
+        "gc_threshold": 800000,
+        "note": "Synthetic local operations + redisplay; not end-to-end keyboard/compositor latency. Cached prototype lacks structural-edit invalidation."
+      },
+      "results": [
+        {
+          "shape": "many-headings",
+          "lines": 10000,
+          "characters": 424000,
+          "bytes": 460000,
+          "variant": "cached",
+          "entry_ms": 4.313945770263672,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.89208984375,
+                "p95_ms": 2.2590160369873047,
+                "max_ms": 2.3260116577148438
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.127004623413086,
+                "p95_ms": 1.1751651763916016,
+                "max_ms": 1.466989517211914
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 2.2590160369873047,
+                "p95_ms": 2.755880355834961,
+                "max_ms": 2.947092056274414
+              },
+              "peak_overlays": 8,
+              "gc_count": 1,
+              "gc_seconds": 0.011643000000000014
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 2.6090145111083984,
+                "p95_ms": 3.384828567504883,
+                "max_ms": 3.5238265991210938
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        },
+        {
+          "shape": "many-headings",
+          "lines": 10000,
+          "characters": 424000,
+          "bytes": 460000,
+          "variant": "baseline",
+          "entry_ms": 0.13899803161621094,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.7908344268798828,
+                "p95_ms": 0.8320808410644531,
+                "max_ms": 1.0280609130859375
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.1251697540283203,
+                "p95_ms": 0.14710426330566406,
+                "max_ms": 0.1571178436279297
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.3279914855957031,
+                "p95_ms": 1.7390251159667969,
+                "max_ms": 1.97601318359375
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.6891956329345703,
+                "p95_ms": 1.9540786743164062,
+                "max_ms": 2.0110607147216797
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "many-headings-100000-forward",
+      "metadata": {
+        "emacs": "31.1",
+        "system": "darwin",
+        "columns": 160,
+        "rows": 58,
+        "gc_threshold": 800000,
+        "note": "Synthetic local operations + redisplay; not end-to-end keyboard/compositor latency. Cached prototype lacks structural-edit invalidation."
+      },
+      "results": [
+        {
+          "shape": "many-headings",
+          "lines": 100000,
+          "characters": 4240000,
+          "bytes": 4600000,
+          "variant": "baseline",
+          "entry_ms": 0.7729530334472656,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.7951259613037109,
+                "p95_ms": 0.8699893951416016,
+                "max_ms": 1.055002212524414
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.12111663818359375,
+                "p95_ms": 0.12612342834472656,
+                "max_ms": 0.13208389282226562
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.3549327850341797,
+                "p95_ms": 1.8801689147949219,
+                "max_ms": 2.064943313598633
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 10.482072830200195,
+                "p95_ms": 10.854005813598633,
+                "max_ms": 10.894060134887695
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        },
+        {
+          "shape": "many-headings",
+          "lines": 100000,
+          "characters": 4240000,
+          "bytes": 4600000,
+          "variant": "cached",
+          "entry_ms": 4.311084747314453,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 5.882024765014648,
+                "p95_ms": 6.376981735229492,
+                "max_ms": 6.407022476196289
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.1279582977294922,
+                "p95_ms": 1.4269351959228516,
+                "max_ms": 1.4770030975341797
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 6.1321258544921875,
+                "p95_ms": 6.556987762451172,
+                "max_ms": 6.568193435668945
+              },
+              "peak_overlays": 8,
+              "gc_count": 1,
+              "gc_seconds": 0.012800000000000034
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 16.978979110717773,
+                "p95_ms": 18.10002326965332,
+                "max_ms": 18.79405975341797
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "many-headings-100000-reverse",
+      "metadata": {
+        "emacs": "31.1",
+        "system": "darwin",
+        "columns": 160,
+        "rows": 58,
+        "gc_threshold": 800000,
+        "note": "Synthetic local operations + redisplay; not end-to-end keyboard/compositor latency. Cached prototype lacks structural-edit invalidation."
+      },
+      "results": [
+        {
+          "shape": "many-headings",
+          "lines": 100000,
+          "characters": 4240000,
+          "bytes": 4600000,
+          "variant": "cached",
+          "entry_ms": 4.385948181152344,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 6.064891815185547,
+                "p95_ms": 6.460905075073242,
+                "max_ms": 6.498098373413086
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.1239051818847656,
+                "p95_ms": 1.2950897216796875,
+                "max_ms": 1.4491081237792969
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 6.114006042480469,
+                "p95_ms": 6.431102752685547,
+                "max_ms": 6.761074066162109
+              },
+              "peak_overlays": 8,
+              "gc_count": 1,
+              "gc_seconds": 0.011911000000000005
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 16.466856002807617,
+                "p95_ms": 17.29607582092285,
+                "max_ms": 17.869949340820312
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        },
+        {
+          "shape": "many-headings",
+          "lines": 100000,
+          "characters": 4240000,
+          "bytes": 4600000,
+          "variant": "baseline",
+          "entry_ms": 0.49495697021484375,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.8039474487304688,
+                "p95_ms": 0.8499622344970703,
+                "max_ms": 1.1179447174072266
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.1251697540283203,
+                "p95_ms": 0.13303756713867188,
+                "max_ms": 0.14209747314453125
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.3451576232910156,
+                "p95_ms": 1.6450881958007812,
+                "max_ms": 1.8489360809326172
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 10.616064071655273,
+                "p95_ms": 11.035919189453125,
+                "max_ms": 11.208057403564453
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "many-headings-1000000-forward",
+      "metadata": {
+        "emacs": "31.1",
+        "system": "darwin",
+        "columns": 160,
+        "rows": 58,
+        "gc_threshold": 800000,
+        "note": "Synthetic local operations + redisplay; not end-to-end keyboard/compositor latency. Cached prototype lacks structural-edit invalidation."
+      },
+      "results": [
+        {
+          "shape": "many-headings",
+          "lines": 1000000,
+          "characters": 42400000,
+          "bytes": 46000000,
+          "variant": "baseline",
+          "entry_ms": 1.608133316040039,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.7989406585693359,
+                "p95_ms": 0.8401870727539062,
+                "max_ms": 1.046895980834961
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.12302398681640625,
+                "p95_ms": 0.1270771026611328,
+                "max_ms": 0.1270771026611328
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.3670921325683594,
+                "p95_ms": 1.8241405487060547,
+                "max_ms": 1.8820762634277344
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 5.324840545654297,
+                "p95_ms": 7.69805908203125,
+                "max_ms": 8.298873901367188
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        },
+        {
+          "shape": "many-headings",
+          "lines": 1000000,
+          "characters": 42400000,
+          "bytes": 46000000,
+          "variant": "cached",
+          "entry_ms": 4.00090217590332,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 46.221017837524414,
+                "p95_ms": 47.24407196044922,
+                "max_ms": 47.274112701416016
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.146078109741211,
+                "p95_ms": 1.4460086822509766,
+                "max_ms": 1.6298294067382812
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 46.341896057128906,
+                "p95_ms": 47.60098457336426,
+                "max_ms": 47.78409004211426
+              },
+              "peak_overlays": 8,
+              "gc_count": 1,
+              "gc_seconds": 0.012461999999999973
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 67.03591346740723,
+                "p95_ms": 68.63713264465332,
+                "max_ms": 69.84901428222656
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "many-headings-1000000-reverse",
+      "metadata": {
+        "emacs": "31.1",
+        "system": "darwin",
+        "columns": 160,
+        "rows": 58,
+        "gc_threshold": 800000,
+        "note": "Synthetic local operations + redisplay; not end-to-end keyboard/compositor latency. Cached prototype lacks structural-edit invalidation."
+      },
+      "results": [
+        {
+          "shape": "many-headings",
+          "lines": 1000000,
+          "characters": 42400000,
+          "bytes": 46000000,
+          "variant": "cached",
+          "entry_ms": 4.702091217041016,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 45.96400260925293,
+                "p95_ms": 47.283172607421875,
+                "max_ms": 47.651052474975586
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.1718273162841797,
+                "p95_ms": 1.2581348419189453,
+                "max_ms": 1.5399456024169922
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 45.54581642150879,
+                "p95_ms": 47.83296585083008,
+                "max_ms": 48.00987243652344
+              },
+              "peak_overlays": 8,
+              "gc_count": 1,
+              "gc_seconds": 0.012290000000000023
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 50.897836685180664,
+                "p95_ms": 52.39391326904297,
+                "max_ms": 52.94203758239746
+              },
+              "peak_overlays": 10,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        },
+        {
+          "shape": "many-headings",
+          "lines": 1000000,
+          "characters": 42400000,
+          "bytes": 46000000,
+          "variant": "baseline",
+          "entry_ms": 0.5240440368652344,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.8108615875244141,
+                "p95_ms": 0.8890628814697266,
+                "max_ms": 1.0950565338134766
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.12493133544921875,
+                "p95_ms": 0.1289844512939453,
+                "max_ms": 0.12993812561035156
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.3539791107177734,
+                "p95_ms": 1.7528533935546875,
+                "max_ms": 1.878976821899414
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 19.17099952697754,
+                "p95_ms": 21.51322364807129,
+                "max_ms": 21.686077117919922
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "long-subtree-10000-forward",
+      "metadata": {
+        "emacs": "31.1",
+        "system": "darwin",
+        "columns": 160,
+        "rows": 58,
+        "gc_threshold": 800000,
+        "note": "Synthetic local operations + redisplay; not end-to-end keyboard/compositor latency. Cached prototype lacks structural-edit invalidation."
+      },
+      "results": [
+        {
+          "shape": "long-subtree",
+          "lines": 10000,
+          "characters": 430019,
+          "bytes": 470019,
+          "variant": "baseline",
+          "entry_ms": 0.885009765625,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.8111000061035156,
+                "p95_ms": 1.1768341064453125,
+                "max_ms": 1.2760162353515625
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.1220703125,
+                "p95_ms": 0.12493133544921875,
+                "max_ms": 0.12493133544921875
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.8461475372314453,
+                "p95_ms": 1.1548995971679688,
+                "max_ms": 1.4009475708007812
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.672983169555664,
+                "p95_ms": 1.934051513671875,
+                "max_ms": 1.97601318359375
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        },
+        {
+          "shape": "long-subtree",
+          "lines": 10000,
+          "characters": 430019,
+          "bytes": 470019,
+          "variant": "cached",
+          "entry_ms": 8.845090866088867,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 4.559993743896484,
+                "p95_ms": 18.229961395263672,
+                "max_ms": 19.08397674560547
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.026928000000000007
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 2.660036087036133,
+                "p95_ms": 3.532886505126953,
+                "max_ms": 16.782045364379883
+              },
+              "peak_overlays": 51,
+              "gc_count": 1,
+              "gc_seconds": 0.013788999999999996
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 3.1909942626953125,
+                "p95_ms": 3.9072036743164062,
+                "max_ms": 16.24894142150879
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.02513599999999999
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 4.220008850097656,
+                "p95_ms": 5.333185195922852,
+                "max_ms": 18.052101135253906
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.026195999999999997
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "long-subtree-10000-reverse",
+      "metadata": {
+        "emacs": "31.1",
+        "system": "darwin",
+        "columns": 160,
+        "rows": 58,
+        "gc_threshold": 800000,
+        "note": "Synthetic local operations + redisplay; not end-to-end keyboard/compositor latency. Cached prototype lacks structural-edit invalidation."
+      },
+      "results": [
+        {
+          "shape": "long-subtree",
+          "lines": 10000,
+          "characters": 430019,
+          "bytes": 470019,
+          "variant": "cached",
+          "entry_ms": 9.924173355102539,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 4.84013557434082,
+                "p95_ms": 18.25881004333496,
+                "max_ms": 18.96810531616211
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.026638999999999968
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 2.6471614837646484,
+                "p95_ms": 3.490924835205078,
+                "max_ms": 15.780925750732422
+              },
+              "peak_overlays": 51,
+              "gc_count": 1,
+              "gc_seconds": 0.012851000000000001
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 3.2758712768554688,
+                "p95_ms": 4.004001617431641,
+                "max_ms": 16.705989837646484
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.02584599999999998
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 4.379987716674805,
+                "p95_ms": 5.146980285644531,
+                "max_ms": 18.203020095825195
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.02653099999999997
+            }
+          ]
+        },
+        {
+          "shape": "long-subtree",
+          "lines": 10000,
+          "characters": 430019,
+          "bytes": 470019,
+          "variant": "baseline",
+          "entry_ms": 0.8070468902587891,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.8199214935302734,
+                "p95_ms": 0.8780956268310547,
+                "max_ms": 1.1110305786132812
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.125885009765625,
+                "p95_ms": 0.13899803161621094,
+                "max_ms": 0.1399517059326172
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.8640289306640625,
+                "p95_ms": 1.0831356048583984,
+                "max_ms": 1.155853271484375
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.7809867858886719,
+                "p95_ms": 2.1429061889648438,
+                "max_ms": 2.176046371459961
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "long-subtree-100000-forward",
+      "metadata": {
+        "emacs": "31.1",
+        "system": "darwin",
+        "columns": 160,
+        "rows": 58,
+        "gc_threshold": 800000,
+        "note": "Synthetic local operations + redisplay; not end-to-end keyboard/compositor latency. Cached prototype lacks structural-edit invalidation."
+      },
+      "results": [
+        {
+          "shape": "long-subtree",
+          "lines": 100000,
+          "characters": 4300019,
+          "bytes": 4700019,
+          "variant": "baseline",
+          "entry_ms": 0.5819797515869141,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.8158683776855469,
+                "p95_ms": 0.8549690246582031,
+                "max_ms": 1.0700225830078125
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.125885009765625,
+                "p95_ms": 0.13399124145507812,
+                "max_ms": 0.141143798828125
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.8640289306640625,
+                "p95_ms": 1.0898113250732422,
+                "max_ms": 1.1107921600341797
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 1.3589859008789062,
+                "p95_ms": 1.4820098876953125,
+                "max_ms": 2.1419525146484375
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        },
+        {
+          "shape": "long-subtree",
+          "lines": 100000,
+          "characters": 4300019,
+          "bytes": 4700019,
+          "variant": "cached",
+          "entry_ms": 42.42110252380371,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 18.631935119628906,
+                "p95_ms": 30.454158782958984,
+                "max_ms": 32.10806846618652
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.025209000000000037
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 2.640962600708008,
+                "p95_ms": 3.5228729248046875,
+                "max_ms": 15.313863754272461
+              },
+              "peak_overlays": 51,
+              "gc_count": 1,
+              "gc_seconds": 0.01238399999999995
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 3.030061721801758,
+                "p95_ms": 3.7779808044433594,
+                "max_ms": 16.128063201904297
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.025038000000000005
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 18.4481143951416,
+                "p95_ms": 18.741846084594727,
+                "max_ms": 31.435012817382812
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.024567000000000005
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "long-subtree-100000-reverse",
+      "metadata": {
+        "emacs": "31.1",
+        "system": "darwin",
+        "columns": 160,
+        "rows": 58,
+        "gc_threshold": 800000,
+        "note": "Synthetic local operations + redisplay; not end-to-end keyboard/compositor latency. Cached prototype lacks structural-edit invalidation."
+      },
+      "results": [
+        {
+          "shape": "long-subtree",
+          "lines": 100000,
+          "characters": 4300019,
+          "bytes": 4700019,
+          "variant": "cached",
+          "entry_ms": 42.24705696105957,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 17.46201515197754,
+                "p95_ms": 29.733896255493164,
+                "max_ms": 29.92105484008789
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.024612000000000023
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 2.6750564575195312,
+                "p95_ms": 3.448009490966797,
+                "max_ms": 15.043020248413086
+              },
+              "peak_overlays": 51,
+              "gc_count": 1,
+              "gc_seconds": 0.012127999999999972
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 3.0128955841064453,
+                "p95_ms": 3.944873809814453,
+                "max_ms": 16.175031661987305
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.024863000000000024
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 18.36705207824707,
+                "p95_ms": 18.867969512939453,
+                "max_ms": 31.347990036010742
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.024729999999999974
+            }
+          ]
+        },
+        {
+          "shape": "long-subtree",
+          "lines": 100000,
+          "characters": 4300019,
+          "bytes": 4700019,
+          "variant": "baseline",
+          "entry_ms": 0.8111000061035156,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.8220672607421875,
+                "p95_ms": 0.8780956268310547,
+                "max_ms": 1.0650157928466797
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.11515617370605469,
+                "p95_ms": 0.1308917999267578,
+                "max_ms": 0.1430511474609375
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.8640289306640625,
+                "p95_ms": 1.1050701141357422,
+                "max_ms": 1.1529922485351562
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 10.509014129638672,
+                "p95_ms": 10.79702377319336,
+                "max_ms": 10.893821716308594
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "long-subtree-1000000-forward",
+      "metadata": {
+        "emacs": "31.1",
+        "system": "darwin",
+        "columns": 160,
+        "rows": 58,
+        "gc_threshold": 800000,
+        "note": "Synthetic local operations + redisplay; not end-to-end keyboard/compositor latency. Cached prototype lacks structural-edit invalidation."
+      },
+      "results": [
+        {
+          "shape": "long-subtree",
+          "lines": 1000000,
+          "characters": 43000019,
+          "bytes": 47000019,
+          "variant": "baseline",
+          "entry_ms": 1.5480518341064453,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.8189678192138672,
+                "p95_ms": 0.8571147918701172,
+                "max_ms": 1.0769367218017578
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.12803077697753906,
+                "p95_ms": 0.13589859008789062,
+                "max_ms": 0.1361370086669922
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.8709430694580078,
+                "p95_ms": 0.9300708770751953,
+                "max_ms": 1.461029052734375
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 5.026102066040039,
+                "p95_ms": 7.380962371826172,
+                "max_ms": 7.851123809814453
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        },
+        {
+          "shape": "long-subtree",
+          "lines": 1000000,
+          "characters": 43000019,
+          "bytes": 47000019,
+          "variant": "cached",
+          "entry_ms": 371.61803245544434,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 152.66013145446777,
+                "p95_ms": 164.57414627075195,
+                "max_ms": 164.94083404541016
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.02526400000000001
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 2.6001930236816406,
+                "p95_ms": 3.322124481201172,
+                "max_ms": 15.197992324829102
+              },
+              "peak_overlays": 51,
+              "gc_count": 1,
+              "gc_seconds": 0.012088999999999961
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 3.0748844146728516,
+                "p95_ms": 4.040002822875977,
+                "max_ms": 16.257047653198242
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.02479300000000001
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 29.838085174560547,
+                "p95_ms": 32.377004623413086,
+                "max_ms": 42.09709167480469
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.024377000000000038
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "long-subtree-1000000-reverse",
+      "metadata": {
+        "emacs": "31.1",
+        "system": "darwin",
+        "columns": 160,
+        "rows": 58,
+        "gc_threshold": 800000,
+        "note": "Synthetic local operations + redisplay; not end-to-end keyboard/compositor latency. Cached prototype lacks structural-edit invalidation."
+      },
+      "results": [
+        {
+          "shape": "long-subtree",
+          "lines": 1000000,
+          "characters": 43000019,
+          "bytes": 47000019,
+          "variant": "cached",
+          "entry_ms": 380.62286376953125,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 152.01091766357422,
+                "p95_ms": 163.4981632232666,
+                "max_ms": 170.96686363220215
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.025726000000000027
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 2.660036087036133,
+                "p95_ms": 3.6029815673828125,
+                "max_ms": 15.47098159790039
+              },
+              "peak_overlays": 51,
+              "gc_count": 1,
+              "gc_seconds": 0.012472999999999956
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 3.075122833251953,
+                "p95_ms": 3.846883773803711,
+                "max_ms": 16.09492301940918
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.025152000000000008
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 7.363080978393555,
+                "p95_ms": 9.526968002319336,
+                "max_ms": 22.97496795654297
+              },
+              "peak_overlays": 51,
+              "gc_count": 2,
+              "gc_seconds": 0.024973000000000023
+            }
+          ]
+        },
+        {
+          "shape": "long-subtree",
+          "lines": 1000000,
+          "characters": 43000019,
+          "bytes": 47000019,
+          "variant": "baseline",
+          "entry_ms": 0.5650520324707031,
+          "actions": [
+            {
+              "action": "edit",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.8249282836914062,
+                "p95_ms": 0.885009765625,
+                "max_ms": 1.071929931640625
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "move",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.12803077697753906,
+                "p95_ms": 0.16808509826660156,
+                "max_ms": 0.37789344787597656
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "scroll",
+              "samples": 20,
+              "timing": {
+                "median_ms": 0.8540153503417969,
+                "p95_ms": 0.9911060333251953,
+                "max_ms": 1.1680126190185547
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            },
+            {
+              "action": "jump",
+              "samples": 20,
+              "timing": {
+                "median_ms": 19.081830978393555,
+                "p95_ms": 21.03710174560547,
+                "max_ms": 21.327972412109375
+              },
+              "peak_overlays": 0,
+              "gc_count": 0,
+              "gc_seconds": 0.0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
