@@ -157,8 +157,14 @@ func TestEveryTemplateSideIsNonEmpty(t *testing.T) {
 // REQ-C-007's air-gap clause reaches the templates too: a card template can
 // pull a remote script or stylesheet just as a stylesheet can, and Anki
 // renders it inside a real web view.
+//
+// The templates DO carry one script — REQ-C-006's review-time deck-class
+// hook, inline and source-less — so the bare `<script>` tag is permitted
+// and every construct that would make a script or the page reach the
+// network is forbidden instead: a src attribute, a URL scheme, a fetch,
+// a dynamic import, a request object.
 func TestTemplatesReachNoNetworkResource(t *testing.T) {
-	forbidden := []string{"htt" + "p", "<scr" + "ipt", "url" + "(", "//"}
+	forbidden := []string{"htt" + "p", "url" + "(", "//", "src" + "=", "<scr" + "ipt ", "fet" + "ch(", "imp" + "ort(", "XMLHttp" + "Request", "send" + "Beacon"}
 	for _, spec := range model.Owned() {
 		for _, tpl := range spec.Templates {
 			for side, text := range map[string]string{"front": tpl.Front, "back": tpl.Back} {
@@ -166,6 +172,10 @@ func TestTemplatesReachNoNetworkResource(t *testing.T) {
 					if strings.Contains(text, needle) {
 						t.Errorf("%s template %q %s carries %q", spec.Name, tpl.Name, side, needle)
 					}
+				}
+				// Every script tag is the bare, attribute-less one.
+				if bare, all := strings.Count(text, "<scr"+"ipt>"), strings.Count(text, "<scr"+"ipt"); bare != all {
+					t.Errorf("%s template %q %s carries %d script tags but only %d bare ones", spec.Name, tpl.Name, side, all, bare)
 				}
 			}
 		}

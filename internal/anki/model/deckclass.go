@@ -2,10 +2,10 @@ package model
 
 import "strings"
 
-// classPrefix is the literal every deck class begins with. The wrapper the
-// card templates emit is `class="deck-{{Deck}}"`, so this constant and the
-// templates' literal are two spellings of one convention; the templates are
-// the wire form and this is the Go form.
+// classPrefix is the literal every deck class begins with. The template
+// script (assets/deckclass.js) adds the same prefix to the wrapper at review
+// time, so this constant and the script's literal are two spellings of one
+// convention; the script is the review-time form and this is the Go form.
 const classPrefix = "deck-"
 
 // unnamedToken is REQ-C-006.2's empty-token sentinel. A deck made entirely of
@@ -18,7 +18,11 @@ const unnamedToken = "unnamed"
 
 // NormalizeDeckClass maps Anki's {{Deck}} value — the full deck path, `::`
 // separators included — to a CSS-identifier-safe token, as the total function
-// REQ-C-006.2 and design.md §3.3 fix:
+// REQ-C-006.2 and design.md §3.3 fix. It is the REFERENCE implementation:
+// the class a card actually receives is computed by the template script
+// (assets/deckclass.js) inside Anki's webview, because {{Deck}} only exists
+// at review time, and the mirror test holds that script to this function
+// row for row.
 //
 //  1. ASCII case fold
 //  2. each `::` separator becomes ONE hyphen
@@ -92,8 +96,9 @@ func NormalizeDeckClass(deck string) string {
 	return token
 }
 
-// DeckClass returns the full CSS class the card-template wrapper carries for
-// a deck: the `deck-` prefix followed by the normalized token. It never
+// DeckClass returns the full CSS class the template script adds to the
+// card's wrapper for a deck: the `deck-` prefix followed by the normalized
+// token. It never
 // returns the bare prefix, because NormalizeDeckClass never returns the empty
 // string (REQ-C-006.2).
 func DeckClass(deck string) string {

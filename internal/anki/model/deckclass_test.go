@@ -8,36 +8,53 @@ import (
 	"github.com/karohani/imoogi-emacs/internal/anki/orgdoc"
 )
 
-// AC-C-004's table verbatim, plus the rationale rows design.md §3.3 names
-// but the table does not enumerate. The normalizer is a total function, so
-// every row asserts a value rather than an error.
+// deckClassTable is AC-C-004's table verbatim, plus the rationale rows
+// design.md §3.3 names but the table does not enumerate. It is package-level
+// rather than local to one test because two tests consume it: the Go
+// normalizer's own assertion below, and the Go-vs-JS mirror in
+// deckclass_script_test.go. The Elisp mirror (tests/anki-notetype-test.el)
+// reads these rows off this file by regexp, so each row stays on one line in
+// the {"name", "deck", "token", "class"} shape.
+var deckClassTable = []struct {
+	name  string
+	deck  string
+	token string
+	class string
+}{
+	// The nine AC-C-004 rows.
+	{"parenthesized path, the user's real deck", "(PROGRAMMER)::(GO)", "programmer-go", "deck-programmer-go"},
+	{"ordinary two-level path", "Geography::Europe", "geography-europe", "deck-geography-europe"},
+	{"consecutive separators collapse to one hyphen", "A::::B", "a-b", "deck-a-b"},
+	{"digit-leading token takes the underscore guard", "2026 Review", "_2026-review", "deck-_2026-review"},
+	{"surrounding and interior spaces", "  Spaced  Name  ", "spaced-name", "deck-spaced-name"},
+	{"underscore is inside the permitted class", "Math_Notes", "math_notes", "deck-math_notes"},
+	{"separator-only deck yields the sentinel", "::", "unnamed", "deck-unnamed"},
+	{"hyphen-only deck yields the sentinel", "---", "unnamed", "deck-unnamed"},
+	{"punctuation-only deck yields the sentinel", "!!!", "unnamed", "deck-unnamed"},
+
+	// Rows design.md §3.3 reasons about explicitly.
+	{"the empty deck is a sentinel, not a bare prefix", "", "unnamed", "deck-unnamed"},
+	{"a single separator level is a plain hyphen", "A::B", "a-b", "deck-a-b"},
+	{"non-ASCII runes are outside the permitted class", "한국어", "unnamed", "deck-unnamed"},
+	{"mixed script keeps only the permitted runes", "Go::한국어::Notes", "go-notes", "deck-go-notes"},
+	{"uppercase folds to lower", "GO", "go", "deck-go"},
+}
+
+// deckClassAdversarialInputs are the inputs outside the table that the
+// permitted-token property is asserted over: control characters, a quote,
+// a non-BMP rune, digit- and underscore-leading names. The mirror test feeds
+// these to the JS normalizer too, since a carrier that survives a quote or a
+// newline is exactly what review time has to prove.
+var deckClassAdversarialInputs = []string{
+	"(PROGRAMMER)::(GO)", "2026 Review", "::", "---", "!!!", "",
+	"a.b/c", "Tab\tSeparated", "New\nLine", `Quote"Mark`, "semi;colon",
+	"한국어", "emoji-🐉", "9lives", "__leading", "trailing__",
+}
+
+// The normalizer is a total function, so every row asserts a value rather
+// than an error.
 func TestNormalizeDeckClassMatchesTheAcceptanceTable(t *testing.T) {
-	cases := []struct {
-		name  string
-		deck  string
-		token string
-		class string
-	}{
-		// The nine AC-C-004 rows.
-		{"parenthesized path, the user's real deck", "(PROGRAMMER)::(GO)", "programmer-go", "deck-programmer-go"},
-		{"ordinary two-level path", "Geography::Europe", "geography-europe", "deck-geography-europe"},
-		{"consecutive separators collapse to one hyphen", "A::::B", "a-b", "deck-a-b"},
-		{"digit-leading token takes the underscore guard", "2026 Review", "_2026-review", "deck-_2026-review"},
-		{"surrounding and interior spaces", "  Spaced  Name  ", "spaced-name", "deck-spaced-name"},
-		{"underscore is inside the permitted class", "Math_Notes", "math_notes", "deck-math_notes"},
-		{"separator-only deck yields the sentinel", "::", "unnamed", "deck-unnamed"},
-		{"hyphen-only deck yields the sentinel", "---", "unnamed", "deck-unnamed"},
-		{"punctuation-only deck yields the sentinel", "!!!", "unnamed", "deck-unnamed"},
-
-		// Rows design.md §3.3 reasons about explicitly.
-		{"the empty deck is a sentinel, not a bare prefix", "", "unnamed", "deck-unnamed"},
-		{"a single separator level is a plain hyphen", "A::B", "a-b", "deck-a-b"},
-		{"non-ASCII runes are outside the permitted class", "한국어", "unnamed", "deck-unnamed"},
-		{"mixed script keeps only the permitted runes", "Go::한국어::Notes", "go-notes", "deck-go-notes"},
-		{"uppercase folds to lower", "GO", "go", "deck-go"},
-	}
-
-	for _, tc := range cases {
+	for _, tc := range deckClassTable {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := model.NormalizeDeckClass(tc.deck); got != tc.token {
 				t.Errorf("NormalizeDeckClass(%q) = %q, want %q", tc.deck, got, tc.token)
@@ -66,12 +83,7 @@ func TestDeckClassIsNeverTheBarePrefix(t *testing.T) {
 // exist to establish. Asserted over the acceptance inputs plus adversarial
 // ones rather than only the table.
 func TestNormalizeDeckClassAlwaysProducesAPermittedToken(t *testing.T) {
-	inputs := []string{
-		"(PROGRAMMER)::(GO)", "2026 Review", "::", "---", "!!!", "",
-		"a.b/c", "Tab\tSeparated", "New\nLine", `Quote"Mark`, "semi;colon",
-		"한국어", "emoji-🐉", "9lives", "__leading", "trailing__",
-	}
-	for _, deck := range inputs {
+	for _, deck := range deckClassAdversarialInputs {
 		token := model.NormalizeDeckClass(deck)
 		if token == "" {
 			t.Errorf("NormalizeDeckClass(%q) produced the empty token; step 7's sentinel did not fire", deck)
@@ -99,15 +111,32 @@ func TestNormalizeDeckClassAlwaysProducesAPermittedToken(t *testing.T) {
 // NOWHERE else. Anki expands {{Deck}} at review time only inside a template,
 // so a wrapper that reached stored field content would both fail to expand
 // and enter the content hash — design.md §3.1's "invisible to the hash".
+//
+// The wrapper's own class is the stable `imoogi-deck`, NOT `deck-{{Deck}}`:
+// Anki expands {{Deck}} verbatim, so a class attribute built from it carries
+// the deck's punctuation and spaces and the normalized class REQ-C-006.2
+// promises would never exist (sync-audit F1). The deck path instead travels
+// as the text of a carrier element the template script reads, and the
+// normalized `deck-<token>` is ADDED to the wrapper at review time — see
+// deckclass_script_test.go for the script's own contract.
 func TestDeckWrapperAppearsInEveryTemplateSide(t *testing.T) {
-	const wrapper = `class="deck-{{Deck}}"`
+	const (
+		wrapper = `class="imoogi-deck"`
+		carrier = `class="imoogi-deck-name" style="display:none">{{Deck}}</span>`
+		rawForm = `class="deck-{{Deck}}"`
+	)
 	for _, spec := range model.Owned() {
 		for _, tpl := range spec.Templates {
-			if !strings.Contains(tpl.Front, wrapper) {
-				t.Errorf("%s template %q front carries no %s", spec.Name, tpl.Name, wrapper)
-			}
-			if !strings.Contains(tpl.Back, wrapper) {
-				t.Errorf("%s template %q back carries no %s", spec.Name, tpl.Name, wrapper)
+			for side, body := range map[string]string{"front": tpl.Front, "back": tpl.Back} {
+				if n := strings.Count(body, wrapper); n != 1 {
+					t.Errorf("%s template %q %s carries %d wrappers %s, want exactly 1", spec.Name, tpl.Name, side, n, wrapper)
+				}
+				if n := strings.Count(body, carrier); n != 1 {
+					t.Errorf("%s template %q %s carries %d deck-name carriers, want exactly 1", spec.Name, tpl.Name, side, n)
+				}
+				if strings.Contains(body, rawForm) {
+					t.Errorf("%s template %q %s still emits the raw %s wrapper; the class never normalizes at review time", spec.Name, tpl.Name, side, rawForm)
+				}
 			}
 		}
 	}
@@ -133,7 +162,7 @@ func TestRenderedFieldValuesCarryNoDeckWrapper(t *testing.T) {
 			t.Fatalf("Render(%q) produced no fields", tc.noteType)
 		}
 		for name, value := range fields {
-			if strings.Contains(value, `class="deck-`) {
+			if strings.Contains(value, `class="deck-`) || strings.Contains(value, "imoogi-deck") {
 				t.Errorf("rendered field %q of %s carries the deck wrapper: %q", name, tc.noteType, value)
 			}
 		}

@@ -122,7 +122,7 @@ func TestBaseStylesheetConsumesEachCustomPropertyAtItsNamedSite(t *testing.T) {
 		{"card body face", ".card", "font-family: var(--imoogi-sans)"},
 		{"card rhythm", ".card", "line-height: var(--imoogi-line-height)"},
 		{"heading face", "h6", "font-family: var(--imoogi-serif)"},
-		{"deck wrapper measure", `[class^="deck-"]`, "max-width: var(--imoogi-measure)"},
+		{"deck wrapper measure", ".imoogi-deck", "max-width: var(--imoogi-measure)"},
 		{"math and code contrast", "code", "color: var(--imoogi-emphasis-fg)"},
 	}
 	for _, tc := range cases {
@@ -163,16 +163,20 @@ func TestBaseStylesheetReachesNoNetworkResource(t *testing.T) {
 }
 
 // REQ-C-009: no rule of imoogi's own targets a NAMED deck. The generic
-// attribute-prefix rule required by REQ-C-007.2 is deck-agnostic and is
-// therefore not a violation; a `.deck-<something>` class selector would be.
+// wrapper rule required by REQ-C-007.2 selects the stable `imoogi-deck` class
+// every template emits and is deck-agnostic, so it is not a violation; a
+// `.deck-<something>` class selector would be.
 //
-// The attribute-prefix form is also the only one that selects anything at
-// review time: Anki expands {{Deck}} raw, so the runtime class carries the
-// deck's own punctuation and a `.deck-x` class selector would miss it.
+// The stable class is what keeps the measure rule in force even where the
+// template script does not run; the normalized per-deck class is added to
+// the same element at review time and is for the user stylesheet alone.
 func TestBaseStylesheetCarriesNoPerDeckRule(t *testing.T) {
 	css := model.BaseCSS()
-	if !strings.Contains(css, `[class^="deck-"]`) {
-		t.Error("base stylesheet carries no generic deck-wrapper rule")
+	if !strings.Contains(css, ".card .imoogi-deck") {
+		t.Error("base stylesheet carries no generic deck-wrapper rule on .imoogi-deck")
+	}
+	if strings.Contains(css, `[class^="deck-"]`) {
+		t.Error("base stylesheet still carries the attribute-prefix rule that assumed an unnormalized class")
 	}
 	if strings.Contains(css, ".deck-") {
 		t.Error("base stylesheet carries a class selector naming a specific deck; REQ-C-009 forbids per-deck styling")

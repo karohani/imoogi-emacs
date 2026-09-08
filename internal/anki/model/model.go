@@ -1,15 +1,17 @@
 // Package model owns imoogi's two note types: their names, their field
 // lists, their embedded card templates, the embedded base stylesheet, the
-// deck-class normalizer the templates' wrapper consumes, and the
-// probe-then-act install step that puts all of it into a collection.
+// deck-class normalizer and its review-time script counterpart the
+// templates carry, and the probe-then-act install step that puts all of it
+// into a collection.
 //
 // Nothing in this package is reachable from an ordinary synchronization run.
 // That isolation is the whole point: the parent SPEC's per-run "no note-type
 // write" blanket survives verbatim on the hot path (AC-C-003a) and is lifted
 // only on a command the user explicitly invokes (AC-C-003b).
 //
-// The package reads no file from disk. The templates and the base stylesheet
-// are embedded at build time (design.md §4.1) — the air-gap rule forbids a
+// The package reads no file from disk. The templates, the deck-class script
+// they carry, and the base stylesheet are embedded at build time (design.md
+// §4.1) — the air-gap rule forbids a
 // network fetch, and a stylesheet of this size as a Go string constant would
 // be neither readable nor lintable. The USER stylesheet is not embedded and
 // is not read here either: it arrives as text in the install request, read by
@@ -89,7 +91,7 @@ func Owned() []Spec {
 			InOrderFields: []string{"Front", "Back"},
 			IsCloze:       false,
 			Templates: []ankiconnect.CardTemplate{
-				{Name: "Card 1", Front: basicFront, Back: basicBack},
+				{Name: "Card 1", Front: withDeckClassScript(basicFront), Back: withDeckClassScript(basicBack)},
 			},
 		},
 		{
@@ -97,7 +99,7 @@ func Owned() []Spec {
 			InOrderFields: []string{"Text", "Back Extra"},
 			IsCloze:       true,
 			Templates: []ankiconnect.CardTemplate{
-				{Name: "Cloze", Front: clozeFront, Back: clozeBack},
+				{Name: "Cloze", Front: withDeckClassScript(clozeFront), Back: withDeckClassScript(clozeBack)},
 			},
 		},
 	}

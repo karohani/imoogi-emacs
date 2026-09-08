@@ -85,9 +85,15 @@ func TestInstallModelsEndToEnd_CreatesBothTypesThroughRealWireShapes(t *testing.
 		if len(p.CardTemplates) == 0 {
 			t.Errorf("createModel(%s) carried no cardTemplates", p.ModelName)
 		}
+		// The deck hook reaches the wire as the stable wrapper class plus
+		// the {{Deck}} carrier the template script normalizes at review
+		// time (REQ-C-006); the raw `deck-{{Deck}}` form never does.
 		for _, tpl := range p.CardTemplates {
-			if !strings.Contains(tpl.Front, `class="deck-{{Deck}}"`) {
+			if !strings.Contains(tpl.Front, `class="imoogi-deck"`) || !strings.Contains(tpl.Front, `{{Deck}}`) {
 				t.Errorf("createModel(%s) template %q front carries no deck wrapper", p.ModelName, tpl.Name)
+			}
+			if strings.Contains(tpl.Front, `class="deck-{{Deck}}"`) {
+				t.Errorf("createModel(%s) template %q front still carries the raw deck wrapper", p.ModelName, tpl.Name)
 			}
 		}
 		switch p.ModelName {

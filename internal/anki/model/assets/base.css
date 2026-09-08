@@ -49,14 +49,14 @@
 
 /* 4. Measure and rhythm, applied to the deck wrapper the card templates emit.
  *
- * The selector is an attribute prefix match rather than a class selector on
- * purpose. Anki expands the Deck special field verbatim at review time, so
- * the runtime class carries whatever punctuation the deck name carries and a
- * class selector spelling out a normalized token would match nothing.
+ * The wrapper carries the stable class imoogi-deck in the template itself,
+ * so this rule is in force whether or not the template's script runs; the
+ * normalized per-deck class is added to the same element at review time
+ * (section 8) and is for the user stylesheet alone.
  *
  * A bounded measure is what makes a long cloze readable at phone size.
  */
-.card [class^="deck-"] {
+.card .imoogi-deck {
   display: block;
   max-width: var(--imoogi-measure);
   margin: 0 auto;
@@ -139,14 +139,18 @@
 
 /* 8. Deck hook.
  *
- * Each card template wraps its body in an element whose class is the literal
- * deck- prefix followed by the deck path. imoogi ships no rule of its own
- * targeting a named deck, and derives no colour, font, or other appearance
- * from a deck name or a deck-name hash (REQ-C-009) — this file is
- * byte-identical for every deck and every collection.
+ * Each card template wraps its body in an element carrying imoogi-deck and,
+ * added by the template's own script when the card is shown, a second class:
+ * the literal deck- prefix followed by the deck path normalized as REQ-C-006
+ * fixes — lowercase, each separator pair becoming one hyphen, every other
+ * character outside a-z 0-9 _ and hyphen becoming a hyphen, runs collapsed,
+ * edges trimmed, a leading digit guarded with _, an empty result named
+ * unnamed. The deck (PROGRAMMER)::(GO) therefore carries the class
+ * deck-programmer-go, and a user styling it writes a rule on that class.
  *
- * Per-deck styling belongs in the user stylesheet, which the install step
- * appends verbatim after this file. Normalized-token form: lowercase, each
- * separator pair becoming one hyphen, every other character outside a-z 0-9 _
- * and hyphen becoming a hyphen, runs collapsed, edges trimmed.
+ * imoogi ships no rule of its own targeting a named deck, and derives no
+ * colour, font, or other appearance from a deck name or a deck-name hash
+ * (REQ-C-009) — this file is byte-identical for every deck and every
+ * collection. Per-deck styling belongs in the user stylesheet, which the
+ * install step appends verbatim after this file.
  */
