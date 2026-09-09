@@ -14,12 +14,8 @@
 (setq imoogi-border-bench-disable-org-menu
       (equal (getenv "BENCH_NO_ORG_MENU") "1"))
 (set-frame-size nil 160 60)
-(condition-case err
-    (imoogi-border-bench-run (getenv "BENCH_OUTPUT")
+(imoogi-border-bench-run (getenv "BENCH_OUTPUT")
  (list (intern (getenv "BENCH_SHAPE")))
  (list (string-to-number (getenv "BENCH_LINES")))
  (read (getenv "BENCH_VARIANTS")) 20)
-  (error
-   (princ (format "Benchmark error: %S\n" err) 'external-debugging-output)
-   (kill-emacs 1)))
 (kill-emacs 0)

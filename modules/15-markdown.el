@@ -5,13 +5,28 @@
 
 ;;; Code:
 
-(imoogi-require "15-markdown" 'markdown-mode 'markdown-toc 'edit-indirect)
+(imoogi-require "15-markdown" 'markdown-mode 'markdown-toc 'edit-indirect 'org 'hl-line)
 
 ;;; markdown-mode — org-mode 기본 구조 편집 키와 맞추기
 (declare-function markdown-cur-list-item-bounds "markdown-mode")
 (declare-function markdown-demote "markdown-mode")
 (declare-function markdown-insert-list-item "markdown-mode" (&optional arg))
 (declare-function markdown-insert-gfm-checkbox "markdown-mode")
+(declare-function markdown-on-heading-p "markdown-mode")
+
+(defun imoogi-markdown-hl-line-range ()
+  "Keep current-line highlighting from covering Markdown heading colors."
+  (unless (markdown-on-heading-p)
+    (cons (line-beginning-position)
+          (min (point-max) (1+ (line-end-position))))))
+
+(defun imoogi-markdown-heading-setup ()
+  "Extend heading backgrounds across the line, including existing buffers."
+  (setq-local markdown-fontify-whole-heading-line t)
+  (setq-local hl-line-range-function #'imoogi-markdown-hl-line-range)
+  (when (fboundp 'hl-line-unhighlight) (hl-line-unhighlight))
+  (when (fboundp 'global-hl-line-unhighlight) (global-hl-line-unhighlight))
+  (font-lock-flush))
 
 (defun imoogi-markdown-list-has-previous-sibling-p (bounds)
   "Return non-nil when list item BOUNDS has a previous item at the same level."
@@ -53,12 +68,26 @@
 (use-package markdown-mode
   :ensure t
   :commands (markdown-mode gfm-mode)
+  :hook (markdown-mode . imoogi-markdown-heading-setup)
   :bind (:map markdown-mode-map
               ("M-<left>" . markdown-promote)
               ("M-<right>" . imoogi-markdown-demote)
               ("M-<up>" . markdown-move-up)
               ("M-<down>" . markdown-move-down)
-              ("M-S-<return>" . imoogi-markdown-insert-task-list-item)))
+              ("M-S-<return>" . imoogi-markdown-insert-task-list-item))
+  :config
+  (require 'org)
+  ;; Inherit the Org palette so both formats stay in sync across themes.
+  (dotimes (index 6)
+    (custom-theme-set-faces
+     'user
+     `(,(intern (format "markdown-header-face-%d" (1+ index)))
+       ((t (:inherit ,(intern (format "org-level-%d" (1+ index)))
+            :extend t))))))
+  (dolist (buffer (buffer-list))
+    (with-current-buffer buffer
+      (when (derived-mode-p 'markdown-mode)
+        (imoogi-markdown-heading-setup)))))
 
 ;;; markdown-toc — 마크다운 목차(TOC) 생성
 (use-package markdown-toc
