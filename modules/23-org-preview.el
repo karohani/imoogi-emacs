@@ -46,6 +46,10 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
   "Delay before reconnecting the Emacs event stream."
   :type 'number)
 
+(defcustom imoogi-org-preview-highlight-current t
+  "When non-nil, highlight the current paragraph in the browser without scrolling."
+  :type 'boolean)
+
 (defcustom imoogi-org-preview-navigation-sync nil
   "When non-nil, enable optional bidirectional cursor synchronization."
   :type 'boolean)
@@ -58,6 +62,7 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
 (defvar imoogi-org-preview--server-token nil)
 (defvar imoogi-org-preview--buffers nil)
 
+(defvar-local imoogi-org-preview--last-point nil)
 (defvar-local imoogi-org-preview--open-pending nil)
 (defvar-local imoogi-org-preview--sending nil)
 (defvar-local imoogi-org-preview--dirty nil)
@@ -135,7 +140,7 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
   (cl-pushnew (current-buffer) imoogi-org-preview--buffers)
   (add-hook 'after-change-functions #'imoogi-org-preview--after-change nil t)
   (add-hook 'kill-buffer-hook #'imoogi-org-preview--disable nil t)
-  (when imoogi-org-preview-navigation-sync
+  (when (or imoogi-org-preview-highlight-current imoogi-org-preview-navigation-sync)
     (add-hook 'post-command-hook #'imoogi-org-preview--post-command nil t))
   (imoogi-org-preview--set-status 'connecting)
   (imoogi-org-preview--ensure-server)
@@ -299,7 +304,9 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
 
 (defun imoogi-org-preview--post-command ()
   "Schedule point synchronization unless this command came from preview."
-  (unless imoogi-org-preview--suppress-navigation
+  (unless (or imoogi-org-preview--suppress-navigation
+              (equal (point) imoogi-org-preview--last-point))
+    (setq imoogi-org-preview--last-point (point))
     (imoogi-org-preview--schedule-navigation)))
 
 (defun imoogi-org-preview--schedule-update ()
@@ -314,7 +321,7 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
   "Send one trailing point navigation event for the current buffer."
   (imoogi-org-preview--cancel-timer imoogi-org-preview--nav-timer)
   (setq imoogi-org-preview--nav-timer
-        (run-at-time 0.05 nil
+        (run-at-time 0.15 nil
                      #'imoogi-org-preview--send-navigation (current-buffer))))
 
 (defun imoogi-org-preview--send-update (buffer)
@@ -348,6 +355,8 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
       (setq imoogi-org-preview--nav-timer nil)
       (when (and imoogi-org-preview-mode
                  (not imoogi-org-preview--suppress-navigation)
+                 (not imoogi-org-preview--dirty)
+                 (not imoogi-org-preview--sending)
                  (imoogi-org-preview--port)
                  (imoogi-org-preview--token))
         (let ((event-id (imoogi-org-preview--make-id "event")))
@@ -359,8 +368,10 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
            (imoogi-org-preview--base-payload
             `((event_id . ,event-id)
               (cursor_byte . ,(imoogi-org-preview--cursor-byte))
-              (element_id . ,(imoogi-org-preview--current-element-id))
-              (range . ,(imoogi-org-preview--current-element-range))))
+              (element_id . ,(when imoogi-org-preview-navigation-sync
+                               (imoogi-org-preview--current-element-id)))
+              (range . ,(when imoogi-org-preview-navigation-sync
+                          (imoogi-org-preview--current-element-range)))))
            #'imoogi-org-preview--navigation-callback))))))
 
 (defun imoogi-org-preview--base-payload (extra)
@@ -405,10 +416,11 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
 
 (defun imoogi-org-preview--cursor-byte ()
   "Return zero-based UTF-8 byte offset for current point."
-  (string-bytes
-   (encode-coding-string
-    (buffer-substring-no-properties (point-min) (point))
-    'utf-8)))
+  (if enable-multibyte-characters
+      (1- (position-bytes (point)))
+    (string-bytes
+     (encode-coding-string
+      (buffer-substring-no-properties (point-min) (point)) 'utf-8))))
 
 (defun imoogi-org-preview--current-element-id ()
   "Return a deterministic source-range id for the Org element at point."
@@ -466,8 +478,11 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
   (when (buffer-live-p source-buffer)
     (with-current-buffer source-buffer
       (setq imoogi-org-preview--sending nil)
-      (when (and imoogi-org-preview-mode imoogi-org-preview--dirty)
-        (imoogi-org-preview--schedule-update))))
+      (when imoogi-org-preview-mode
+        (if imoogi-org-preview--dirty
+            (imoogi-org-preview--schedule-update)
+          (when (or imoogi-org-preview-highlight-current imoogi-org-preview-navigation-sync)
+            (imoogi-org-preview--schedule-navigation))))))
   (imoogi-org-preview--response-callback status source-buffer))
 
 (defun imoogi-org-preview--navigation-callback (status source-buffer)

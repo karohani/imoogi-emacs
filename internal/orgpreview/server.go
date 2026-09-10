@@ -753,25 +753,69 @@ func writeError(w http.ResponseWriter, status int, message string) {
 
 const browserShell = `<!doctype html>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Org Preview</title>
 <style>
-body{margin:0;font:16px/1.55 system-ui,sans-serif;color:#1f2933;background:#fafafa}
-#status{position:fixed;right:12px;top:12px;padding:4px 8px;border:1px solid #ccd;background:#fff}
-#root{max-width:860px;margin:48px auto;padding:0 24px}
-[data-org-id].active{outline:2px solid #4f46e5;outline-offset:4px}
-pre,code{background:#eef2f7}pre{padding:12px;overflow:auto}table{border-collapse:collapse}td{border:1px solid #ccd;padding:4px 8px}
+:root{color-scheme:dark;--bg:#171b22;--panel:#20252d;--panel2:#252b35;--text:#d8dee9;--muted:#8792a2;--line:#333b48;--red:#ff8c92;--blue:#82b7ff;--green:#a5d67d;--yellow:#f2d479;--red-bg:#3b2930;--blue-bg:#253449;--green-bg:#2c392b;--yellow-bg:#3d3726;--active:#89ddff;--shadow:0 20px 60px rgba(0,0,0,.25)}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.65 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text);background:radial-gradient(circle at top left,#273140 0,#171b22 34rem);letter-spacing:0}
+#app{display:grid;grid-template-columns:280px minmax(0,1fr);gap:28px;max-width:1360px;margin:0 auto;padding:36px 28px 56px}
+#root{min-width:0;max-width:900px;width:100%;margin:0 auto}
+.preview-sidebar{position:sticky;top:20px;align-self:start;max-height:calc(100vh - 40px);overflow:hidden;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(32,37,45,.92);box-shadow:var(--shadow);backdrop-filter:blur(14px)}
+.preview-sidebar header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line)}
+#status{font-size:12px;color:var(--muted);white-space:nowrap}
+.tabs{display:flex;gap:4px;padding:6px;border-bottom:1px solid var(--line);background:rgba(0,0,0,.12)}
+.tab{appearance:none;border:0;border-radius:6px;padding:6px 10px;background:transparent;color:var(--muted);font:600 12px/1 system-ui,sans-serif;cursor:pointer}
+.tab.active{background:var(--panel2);color:var(--text)}
+.panel{display:none;max-height:calc(100vh - 124px);overflow:auto;padding:10px}
+.panel.active{display:block}
+.empty{color:var(--muted);font-size:13px;padding:10px}
+.toc-item,.overview-item{width:100%;border:0;text-align:left;color:var(--text);background:transparent;cursor:pointer}
+.toc-item{display:grid;grid-template-columns:8px minmax(0,1fr);gap:9px;align-items:start;border-radius:6px;padding:7px 8px;font-size:13px;line-height:1.35}
+.toc-item:hover,.overview-item:hover{background:rgba(255,255,255,.055)}
+.toc-swatch{height:22px;border-radius:3px;background:currentColor}
+.toc-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.toc-l2{padding-left:18px}.toc-l3{padding-left:34px}.toc-l4,.toc-l5,.toc-l6{padding-left:50px}
+.overview-item{display:block;border:1px solid rgba(255,255,255,.06);border-left:3px solid var(--section-color,var(--blue));border-radius:8px;margin:0 0 8px;padding:10px;background:rgba(255,255,255,.025)}
+.overview-kind{display:block;margin-bottom:4px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+.overview-text{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;line-height:1.42}
+.palette-red{color:var(--red)}.palette-blue{color:var(--blue)}.palette-green{color:var(--green)}.palette-yellow{color:var(--yellow)}
+.org-preview{background:rgba(32,37,45,.68);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:34px 42px;box-shadow:var(--shadow)}
+.org-preview h1,.org-preview h2,.org-preview h3,.org-preview h4,.org-preview h5,.org-preview h6{position:relative;margin:1.7em -18px .7em;padding:8px 18px;border-radius:7px;line-height:1.25;overflow-wrap:anywhere;background:rgba(255,255,255,.045)}
+.org-preview h1{margin-top:.1em;color:var(--red);background:var(--red-bg)}.org-preview h2{color:var(--blue);background:var(--blue-bg)}.org-preview h3{color:var(--green);background:var(--green-bg)}.org-preview h4{color:var(--yellow);background:var(--yellow-bg)}.org-preview h5{color:var(--red);background:var(--red-bg)}.org-preview h6{color:var(--blue);background:var(--blue-bg)}
+.org-preview .document-title{font-size:1.4rem;font-weight:650;letter-spacing:-.025em;color:var(--text);margin:0 0 1.5rem}
+.org-preview p{margin:1em 0;color:#d5dbe6}.org-preview a{color:var(--active)}.org-preview img{max-width:100%;border-radius:8px;border:1px solid var(--line)}
+.org-preview ul{padding-left:1.35rem}.org-preview li{margin:.35em 0}
+pre,code{border-radius:6px;background:#11151b}code{padding:2px 5px;color:#cdd6e3}pre{padding:14px 16px;overflow:auto;border:1px solid var(--line)}pre code{padding:0;background:transparent}
+table{width:100%;border-collapse:collapse;margin:1.1em 0;overflow:hidden;border-radius:7px}td{border:1px solid var(--line);padding:7px 10px}
+[data-org-id].active-block{outline:2px solid var(--active);outline-offset:5px;background-color:rgba(137,221,255,.07)}
+.toc-item.active,.overview-item.active{background:rgba(137,221,255,.10);box-shadow:inset 2px 0 0 var(--active)}
+@media (max-width:980px){#app{display:block;padding:18px 14px 42px}.preview-sidebar{position:relative;top:auto;margin:0 0 18px;max-height:none}.panel{max-height:240px}.org-preview{padding:24px 22px}.org-preview h1,.org-preview h2,.org-preview h3,.org-preview h4,.org-preview h5,.org-preview h6{margin-left:-10px;margin-right:-10px;padding-left:10px;padding-right:10px}}
 </style>
-<div id="status">disconnected</div>
-<div id="root"></div>
+<div id="app">
+  <aside class="preview-sidebar" aria-label="Document overview">
+    <header><strong>Org Preview</strong><span id="status">disconnected</span></header>
+    <nav class="tabs" aria-label="Preview navigation">
+      <button class="tab active" data-panel="toc" type="button">목차</button>
+      <button class="tab" data-panel="overview" type="button">개요</button>
+    </nav>
+    <section id="toc" class="panel active" aria-label="Table of contents"></section>
+    <section id="overview" class="panel" aria-label="Document overview"></section>
+  </aside>
+  <div id="root"></div>
+</div>
 <script>
 const params = new URLSearchParams(location.search);
 const statusEl = document.getElementById('status');
 const root = document.getElementById('root');
+const toc = document.getElementById('toc');
+const overview = document.getElementById('overview');
 const sessionID = params.get('session_id') || params.get('session');
 const bufferID = params.get('buffer_id') || params.get('buffer');
 let revision = -1;
-let suppressUntil = 0;
-let scrollTimer = 0;
+let activeTarget = null;
+const blockKinds = new Set(['heading','paragraph','list','list_item','code_block','table','image']);
+const palette = ['red','blue','green','yellow'];
 function wsURL(){const u=new URL('/ws/browser', location.href);u.protocol=location.protocol==='https:'?'wss:':'ws:';u.searchParams.set('session', sessionID || '');u.searchParams.set('buffer', bufferID || '');u.searchParams.set('token', params.get('token') || '');return u;}
 function connect(){
   const ws = new WebSocket(wsURL());
@@ -779,39 +823,150 @@ function connect(){
   ws.onclose = () => { statusEl.textContent = 'reconnecting'; setTimeout(connect, 500); };
   ws.onmessage = event => {
     const msg = JSON.parse(event.data);
-    if (msg.html && msg.revision >= revision) { revision = msg.revision; root.innerHTML = msg.html; }
-    centerMessage(msg);
+    if (msg.html) renderRevision(msg);
+    markFromMessage(msg);
   };
   root.onclick = event => {
-    const el = event.target.closest('[data-org-id]');
-    if (!el || !sessionID || !bufferID || Date.now() < suppressUntil || ws.readyState !== WebSocket.OPEN) return;
+    const el = blockFor(event.target.closest('[data-org-id]'));
+    if (!el || !sessionID || !bufferID || ws.readyState !== WebSocket.OPEN) return;
     sendNavigation(ws, el);
-  };
-  window.onscroll = () => {
-    clearTimeout(scrollTimer);
-    scrollTimer = setTimeout(() => {
-      if (!sessionID || !bufferID || Date.now() < suppressUntil || ws.readyState !== WebSocket.OPEN) return;
-      const hit = document.elementFromPoint(window.innerWidth/2, window.innerHeight/2);
-      const el = hit && hit.closest && hit.closest('[data-org-id]');
-      if (el) sendNavigation(ws, el);
-    }, 120);
   };
 }
 function sendNavigation(ws, el){
   ws.send(JSON.stringify({version:'org-preview/v1',session_id:sessionID,buffer_id:bufferID,revision:revision,event_id:String(Date.now()),origin:'browser',element_id:el.dataset.orgId,range:{start:Number(el.dataset.orgRangeStart||0),end:Number(el.dataset.orgRangeEnd||0)}}));
 }
-function centerMessage(msg){
+function renderRevision(msg){
+  if (typeof msg.revision === 'number' && msg.revision < revision) return;
+  const x = window.scrollX;
+  const y = window.scrollY;
+  revision = msg.revision;
+  root.innerHTML = msg.html;
+  decorateDocument();
+  rebuildSidebars();
+  restoreActive();
+  requestAnimationFrame(() => window.scrollTo(x, y));
+}
+function markFromMessage(msg){
   if (!msg.element_id && !msg.range) return;
+  if (typeof msg.revision === 'number' && msg.revision < revision) return;
   const byID = msg.element_id ? root.querySelector('[data-org-id="'+CSS.escape(msg.element_id)+'"]') : null;
   const byRange = msg.range ? root.querySelector('[data-org-range-start="'+Number(msg.range.start||0)+'"][data-org-range-end="'+Number(msg.range.end||0)+'"]') : null;
-  centerElement(byID || byRange);
+  markElement(byID || byRange);
 }
-function centerElement(el){
+function markElement(el){
+  el = blockFor(el);
   if (!el) return;
-  suppressUntil = Date.now()+250;
-  root.querySelectorAll('.active').forEach(n => n.classList.remove('active'));
-  el.classList.add('active');
-  el.scrollIntoView({block:'center',behavior:'smooth'});
+  activeTarget = {id:el.dataset.orgId,start:el.dataset.orgRangeStart,end:el.dataset.orgRangeEnd};
+  root.querySelectorAll('.active-block').forEach(n => n.classList.remove('active-block'));
+  document.querySelectorAll('.toc-item.active,.overview-item.active').forEach(n => n.classList.remove('active'));
+  el.classList.add('active-block');
+  const selector = sidebarSelector(el);
+  document.querySelectorAll(selector).forEach(n => n.classList.add('active'));
 }
+function restoreActive(){
+  if (!activeTarget) return;
+  const el = root.querySelector('[data-org-id="'+CSS.escape(activeTarget.id)+'"]') || root.querySelector('[data-org-range-start="'+CSS.escape(activeTarget.start)+'"][data-org-range-end="'+CSS.escape(activeTarget.end)+'"]');
+  markElement(el);
+}
+function blockFor(el){
+  while (el && el !== root) {
+    if (blockKinds.has(el.dataset.orgKind)) return el;
+    el = el.parentElement && el.parentElement.closest('[data-org-id]');
+  }
+  return null;
+}
+function decorateDocument(){
+  root.querySelectorAll('p').forEach(el => {
+    const title = el.textContent.match(/^#\+TITLE:\s*(.+)$/i);
+    if (title) { el.textContent = title[1]; el.classList.add('document-title'); document.title = title[1] + ' · Org Preview'; }
+  });
+  let color = 'red';
+  root.querySelectorAll('[data-org-id]').forEach(el => {
+    if (el.matches('h1,h2,h3,h4,h5,h6')) color = colorForLevel(levelOf(el));
+    el.dataset.sectionColor = color;
+  });
+  root.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => {
+    h.classList.add('palette-'+colorForLevel(levelOf(h)));
+  });
+}
+function rebuildSidebars(){
+  const headings = Array.from(root.querySelectorAll('h1[data-org-id],h2[data-org-id],h3[data-org-id],h4[data-org-id],h5[data-org-id],h6[data-org-id]'));
+  fillPanel(toc, headings, 'toc');
+  const blocks = Array.from(root.querySelectorAll('[data-org-id]')).map(blockFor).filter(uniqueBlock).filter(el => blockKinds.has(el.dataset.orgKind));
+  fillPanel(overview, blocks, 'overview');
+}
+function fillPanel(panel, nodes, mode){
+  panel.replaceChildren();
+  if (!nodes.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = mode === 'toc' ? 'No headings yet' : 'No blocks yet';
+    panel.appendChild(empty);
+    return;
+  }
+  nodes.forEach(el => panel.appendChild(mode === 'toc' ? tocButton(el) : overviewButton(el)));
+}
+function tocButton(el){
+  const level = levelOf(el);
+  const button = baseButton(el, 'toc-item toc-l'+Math.min(level, 6));
+  const swatch = document.createElement('span');
+  swatch.className = 'toc-swatch palette-'+colorForLevel(level);
+  const title = document.createElement('span');
+  title.className = 'toc-title';
+  title.textContent = cleanText(el);
+  button.append(swatch, title);
+  return button;
+}
+function overviewButton(el){
+  const button = baseButton(el, 'overview-item');
+  button.style.setProperty('--section-color', 'var(--'+colorForElement(el)+')');
+  const kind = document.createElement('span');
+  kind.className = 'overview-kind palette-'+colorForElement(el);
+  kind.textContent = labelForKind(el);
+  const text = document.createElement('span');
+  text.className = 'overview-text';
+  text.textContent = cleanText(el);
+  button.append(kind, text);
+  return button;
+}
+function baseButton(el, className){
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = className;
+  button.dataset.targetOrgId = el.dataset.orgId;
+  button.dataset.targetOrgRangeStart = el.dataset.orgRangeStart || '0';
+  button.dataset.targetOrgRangeEnd = el.dataset.orgRangeEnd || '0';
+  button.addEventListener('click', () => jumpTo(el.dataset.orgId));
+  return button;
+}
+function jumpTo(id){
+  const el = root.querySelector('[data-org-id="'+CSS.escape(id)+'"]');
+  if (!el) return;
+  markElement(el);
+  el.scrollIntoView({block:'start',behavior:'smooth'});
+}
+function sidebarSelector(el){
+  const id = CSS.escape(el.dataset.orgId || '');
+  const start = CSS.escape(el.dataset.orgRangeStart || '0');
+  const end = CSS.escape(el.dataset.orgRangeEnd || '0');
+  return '[data-target-org-id="'+id+'"],[data-target-org-range-start="'+start+'"][data-target-org-range-end="'+end+'"]';
+}
+function uniqueBlock(el, index, list){return el && list.indexOf(el) === index;}
+function levelOf(el){return Number((el.tagName || 'H1').replace('H','')) || Number(el.dataset.orgLevel || 1) || 1;}
+function colorForLevel(level){return palette[(Math.max(1, level)-1)%palette.length];}
+function colorForElement(el){return el.matches('h1,h2,h3,h4,h5,h6') ? colorForLevel(levelOf(el)) : (el.dataset.sectionColor || 'red');}
+function cleanText(el){return (el.textContent || '').replace(/\s+/g,' ').trim() || labelForKind(el);}
+function labelForKind(el){return ({heading:'제목',paragraph:'문단',list:'목록',list_item:'항목',code_block:'코드',table:'표',image:'이미지'})[el.dataset.orgKind] || '문단';}
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(n => n.classList.toggle('active', n === tab));
+    document.querySelectorAll('.panel').forEach(n => n.classList.toggle('active', n.id === tab.dataset.panel));
+  });
+});
+function bootEmpty(){
+  root.innerHTML = '<main class="org-preview"><p>Waiting for Emacs buffer...</p></main>';
+  rebuildSidebars();
+}
+bootEmpty();
 connect();
 </script>`

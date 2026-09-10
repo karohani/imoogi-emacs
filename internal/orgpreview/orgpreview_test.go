@@ -278,9 +278,27 @@ func TestServerServesPreviewShellAndBrowserWebSocketQueryContract(t *testing.T) 
 		t.Fatalf("preview shell status = %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"session_id", "buffer_id", "/ws/browser"} {
+	for _, want := range []string{
+		"session_id",
+		"buffer_id",
+		"/ws/browser",
+		`id="toc"`,
+		`id="overview"`,
+		"--red:#ff8c92",
+		"--blue:#82b7ff",
+		"--green:#a5d67d",
+		"--yellow:#f2d479",
+		"function markElement",
+		"function rebuildSidebars",
+		"window.scrollTo(x, y)",
+	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("preview shell missing %q:\n%s", want, body)
+		}
+	}
+	for _, unwanted := range []string{"window.onscroll", "block:'center'"} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("preview shell should not auto-scroll on navigation; found %q:\n%s", unwanted, body)
 		}
 	}
 }

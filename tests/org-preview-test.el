@@ -67,7 +67,8 @@
                 imoogi-org-preview--session-id "session-a"
                 imoogi-org-preview--buffer-id "buffer-a"
                 imoogi-org-preview--revision 2)
-    (let ((imoogi-org-preview-port 32123)
+    (let ((imoogi-org-preview-navigation-sync t)
+          (imoogi-org-preview-port 32123)
           (imoogi-org-preview-token "token-a")
           captured)
       (cl-letf (((symbol-function 'imoogi-org-preview--post-json)
@@ -200,3 +201,21 @@
         (imoogi-org-preview--send-update (current-buffer))
         (should (= (length payloads) 2))
         (should (equal (alist-get 'text (car payloads)) "* First latest"))))))
+
+(ert-deftest imoogi-org-preview-highlight-does-not-parse-org-elements ()
+  (with-temp-buffer
+    (org-mode)
+    (insert "* 제목\n문단")
+    (let ((imoogi-org-preview-mode t)
+          (imoogi-org-preview-navigation-sync nil)
+          (imoogi-org-preview-port 32123)
+          (imoogi-org-preview-token "test")
+          payload)
+      (cl-letf (((symbol-function 'org-element-at-point)
+                 (lambda (&rest _) (ert-fail "Cursor updates must not parse Org")))
+                ((symbol-function 'imoogi-org-preview--post-json)
+                 (lambda (_path data _callback) (setq payload data))))
+        (imoogi-org-preview--send-navigation (current-buffer)))
+      (should (integerp (alist-get 'cursor_byte payload)))
+      (should-not (alist-get 'element_id payload))
+      (should-not (alist-get 'range payload)))))
