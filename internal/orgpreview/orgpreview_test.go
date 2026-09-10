@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -93,6 +94,36 @@ func TestRendererEscapesHTMLAndMapsElements(t *testing.T) {
 	}
 	if strings.Contains(out, "<escaped>") {
 		t.Fatalf("raw code HTML was not escaped:\n%s", out)
+	}
+}
+
+func TestRendererStylesHeadingPaletteByOrgDepth(t *testing.T) {
+	doc, err := FallbackParser{}.Parse("* Red\n** Blue\n*** Green\n**** Yellow\n***** Red Again\n****** Blue Again\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := Renderer{}.Render(doc)
+	for _, want := range []string{
+		`class="org-heading org-heading-level-1 palette-red"`,
+		`data-org-level="1"`,
+		`style="color:#ff8c92;background-color:#3b2930"`,
+		`class="org-heading org-heading-level-2 palette-blue"`,
+		`data-org-level="2"`,
+		`style="color:#82b7ff;background-color:#253449"`,
+		`class="org-heading org-heading-level-3 palette-green"`,
+		`data-org-level="3"`,
+		`style="color:#a5d67d;background-color:#2c392b"`,
+		`class="org-heading org-heading-level-4 palette-yellow"`,
+		`data-org-level="4"`,
+		`style="color:#f2d479;background-color:#3d3726"`,
+		`class="org-heading org-heading-level-5 palette-red"`,
+		`data-org-level="5"`,
+		`class="org-heading org-heading-level-6 palette-blue"`,
+		`data-org-level="6"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("rendered heading palette missing %q:\n%s", want, out)
+		}
 	}
 }
 
@@ -288,8 +319,10 @@ func TestServerServesPreviewShellAndBrowserWebSocketQueryContract(t *testing.T) 
 		"--blue:#82b7ff",
 		"--green:#a5d67d",
 		"--yellow:#f2d479",
+		".org-preview .palette-red{color:var(--red);background:var(--red-bg)}",
 		"function markElement",
 		"function rebuildSidebars",
+		"function levelOf(el){return Number(el.dataset.orgLevel)",
 		"window.scrollTo(x, y)",
 	} {
 		if !strings.Contains(body, want) {
@@ -359,4 +392,27 @@ func contains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestHeadingColorsPreserveOrgDepth(t *testing.T) {
+	colors := []string{"#ff8c92", "#82b7ff", "#a5d67d", "#f2d479"}
+	backgrounds := []string{"#3b2930", "#253449", "#2c392b", "#3d3726"}
+	for depth := 1; depth <= 12; depth++ {
+		source := strings.Repeat("*", depth) + " Heading with ~code~\n"
+		doc, err := (FallbackParser{}).Parse(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		output := (Renderer{}).Render(doc)
+		wants := []string{
+			`data-org-level="` + strconv.Itoa(depth) + `"`,
+			`<h` + strconv.Itoa(min(depth, 6)) + ` `,
+			`color:` + colors[(depth-1)%4] + `;background-color:` + backgrounds[(depth-1)%4],
+		}
+		for _, want := range wants {
+			if !strings.Contains(output, want) {
+				t.Fatalf("depth %d missing %s: %s", depth, want, output)
+			}
+		}
+	}
 }

@@ -782,8 +782,9 @@ body{margin:0;font:16px/1.65 ui-sans-serif,system-ui,-apple-system,BlinkMacSyste
 .palette-red{color:var(--red)}.palette-blue{color:var(--blue)}.palette-green{color:var(--green)}.palette-yellow{color:var(--yellow)}
 .org-preview{background:rgba(32,37,45,.68);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:34px 42px;box-shadow:var(--shadow)}
 .org-preview h1,.org-preview h2,.org-preview h3,.org-preview h4,.org-preview h5,.org-preview h6{position:relative;margin:1.7em -18px .7em;padding:8px 18px;border-radius:7px;line-height:1.25;overflow-wrap:anywhere;background:rgba(255,255,255,.045)}
-.org-preview h1{margin-top:.1em;color:var(--red);background:var(--red-bg)}.org-preview h2{color:var(--blue);background:var(--blue-bg)}.org-preview h3{color:var(--green);background:var(--green-bg)}.org-preview h4{color:var(--yellow);background:var(--yellow-bg)}.org-preview h5{color:var(--red);background:var(--red-bg)}.org-preview h6{color:var(--blue);background:var(--blue-bg)}
+.org-preview h1{margin-top:.1em}.org-preview .palette-red{color:var(--red);background:var(--red-bg)}.org-preview .palette-blue{color:var(--blue);background:var(--blue-bg)}.org-preview .palette-green{color:var(--green);background:var(--green-bg)}.org-preview .palette-yellow{color:var(--yellow);background:var(--yellow-bg)}
 .org-preview .document-title{font-size:1.4rem;font-weight:650;letter-spacing:-.025em;color:var(--text);margin:0 0 1.5rem}
+.org-preview .org-heading a,.org-preview .org-heading code{color:inherit;background:transparent}
 .org-preview p{margin:1em 0;color:#d5dbe6}.org-preview a{color:var(--active)}.org-preview img{max-width:100%;border-radius:8px;border:1px solid var(--line)}
 .org-preview ul{padding-left:1.35rem}.org-preview li{margin:.35em 0}
 pre,code{border-radius:6px;background:#11151b}code{padding:2px 5px;color:#cdd6e3}pre{padding:14px 16px;overflow:auto;border:1px solid var(--line)}pre code{padding:0;background:transparent}
@@ -952,7 +953,7 @@ function sidebarSelector(el){
   return '[data-target-org-id="'+id+'"],[data-target-org-range-start="'+start+'"][data-target-org-range-end="'+end+'"]';
 }
 function uniqueBlock(el, index, list){return el && list.indexOf(el) === index;}
-function levelOf(el){return Number((el.tagName || 'H1').replace('H','')) || Number(el.dataset.orgLevel || 1) || 1;}
+function levelOf(el){return Number(el.dataset.orgLevel) || Number((el.tagName || 'H1').replace('H','')) || 1;}
 function colorForLevel(level){return palette[(Math.max(1, level)-1)%palette.length];}
 function colorForElement(el){return el.matches('h1,h2,h3,h4,h5,h6') ? colorForLevel(levelOf(el)) : (el.dataset.sectionColor || 'red');}
 function cleanText(el){return (el.textContent || '').replace(/\s+/g,' ').trim() || labelForKind(el);}

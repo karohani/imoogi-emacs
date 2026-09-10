@@ -3,6 +3,7 @@ package orgpreview
 import (
 	"html"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -29,11 +30,23 @@ func (r Renderer) Render(doc Document) string {
 func (r Renderer) renderNode(b *strings.Builder, n Node) {
 	switch n.Type {
 	case "heading":
-		level := n.Attrs["level"]
-		if level == "" || level > "6" {
-			level = "1"
+		depth, err := strconv.Atoi(n.Attrs["level"])
+		if err != nil || depth < 1 {
+			depth = 1
 		}
-		r.openMapped(b, "h"+level, n)
+		level := strconv.Itoa(min(depth, 6))
+		palette := [4][3]string{
+			{"red", "#ff8c92", "#3b2930"},
+			{"blue", "#82b7ff", "#253449"},
+			{"green", "#a5d67d", "#2c392b"},
+			{"yellow", "#f2d479", "#3d3726"},
+		}
+		color := palette[(depth-1)%len(palette)]
+		r.openMappedAttrs(b, "h"+level, n, map[string]string{
+			"class":          "org-heading org-heading-level-" + strconv.Itoa(depth) + " palette-" + color[0],
+			"data-org-level": strconv.Itoa(depth),
+			"style":          "color:" + color[1] + ";background-color:" + color[2],
+		})
 		r.renderChildrenOrText(b, n)
 		b.WriteString("</h")
 		b.WriteString(level)

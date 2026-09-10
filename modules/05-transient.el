@@ -6,6 +6,79 @@
 (use-package transient
   :ensure t)
 
+;;; 입력기 — transient 키는 Emacs 내장 입력기 없이 해석
+;;
+;; Emacs 내장 입력기가 켜진 상태에서 transient 를 열면 "h" 같은 suffix 키가
+;; 한글 조합으로 먼저 소비될 수 있다. transient 가 떠 있는 동안만 현재 버퍼의
+;; 내장 입력기를 끄고, 메뉴 스택이 완전히 끝나면 원래 입력기로 복원한다.
+
+(defvar imoogi-transient--input-method-state nil
+  "Hash table of buffers to input methods suspended for the active transient.")
+
+(defvar imoogi-transient--input-method-restored-for-suspend nil
+  "Non-nil after restoring input methods for `transient-suspend'.")
+
+(defun imoogi-transient--input-method-state ()
+  "Return the active input-method suspension table."
+  (or imoogi-transient--input-method-state
+      (setq imoogi-transient--input-method-state (make-hash-table :test #'eq))))
+
+(defun imoogi-transient--suspend-current-input-method ()
+  "Disable the current buffer's Emacs input method and remember it."
+  (when current-input-method
+    (let ((state (imoogi-transient--input-method-state)))
+      (unless (gethash (current-buffer) state)
+        (puthash (current-buffer) current-input-method state)))
+    (deactivate-input-method)))
+
+(defun imoogi-transient--suspend-input-method (fn &rest args)
+  "Run FN with the current Emacs input method suspended for transient keys."
+  (imoogi-transient--suspend-current-input-method)
+  (condition-case err
+      (apply fn args)
+    (quit
+     (imoogi-transient--restore-input-method 'force)
+     (signal 'quit nil))
+    (error
+     (imoogi-transient--restore-input-method 'force)
+     (signal (car err) (cdr err)))))
+
+(defun imoogi-transient--suspend-input-method-after-buffer-change ()
+  "Keep Emacs input methods suspended while any transient is active."
+  (if imoogi-transient--input-method-restored-for-suspend
+      (setq imoogi-transient--input-method-restored-for-suspend nil)
+    (when (and (not (minibufferp))
+               (or transient--prefix transient-current-prefix))
+      (imoogi-transient--suspend-current-input-method))))
+
+(defun imoogi-transient--restore-input-method-for-suspend (&rest _)
+  "Restore input methods when the transient stack is suspended."
+  (setq imoogi-transient--input-method-restored-for-suspend t)
+  (imoogi-transient--restore-input-method 'force))
+
+(defun imoogi-transient--restore-input-method (&optional force)
+  "Restore the input method saved by `imoogi-transient--suspend-input-method'."
+  (when (and imoogi-transient--input-method-state
+             (or force
+                 (not transient--prefix)
+                 (eq this-command 'transient-suspend))
+             (or force
+                 (not transient--stack)
+                 (eq this-command 'transient-suspend)))
+    (let ((state imoogi-transient--input-method-state))
+      (setq imoogi-transient--input-method-state nil)
+      (maphash
+       (lambda (buffer method)
+         (when (and method (buffer-live-p buffer))
+           (with-current-buffer buffer
+             (activate-input-method method))))
+       state))))
+
+(advice-add 'transient-setup :around #'imoogi-transient--suspend-input-method)
+(advice-add 'transient-suspend :before #'imoogi-transient--restore-input-method-for-suspend)
+(add-hook 'transient-exit-hook #'imoogi-transient--restore-input-method)
+(add-hook 'post-command-hook #'imoogi-transient--suspend-input-method-after-buffer-change 95)
+
 ;;; 팝업 표시 — 크기와 정렬
 ;;
 ;; 정렬: transient 는 열 폭을 `length'(문자 수)로 계산한다(transient.el 의
