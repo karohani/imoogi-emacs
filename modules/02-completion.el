@@ -11,12 +11,60 @@
 ;;; Code:
 
 (imoogi-require "02-completion" 'vertico 'orderless 'marginalia 'embark
-                'embark-consult 'consult 'corfu 'cape)
+                'embark-consult 'consult 'corfu 'cape 'face-remap)
+
+(require 'face-remap)
 
 ;;; Vertico — 미니버퍼 세로 완성 UI
+(defvar vertico-count)
+(defvar vertico-resize)
+
+(defcustom imoogi-completion-minimum-text-scale 1
+  "Minimum text zoom for completion, in `text-scale-mode' steps.
+Completion also follows a larger zoom in the originating buffer."
+  :type 'integer
+  :group 'imoogi)
+
+(defun imoogi-completion--setup-text-scale (&rest _)
+  "Give completion the originating buffer's zoom, with a readable minimum."
+  (let* ((window (minibuffer-selected-window))
+         (source-scale
+          (if (window-live-p window)
+              (with-current-buffer (window-buffer window)
+                (if (bound-and-true-p text-scale-mode)
+                    text-scale-mode-amount
+                  0))
+            0)))
+    (text-scale-set (max imoogi-completion-minimum-text-scale source-scale))))
+
+(defcustom imoogi-completion-height-fraction 0.25
+  "Frame height reserved for the completion minibuffer.
+Set to nil to use Vertico's normal sizing."
+  :type '(choice (const :tag "Vertico default" nil) float)
+  :group 'imoogi)
+
+(defun imoogi-completion--fit-candidate-count (&rest _)
+  "Calculate candidate rows from the minibuffer font and current frame size."
+  (when imoogi-completion-height-fraction
+    (setq-local vertico-count
+                (max 1 (1- (floor
+                            (/ (* (frame-pixel-height)
+                                  (max 0.05 (min 0.5 imoogi-completion-height-fraction)))
+                               (float (max 1 (default-line-height))))))))))
+
+(defun imoogi-completion--resize (original height)
+  "Keep completion at its frame-relative height even with few candidates."
+  (if imoogi-completion-height-fraction
+      (let ((vertico-resize t))
+        (funcall original vertico-count))
+    (funcall original height)))
+
 (use-package vertico
   :ensure t
   :config
+  (advice-add 'vertico--setup :after #'imoogi-completion--setup-text-scale)
+  (advice-add 'vertico--exhibit :before #'imoogi-completion--fit-candidate-count)
+  (advice-add 'vertico--resize-window :around #'imoogi-completion--resize)
   (vertico-mode))
 
 ;;; Orderless — 유연한 매칭(공백으로 여러 패턴, 순서 무관)

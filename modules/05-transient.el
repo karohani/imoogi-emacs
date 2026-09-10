@@ -164,7 +164,8 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
     ("f" "파일찾기" project-find-file)
     ("s" "검색(grep)" project-find-regexp)
     ("d" "dired" project-dired)
-    ("b" "버퍼" project-switch-to-buffer)]
+    ("b" "버퍼" project-switch-to-buffer)
+    ("m" "프로젝트 기록" imoogi-project-notes-transient)]
    ;; 이미 열려 있는 작업공간 사이를 오가는 쪽. n/N 은 훑어보는 동작이라
    ;; 메뉴를 열어 둔 채 반복할 수 있게 :transient t 를 준다.
    ["작업공간 --------"
@@ -180,6 +181,19 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
     ("c" "컴파일" project-compile)
     ("k" "버퍼모두닫기" project-kill-buffers)
     ("F" "목록에서 제거" project-forget-project)
+    ("q" "종료" transient-quit-one)]])
+
+(transient-define-prefix imoogi-project-notes-transient ()
+  "프로젝트 기록과 영속 Scratch 메뉴."
+  :column-widths '(24 24)
+  [["프로젝트 기록 --------"
+    ("o" "개요" imoogi-project-notes-open)
+    ("t" "할 일" imoogi-project-notes-tasks)
+    ("j" "작업 기록·재개" imoogi-project-notes-journal)]
+   ["준비 -----------------"
+    ("s" "폴더·템플릿 설정" imoogi-project-notes-setup)
+    ("d" "개발 문서 추가" imoogi-project-notes-add-document)
+    ("n" "영속 Scratch" imoogi-notes-scratch)
     ("q" "종료" transient-quit-one)]])
 
 ;; 텍스트 확대/축소

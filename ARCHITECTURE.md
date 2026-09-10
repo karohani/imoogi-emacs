@@ -110,6 +110,10 @@ boot.el의 `dolist`에서 정의된 순서대로 로딩된다. 의존성이 있�
 25. **25-flashcards** — Anki 미설치 폐쇄망용 Emacs-native flashcard fallback.
     Org의 `IMOOGI_FLASHCARD_ID`/`IMOOGI_FLASHCARD_KIND`가 source of truth이고,
     SQLite는 projection, review state, immutable review log만 보관한다.
+26. **26-project-notes** — 소스 밖 프로젝트별 Org 기록과 영속 Scratch.
+    `templates/project-notes/`에서 문서를 새로 생성하고 기존 파일은 보존한다.
+    `.cache/project-notes.json`은 소스와 기록 폴더의 연결 및 TODO 저장 방식을 보관한다.
+    Git common directory로 worktree의 기록을 공유하고 재개 지점은 경로별로 나눈다.
 
 언어별 LSP 설정은 `modules/lsp/` 아래의 이름 기반 파일로 분리한다. `17-lsp`가
 `*.el`을 정렬해 자동 로드하고 각 파일의 실패를 격리하므로, 새 언어는

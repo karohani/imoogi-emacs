@@ -269,6 +269,12 @@ Kotlin 과 Clojure 는 Emacs 에 ts-mode 가 내장돼 있지 않아 패키지(`
 | `S-SPC` | 일반 버퍼 / **ghostel 터미널** | 한/영 전환 (Emacs 내장 korean-hangul 입력기). ghostel 은 `ghostel-ime-mode` 로 터미널 안에서도 S-SPC 한글이 동작한다 |
 
 ### 명령·검색·이동 (vertico / consult)
+
+`M-x` 등 Vertico 완성 목록은 프레임 높이의 약 25%를 사용한다.
+`imoogi-completion-height-fraction`으로 비율을 바꾸거나 `nil`로 기본 동작을 사용할 수 있다.
+완성 목록의 글자는 실행한 버퍼의 확대 배율을 따르며 최소 한 단계 확대한다.
+최소 배율은 `imoogi-completion-minimum-text-scale`로 조절한다.
+
 | 키 | 동작 |
 |----|------|
 | `M-x` | 명령 실행 (vertico 세로 완성) |
@@ -363,6 +369,66 @@ L1 은 `M-g i`/`M-g I`, L4 의 `d`/`r` 은 `M-.`/`M-?` 로도 쓸 수 있다(Ema
 프로젝트 루트와 기본 Perspective 이름의 연결은 `savehist`로 유지된다.
 Perspective의 파일/Dired 버퍼와 창 배치는 정상 종료 시 저장되며, shell·REPL·compile
 프로세스는 현재 세션의 작업 컨텍스트에는 포함되지만 재시작 시 다시 생성되지는 않는다.
+
+### 프로젝트 기록 (`project-notes`)
+
+개인 메모는 `~/notes/`, 프로젝트 기록은 소스와 분리된
+`~/project-notes/<프로젝트>/`에 둔다. 프로젝트에서 `C-c h p m s`
+(`M-x imoogi-project-notes-setup`)를 실행하면 기본 문서와 자료 폴더를 만든다.
+기존 파일은 덮어쓰지 않는다. `C-u M-x imoogi-project-notes-setup`으로
+프로젝트별 저장 폴더를 직접 지정할 수 있다.
+
+```text
+~/notes/
+  agenda.org                 개인 할 일 / 중앙 관리 선택 시 프로젝트 할 일
+  scratch.org                분류 전 메모 (Scratch 명령에서 생성)
+~/project-notes/<프로젝트>/
+  project.org                목적·범위·현재 상황·큰 작업 요약
+  tasks.org                  실제 TODO와 완료 조건
+  journal.org                작업 기록·worktree별 재개 지점
+  assets/                    이미지 등 첨부 자료
+  references/                참고 자료
+  development/               필요한 문서만 명령으로 생성
+    domain.org               용어·개념·관계·업무 규칙
+    architecture.org         구성 요소·책임·데이터 흐름
+    decisions.org            결정의 배경·대안·이유·영향
+```
+
+`C-c h p m` 메뉴:
+
+| 키 | 명령 | 용도 |
+|----|------|------|
+| `s` | `imoogi-project-notes-setup` | 기록 폴더 등록·기본 템플릿 생성 |
+| `o` | `imoogi-project-notes-open` | 프로젝트 개요 |
+| `t` | `imoogi-project-notes-tasks` | 할 일 원본 열기 |
+| `j` | `imoogi-project-notes-journal` | 현재 작업 공간의 재개 지점 |
+| `d` | `imoogi-project-notes-add-document` | 도메인·구조·결정 문서 추가 |
+| `n` | `imoogi-notes-scratch` | `~/notes/scratch.org` 열기 |
+
+Scratch와 작업 기록은 일반 파일 버퍼이므로 `C-x C-s`로 저장한다.
+개요에는 진행 요약과 링크를, `tasks.org`에는 실행할 작업을,
+`journal.org`에는 멈춘 지점과 다음 행동을 적는다.
+작업 상태는 `TODO → NEXT → DOING → DONE`, 대기는 `WAIT`, 취소는
+`CANCELLED`로 표현한다. 모든 상태를 순서대로 거칠 필요는 없다.
+프로젝트 작업 파일의 `CATEGORY`는 프로젝트 이름으로 초기화하여 Agenda에서 구분한다.
+개발 문서는 `d` 명령을 쓸 때 생성하며, 처음에는 기본 Org 문서 세 개만 만든다.
+
+같은 Git 저장소의 worktree는 공통 Git 디렉터리를 기준으로 같은 기록 폴더를
+공유한다. 재개 지점은 각 worktree 경로별로 나뉜다. 별도 clone은 별도 프로젝트로
+취급한다. 등록 정보는 Emacs 사용자 디렉터리의 `.cache/project-notes.json`에
+보관한다. 부팅만으로 기록 폴더나 템플릿을 생성하지 않는다.
+
+`imoogi-project-notes-directory`로 기본 상위 폴더를 바꿀 수 있다.
+`imoogi-project-notes-todo-storage`는 새로 등록하는 프로젝트의 TODO 위치를 정한다:
+
+| 값 | 장점 | 고려할 점 |
+|----|------|-----------|
+| `project` (기본) | 프로젝트 자료와 작업을 함께 보관 | 파일이 여러 개지만 Agenda에서 합쳐 조회 |
+| `central` | `~/notes/agenda.org` 한 곳에서 작업 관리 | 프로젝트 자료와 TODO의 저장 위치가 분리 |
+
+중앙 관리에서는 `tasks.org`가 중앙 Agenda 문서로 안내한다. 프로젝트별 선택은
+등록 정보에 저장되며, 설정 변경만으로 기존 TODO를 이동하거나 복제하지 않는다.
+프로젝트별 작업 파일은 Org Agenda에 등록하여 개인 일정과 함께 조회한다.
 
 ### Git
 | 키 | 동작 |
@@ -574,6 +640,7 @@ Anki 메뉴(`C-c a a`)의 **동기화 대상**에서도 같은 명령을 실행�
 | `20-terminal` | ghostel (+ghostel-ime) | libghostty-vt 터미널 (`C-c t`). 모듈은 vendor 동봉, S-SPC 한글 동작 |
 | `21-native-compile` | compile-angel | 로드 시 바이트/네이티브 컴파일 |
 | `25-flashcards` | SQLite · Org (Emacs 내장) | Anki 미설치 폐쇄망용 로컬 flashcard fallback (`C-c f`) |
+| `26-project-notes` | Org · project · JSON (Emacs 내장) | 프로젝트 기록 템플릿·worktree 공유·영속 Scratch (`C-c h p m`) |
 | `00-defaults` | (내장) | 상대 줄번호, 줄:열 표시, treesit 레벨4, pixel-scroll, fringe |
 
 ### 이미 반영돼 있던 추천 (중복 도입 안 함)
