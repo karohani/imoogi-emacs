@@ -158,6 +158,7 @@
                    ("f" . imoogi-flashcards-transient)
                    ("g" . imoogi-transient-git)
                    ("l" . imoogi-transient-lsp)
+                   ("o" . imoogi-org-agenda-transient)
                    ("p" . imoogi-transient-project)
                    ("q" . transient-quit-one)
                    ("t" . imoogi-treemacs-toggle-file-tree)
@@ -466,6 +467,18 @@ tests/assert-boot.el 이 잘못 읽는다(실제로 발생했던 버그).
     (let ((layout (format "%S" (get prefix (quote transient--layout)))))
       (dolist (ch (string-to-list imoogi-test--ambiguous-width-chars))
         (should-not (string-search (char-to-string ch) layout))))))
+
+(ert-deftest imoogi-transient-org-agenda-heading-actions-follow-context ()
+  (with-temp-buffer
+    (should (equal (imoogi-test--inapt-keys 'imoogi-org-agenda-transient)
+                   '("T" "V" "c" "d" "s" "v" "x")))
+    (insert "* TODO Task\nBody\n")
+    (org-mode)
+    (goto-char (point-min))
+    (should-not (imoogi-test--inapt-keys 'imoogi-org-agenda-transient))
+    (forward-line 1)
+    (should (equal (imoogi-test--inapt-keys 'imoogi-org-agenda-transient)
+                   '("T" "c" "d" "s")))))
 
 (provide 'transient-menu-test)
 ;;; transient-menu-test.el ends here

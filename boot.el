@@ -77,6 +77,9 @@ tests/assert-boot.el 이 이 값을 설치 검증의 판정 근거로 쓴다.")
                   "12-navigation"
                   "13-system"
                   "14-org"
+                  ;; Org preview depends on 14-org but is intentionally numbered
+                  ;; after the existing modules to avoid renumbering churn.
+                  "23-org-preview"
                   "15-markdown"
                   "16-elisp"
                   "17-lsp"

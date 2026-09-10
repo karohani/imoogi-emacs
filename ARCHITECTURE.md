@@ -105,6 +105,7 @@ boot.el의 `dolist`에서 정의된 순서대로 로딩된다. 의존성이 있�
 20. **20-terminal** — ghostel + ghostel-ime (모듈은 vendor/ghostel-module/ 동봉)
 21. **21-native-compile** — compile-angel (소급 컴파일하므로 마지막)
 22. **22-tabs** — tab-bar 기반 tmux window 대응
+23. **23-org-preview** — Org HTML preview client
 24. **24-anki** — Org → Anki 단방향 동기화
 25. **25-flashcards** — Anki 미설치 폐쇄망용 Emacs-native flashcard fallback.
     Org의 `IMOOGI_FLASHCARD_ID`/`IMOOGI_FLASHCARD_KIND`가 source of truth이고,

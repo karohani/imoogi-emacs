@@ -30,7 +30,7 @@ DIST_DIR := .cache/dist
 ANKI_PREFIX ?= $(HOME)/.local/bin
 
 .DEFAULT_GOAL := help
-.PHONY: help emacs-install emacs-prewarm emacs-where install toolchain-setup tmux-install tmux-check grammars build build-anki fmt fmt-check lint test test-elisp test-go test-shell ci-local clean-elc clean
+.PHONY: help emacs-install emacs-prewarm emacs-where install toolchain-setup tmux-install tmux-check grammars build build-anki build-org-preview fmt fmt-check lint test test-elisp test-go test-shell ci-local clean-elc clean
 
 help: ## 이 도움말
 	@echo "imoogi-emacs"
@@ -95,6 +95,10 @@ grammars: ## tree-sitter 문법을 vendor/tree-sitter/ 로 빌드한다 (온라�
 
 build: ## imoogi-toolchain CLI 를 빌드한다
 	@$(GO) build ./...
+
+build-org-preview: ## 로컬 Org 브라우저 미리보기 서버를 빌드한다
+	@mkdir -p bin
+	@$(GO) build -o bin/imoogi-org-preview ./cmd/imoogi-org-preview
 
 build-anki: ## Org→Anki 백엔드 바이너리를 ANKI_PREFIX 에 설치한다
 	@mkdir -p "$(ANKI_PREFIX)"

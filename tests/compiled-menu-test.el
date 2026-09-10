@@ -51,14 +51,14 @@
          (when missing (error "[%s] missing packages %S" module missing))))))
 
 (ert-deftest imoogi-compiled-anki-and-flashcards-menus-survive-clean-elc-load ()
-  "Compiled 24/25 modules define and register their deferred transient menus."
+  "Compiled Org, Anki and Flashcards modules register their deferred menus."
   (let ((tmpdir (make-temp-file "imoogi-compiled-menu-" t)))
     (unwind-protect
         (let* ((compile-script
                 (format "%S"
                         `(progn
                            ,(imoogi-compiled-menu-test--common-setup-form tmpdir)
-                           (dolist (module '("24-anki" "25-flashcards"))
+                           (dolist (module '("14-org" "24-anki" "25-flashcards"))
                              (let* ((src (expand-file-name
                                           (concat "modules/" module ".el")
                                           imoogi-emacs-dir))
@@ -77,9 +77,11 @@
                            (load ,(expand-file-name "modules/05-transient.el"
                                                     imoogi-compiled-menu-test--root)
                                  nil t)
+                           (load ,(expand-file-name "14-org.elc" tmpdir) nil nil t)
                            (load ,(expand-file-name "24-anki.elc" tmpdir) nil nil t)
                            (load ,(expand-file-name "25-flashcards.elc" tmpdir) nil nil t)
-                           (dolist (row '((imoogi-anki-transient "a")
+                           (dolist (row '((imoogi-org-agenda-transient "o")
+                                          (imoogi-anki-transient "a")
                                           (imoogi-flashcards-transient "f")))
                              (unless (fboundp (car row))
                                (error "%S is not defined" (car row)))

@@ -4,7 +4,9 @@
 
 ;;; Code:
 
-(imoogi-require "14-org" 'org 'org-appear 'hl-line 'calendar)
+(imoogi-require "14-org" 'org 'org-appear 'hl-line 'calendar 'transient)
+
+(eval-when-compile (require 'transient))
 
 (defun imoogi-org--default-directory ()
   "Return imoogi's default Org directory."
@@ -90,6 +92,45 @@ Existing notes are preserved.  This command does not run Anki setup or sync."
   (require 'org-agenda)
   (org-agenda nil))
 
+(defun imoogi-org-agenda-overdue-p ()
+  "Return non-nil for an unfinished entry whose deadline is before today."
+  (let ((deadline (org-entry-get nil "DEADLINE")))
+    (and deadline (not (org-entry-is-done-p))
+         (< (org-time-string-to-absolute deadline) (org-today)))))
+
+(defun imoogi-org-agenda-skip-not-overdue ()
+  "Skip this heading unless overdue, without skipping its children."
+  (unless (imoogi-org-agenda-overdue-p)
+    (save-excursion (outline-next-heading) (point))))
+
+(defun imoogi-org-agenda-skip-overdue ()
+  "Skip overdue headings already included in the summary block."
+  (when (imoogi-org-agenda-overdue-p)
+    (save-excursion (outline-next-heading) (point))))
+
+(defun imoogi-org-agenda-overview (&optional _match)
+  "Show overdue entries once above the regular agenda."
+  (interactive)
+  (require 'org-agenda)
+  (org-agenda-run-series
+   "일정"
+   '(((tags "DEADLINE<>\"\""
+            ((org-agenda-overriding-header "기한 지난 항목")
+             (org-agenda-skip-function #'imoogi-org-agenda-skip-not-overdue)
+             (org-agenda-sorting-strategy '(deadline-up priority-down category-keep))))
+      (agenda ""
+              ((org-agenda-skip-function #'imoogi-org-agenda-skip-overdue)))))))
+
+(use-package org-agenda
+  :ensure nil
+  :after org
+  :config
+  ;; Use the overview for the standard dispatcher key, preserving a user's
+  ;; existing custom command if they have already assigned that key.
+  (unless (assoc "a" org-agenda-custom-commands)
+    (add-to-list 'org-agenda-custom-commands
+                 '("a" "일정 + 기한 지난 항목" imoogi-org-agenda-overview ""))))
+
 (defvar-local imoogi-org-calendar--fit-cookie nil)
 (defvar-local imoogi-org-calendar--fit-state nil)
 
@@ -109,7 +150,7 @@ Very small frames retain a 9-point readability floor and date text input."
                           (expt text-scale-mode-step text-scale-mode-amount) 1.0))
                (base-height (face-attribute 'default :height frame))
                (state (list cap width scale base-height (buffer-chars-modified-tick))))
-          ;; Resizing triggers this hook again.  Ignore the height we just set.
+          ;; Cache font fitting, but always repair the actual window height.
           (unless (equal state imoogi-org-calendar--fit-state)
             (setq imoogi-org-calendar--fit-state state)
             (when imoogi-org-calendar--fit-cookie
@@ -126,13 +167,26 @@ Very small frames retain a 9-point readability floor and date text input."
               (when (< factor 1.0)
                 (setq imoogi-org-calendar--fit-cookie
                       (face-remap-add-relative 'default :height
-                                               (max floor-factor factor))))
-              (let* ((height (cdr (window-text-pixel-size window nil t 10000 10000)))
-                     (target (min cap (+ chrome height 4))))
-                (window-resize-no-error
-                 window (- target (window-pixel-height window)) nil window t)))))
+                                               (max floor-factor factor))))))
+          ;; Org and persisted zoom may change the window after the first fit,
+          ;; even when the cached frame/content dimensions are unchanged.
+          (let* ((height (cdr (window-text-pixel-size window nil t 10000 10000)))
+                 (chrome (- (window-pixel-height window)
+                            (window-body-height window t)))
+                 (target (min cap (+ chrome height 4)))
+                 (delta (- target (window-pixel-height window))))
+            (unless (zerop delta)
+              (let ((window-resize-pixelwise t))
+                (window-resize-no-error window delta nil window t)))))
         (set-window-start window (point-min))
         (set-window-vscroll window 0)))))
+
+(defun imoogi-org-calendar-fit-frame (frame)
+  "Refit calendars after frame-wide persisted text scale restoration.
+Global window hooks run after buffer-local hooks.  Persisted zoom also
+suppresses `text-scale-mode-hook', so local fitting alone is too early."
+  (dolist (window (window-list frame 'nomini))
+    (imoogi-org-calendar-fit-window window)))
 
 (defun imoogi-org-calendar-window-setup ()
   "Refit after persisted zoom, frame resizing, and manual zoom changes."
@@ -149,6 +203,7 @@ Very small frames retain a 9-point readability floor and date text input."
          (calendar-initial-window . imoogi-org-calendar-fit-window))
   :config
   (require 'face-remap)
+  (add-hook 'window-buffer-change-functions #'imoogi-org-calendar-fit-frame 95)
   (add-to-list 'display-buffer-alist
                '("\\`\\*Calendar\\*\\'"
                  (display-buffer-in-side-window)
@@ -225,6 +280,68 @@ Very small frames retain a 9-point readability floor and date text input."
 (use-package org-appear
   :ensure t
   :hook (org-mode . org-appear-mode))
+
+(defun imoogi-org-open-agenda-file ()
+  "Open the default agenda file, creating it safely if needed."
+  (interactive)
+  (imoogi-org-setup)
+  (find-file (imoogi-org--default-agenda-file)))
+
+(defun imoogi-org-agenda-heading-p ()
+  "Return non-nil when the current position is on an Org heading."
+  (and (derived-mode-p 'org-mode) (org-at-heading-p)))
+
+(defun imoogi-org-set-category (category)
+  "Set CATEGORY on the current heading and its inheriting children."
+  (interactive
+   (progn
+     (unless (imoogi-org-agenda-heading-p)
+       (user-error "Org 제목에서 실행하세요"))
+     (list (read-string "카테고리: " (org-entry-get nil "CATEGORY" t)))))
+  (unless (imoogi-org-agenda-heading-p)
+    (user-error "Org 제목에서 실행하세요"))
+  (when (string-empty-p (string-trim category))
+    (user-error "카테고리를 입력하세요"))
+  (org-set-property "CATEGORY" (string-trim category)))
+
+(defun imoogi-org-export-context-p ()
+  "Return non-nil in an Org document or agenda view."
+  (derived-mode-p 'org-mode 'org-agenda-mode))
+
+(defun imoogi-org-export ()
+  "Export the current Org document or agenda view interactively."
+  (interactive)
+  (cond
+   ((derived-mode-p 'org-agenda-mode)
+    (require 'org-agenda)
+    (call-interactively #'org-agenda-write))
+   ((derived-mode-p 'org-mode)
+    (require 'ox)
+    (call-interactively #'org-export-dispatch))
+   (t (user-error "Org 문서 또는 Agenda 화면에서 실행하세요"))))
+
+(with-eval-after-load 'imoogi-transient
+  (transient-define-prefix imoogi-org-agenda-transient ()
+    "Org agenda and planning commands."
+    :column-widths '(20 20 20)
+    [["조회 -------------"
+      ("a" "일정 보기" imoogi-org-agenda-overview)
+      ("t" "전체 TODO" org-todo-list)
+      ("m" "Agenda 메뉴" imoogi-org-agenda)]
+     ["현재 제목 ---------"
+      ("s" "일정 지정" org-schedule :inapt-if-not imoogi-org-agenda-heading-p)
+      ("d" "마감일 지정" org-deadline :inapt-if-not imoogi-org-agenda-heading-p)
+      ("T" "TODO 상태" org-todo :inapt-if-not imoogi-org-agenda-heading-p)
+      ("c" "카테고리 설정" imoogi-org-set-category :inapt-if-not imoogi-org-agenda-heading-p)]
+     ["파일·설정 ---------"
+      ("e" "agenda.org 열기" imoogi-org-open-agenda-file)
+      ("S" "기본 폴더 설정" imoogi-org-setup)
+      ("x" "내보내기" imoogi-org-export :inapt-if-not imoogi-org-export-context-p)
+      ("v" "브라우저 미리보기" imoogi-org-preview :inapt-if-not (lambda () (derived-mode-p 'org-mode)))
+      ("V" "미리보기 종료" imoogi-org-preview-stop :inapt-if-not (lambda () (derived-mode-p 'org-mode)))
+      ("q" "종료" transient-quit-one)]])
+  (transient-append-suffix 'imoogi-transient-master "t"
+    '("o" "Org Agenda" imoogi-org-agenda-transient)))
 
 (provide 'imoogi-org)
 ;;; 14-org.el ends here

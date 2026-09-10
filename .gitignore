@@ -24,3 +24,6 @@ vendor/elpa/ghostel-*/ghostel-module.*
 !.omc/skills/update-vendor/SKILL.md
 modules/.omc/
 .omo/
+
+# Locally built helper executables
+/bin/
