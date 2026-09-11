@@ -158,6 +158,7 @@
                    ("f" . imoogi-flashcards-transient)
                    ("g" . imoogi-transient-git)
                    ("l" . imoogi-transient-lsp)
+                   ("n" . imoogi-notes-scratch)
                    ("o" . imoogi-org-agenda-transient)
                    ("p" . imoogi-transient-project)
                    ("q" . transient-quit-one)
@@ -378,8 +379,7 @@ tests/assert-boot.el 이 잘못 읽는다(실제로 발생했던 버그).
 
 (ert-deftest imoogi-transient-code-bindings-match-the-five-levels ()
   (should (equal (imoogi-test--layout-bindings 'imoogi-transient-code)
-                 '(("?" . imoogi-code-capability-report)
-                   ("I" . consult-imenu-multi)
+                 '(("I" . consult-imenu-multi)
                    ("d" . xref-find-definitions)
                    ("f" . imoogi-treemacs-toggle-file-tree)
                    ("g" . imoogi-code-capability-report)
@@ -389,6 +389,7 @@ tests/assert-boot.el 이 잘못 읽는다(실제로 발생했던 버그).
                    ("r" . xref-find-references)
                    ("s" . imoogi-treemacs-toggle-structure)
                    ("t" . treesit-explore-mode)
+                   ("v" . imoogi-code-capability-report)
                    ("y" . eglot-find-typeDefinition)))))
 
 (ert-deftest imoogi-transient-code-greys-out-unavailable-levels ()
@@ -417,6 +418,37 @@ tests/assert-boot.el 이 잘못 읽는다(실제로 발생했던 버그).
       ;; 미지원 항목은 이유 없이 나열되면 안 된다
       (should (string-match-p "hierarchy" text))
       (should (string-match-p "vendor/tree-sitter/" text)))))
+
+(ert-deftest imoogi-transient-question-opens-context-help-and-toggles-it ()
+  (with-temp-buffer
+    (unwind-protect
+        (progn
+          (transient-setup 'imoogi-transient-project)
+          (should (eq (lookup-key transient-map (kbd "?"))
+                      #'imoogi-transient-context-help))
+          (imoogi-transient-context-help)
+          (should (window-live-p imoogi-transient--help-window))
+          (with-current-buffer "*imoogi 메뉴 도움말*"
+            (let ((text (buffer-string)))
+              (should (string-match-p "Perspective 작업공간" text))
+              (should (string-match-p "프로젝트 전환" text))
+              (should (string-match-p "C-h  항목별 도움말" text))))
+          (imoogi-transient-context-help)
+          (should-not (window-live-p imoogi-transient--help-window)))
+      (imoogi-transient--close-context-help)
+      (transient--stack-zap))))
+
+(ert-deftest imoogi-transient-context-help-closes-after-all-menus-exit ()
+  (with-temp-buffer
+    (unwind-protect
+        (progn
+          (transient-setup 'imoogi-transient-master)
+          (imoogi-transient-context-help)
+          (should (window-live-p imoogi-transient--help-window))
+          (run-hooks 'transient-post-exit-hook)
+          (should-not (get-buffer "*imoogi 메뉴 도움말*")))
+      (imoogi-transient--close-context-help)
+      (transient--stack-zap))))
 
 ;;; 탭 메뉴 (tmux window 층, modules/22-tabs.el)
 

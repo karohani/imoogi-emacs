@@ -357,6 +357,10 @@ L1 은 `M-g i`/`M-g I`, L4 의 `d`/`r` 은 `M-.`/`M-?` 로도 쓸 수 있다(Ema
 
 `C-c h` → `p` 는 세 갈래로 나뉜다.
 
+imoogi Transient 메뉴에서 `?`를 누르면 현재 메뉴의 목적과 기능 목록을 우측
+도움말 창에 표시한다. 다시 `?`를 누르면 닫히며, `C-h`는 기존 Transient의
+항목별 도움말 동작을 유지한다.
+
 | 갈래 | 키 |
 |------|-----|
 | 열기 | `p` 프로젝트 전환 · `f` 파일찾기 · `s` 검색(grep) · `d` dired · `b` 버퍼 |
@@ -405,6 +409,7 @@ Perspective의 파일/Dired 버퍼와 창 배치는 정상 종료 시 저장되�
 | `d` | `imoogi-project-notes-add-document` | 도메인·구조·결정 문서 추가 |
 | `n` | `imoogi-notes-scratch` | `~/notes/scratch.org` 열기 |
 
+영속 Scratch는 메인 메뉴에서 **`C-c h n`**으로 바로 열 수도 있다.
 Scratch와 작업 기록은 일반 파일 버퍼이므로 `C-x C-s`로 저장한다.
 개요에는 진행 요약과 링크를, `tasks.org`에는 실행할 작업을,
 `journal.org`에는 멈춘 지점과 다음 행동을 적는다.

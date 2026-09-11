@@ -4,7 +4,118 @@
 (imoogi-require "05-transient" 'transient 'ace-window)
 
 (use-package transient
-  :ensure t)
+  :ensure t
+  :config
+  ;; imoogi 메뉴에서는 ?가 현재 메뉴 전체 설명을 열고, C-h는 Transient의
+  ;; 기존 항목별 도움말을 유지한다. 다른 패키지의 transient에서는 ?도 기존
+  ;; `transient-help'로 동작한다.
+  (define-key transient-map (kbd "?") #'imoogi-transient-context-help)
+  (define-key transient-predicate-map
+              [imoogi-transient-context-help] #'transient--do-stay))
+
+;;; 현재 메뉴 도움말 — ?로 우측 패널 토글
+
+(defvar imoogi-transient--help-window nil
+  "Window displaying contextual help for an imoogi transient.")
+
+(defconst imoogi-transient--purposes
+  '((imoogi-transient-master . "imoogi의 주요 기능으로 들어가는 시작 메뉴입니다.")
+    (imoogi-transient-window . "창 이동, 분할, 크기 조절과 버퍼 열기를 한곳에서 다룹니다.")
+    (imoogi-transient-project . "프로젝트 탐색과 Perspective 작업공간을 전환·관리합니다.")
+    (imoogi-project-notes-transient . "프로젝트의 개요·할 일·작업 기록과 영속 Scratch를 엽니다.")
+    (imoogi-transient-zoom . "현재 버퍼의 글자 크기를 확대·축소합니다.")
+    (imoogi-transient-git . "현재 저장소의 상태·이력·차이를 Magit으로 확인합니다.")
+    (imoogi-transient-code . "현재 코드의 심볼, 구조, 정의와 참조를 단계별로 탐색합니다.")
+    (imoogi-org-agenda-transient . "Org 일정과 TODO를 조회·편집하고 미리보기·내보내기를 실행합니다.")
+    (imoogi-transient-lsp . "언어 서버 연결과 진단·코드 탐색 기능을 제어합니다.")
+    (imoogi-transient-tab . "탭을 만들고 전환하며 이름과 배치를 관리합니다.")
+    (imoogi-anki-transient . "현재 Org 문서를 Anki 노트로 표시하고 동기화합니다.")
+    (imoogi-flashcards-transient . "Anki 없이 사용하는 로컬 플래시카드를 동기화·복습합니다."))
+  "Short purpose shown for each imoogi transient menu.")
+
+(defun imoogi-transient--imoogi-prefix-p (command)
+  "Return non-nil when COMMAND is one of imoogi's transient prefixes."
+  (and (symbolp command)
+       (string-prefix-p "imoogi-" (symbol-name command))))
+
+(defun imoogi-transient--plain-description (suffix)
+  "Return SUFFIX's description without display properties."
+  (when-let* ((description (ignore-errors (transient-format-description suffix))))
+    (substring-no-properties description)))
+
+(defun imoogi-transient--plain-key (suffix)
+  "Return SUFFIX's declared key as readable text."
+  (when (slot-boundp suffix 'key)
+    (let ((key (oref suffix key)))
+      (cond ((stringp key) key)
+            ((vectorp key) (key-description key))
+            (t (format "%s" key))))))
+
+(defun imoogi-transient--insert-context-help (command suffixes)
+  "Insert help for transient COMMAND and its available SUFFIXES."
+  (let ((inhibit-read-only t))
+    (erase-buffer)
+    (insert (propertize
+             (or (and command (documentation command t))
+                 (symbol-name command))
+             'face '(:height 1.2 :weight bold)))
+    (goto-char (line-end-position))
+    (insert "\n\n"
+            (or (alist-get command imoogi-transient--purposes)
+                "현재 메뉴에서 사용할 수 있는 명령입니다.")
+            "\n\n"
+            (propertize "사용 가능한 기능\n" 'face '(:weight bold)))
+    (dolist (suffix suffixes)
+      (when-let* ((key (imoogi-transient--plain-key suffix))
+                  (description (imoogi-transient--plain-description suffix)))
+        (insert (propertize (format "%-5s" key) 'face 'font-lock-keyword-face)
+                description "\n")))
+    (insert "\n?  이 창 닫기\nC-h  항목별 도움말\nq  메뉴 종료\n")
+    (goto-char (point-min))
+    (special-mode)))
+
+(defun imoogi-transient--show-context-help (command suffixes)
+  "Show contextual help for COMMAND and SUFFIXES in a right side window."
+  (let ((buffer (get-buffer-create "*imoogi 메뉴 도움말*")))
+    (with-current-buffer buffer
+      (imoogi-transient--insert-context-help command suffixes))
+    (setq imoogi-transient--help-window
+          (display-buffer-in-side-window
+           buffer '((side . right)
+                    (window-width . 0.28)
+                    (slot . 0)
+                    (dedicated . t)
+                    (inhibit-same-window . t))))
+    (set-window-dedicated-p imoogi-transient--help-window t)))
+
+(defun imoogi-transient--close-context-help ()
+  "Close the contextual transient help window."
+  (when (window-live-p imoogi-transient--help-window)
+    (delete-window imoogi-transient--help-window))
+  (setq imoogi-transient--help-window nil)
+  (when-let* ((buffer (get-buffer "*imoogi 메뉴 도움말*")))
+    (kill-buffer buffer)))
+
+(defun imoogi-transient-context-help ()
+  "Toggle right-side help for the active imoogi transient.
+For other packages' transient menus, preserve the standard two-step help."
+  (interactive)
+  (let ((command (and transient--prefix (oref transient--prefix command))))
+    (if (not (imoogi-transient--imoogi-prefix-p command))
+        (transient-help t)
+      (if (window-live-p imoogi-transient--help-window)
+          (imoogi-transient--close-context-help)
+        (imoogi-transient--show-context-help command transient--suffixes)))))
+
+(defun imoogi-transient--refresh-context-help (&rest _)
+  "Refresh visible contextual help after switching transient menus."
+  (when (and (window-live-p imoogi-transient--help-window)
+             transient--prefix)
+    (imoogi-transient--show-context-help
+     (oref transient--prefix command) transient--suffixes)))
+
+(advice-add 'transient-setup :after #'imoogi-transient--refresh-context-help)
+(add-hook 'transient-post-exit-hook #'imoogi-transient--close-context-help)
 
 ;;; 입력기 — transient 키는 Emacs 내장 입력기 없이 해석
 ;;
@@ -318,7 +429,7 @@ major-mode 로 언어를 역추적하지 않고 버퍼에 직접 묻는다 — `
    ["L5 전체 -----"
     ("g" "전체 그래프" imoogi-code-capability-report
      :inapt-if-not imoogi-code--graph-available-p)
-    ("?" "가용성 보고" imoogi-code-capability-report)
+    ("v" "가용성 보고" imoogi-code-capability-report)
     ("q" "종료" transient-quit-one)]])
 
 ;; 마스터 메뉴 (진입점)
@@ -333,6 +444,7 @@ major-mode 로 언어를 역추적하지 않고 버퍼에 직접 묻는다 — `
     ("g" "Git" imoogi-transient-git)
     ("z" "확대/축소" imoogi-transient-zoom)]
    ["도구 ---------"
+    ("n" "영속 Scratch" imoogi-notes-scratch)
     ("c" "코드 이해" imoogi-transient-code)
     ("t" "treemacs" imoogi-treemacs-toggle-file-tree)]
    ["설정 -----------"
