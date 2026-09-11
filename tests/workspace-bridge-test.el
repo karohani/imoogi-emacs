@@ -210,6 +210,24 @@
                             'consult-source-project-recent-file))
         (should-not (memq source imoogi-test--seen-sources))))))
 
+(ert-deftest imoogi-consult-perspective-buffer-filters-stale-buffers-before-query ()
+  (let ((live (generate-new-buffer "workspace-live"))
+        (dead (generate-new-buffer "workspace-dead")))
+    (unwind-protect
+        (progn
+          (kill-buffer dead)
+          (cl-letf (((symbol-function 'persp-current-buffers*)
+                     (lambda (&optional _) (list dead nil live)))
+                    ((symbol-function 'consult-buffer)
+                     (lambda (&optional _)
+                       ;; Run the actual query from the reported backtrace.
+                       (should (equal (consult--buffer-query
+                                       :sort 'visibility :as #'consult--buffer-pair)
+                                      (list (cons (buffer-name live) live)))))))
+            (imoogi-consult-perspective-buffer nil)))
+      (when (buffer-live-p live) (kill-buffer live))
+      (when (buffer-live-p dead) (kill-buffer dead)))))
+
 (ert-deftest imoogi-consult-perspective-buffer-prefix-uses-full-consult-buffer ()
   (should (fboundp 'imoogi-consult-perspective-buffer))
   (let ((current-prefix-arg '(4))

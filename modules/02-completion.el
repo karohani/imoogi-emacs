@@ -112,7 +112,10 @@ PREFIX가 있으면 전체 `consult-buffer' 소스를 열어 다른 Perspective�
       (consult-buffer)
     (require 'consult)
     (let ((consult-buffer-list-function
-           (lambda () (persp-current-buffers* t))))
+           (lambda ()
+             ;; Restored workspace lists can still contain killed buffers.
+             ;; Consult expects every entry to have a live buffer name.
+             (seq-filter #'buffer-live-p (persp-current-buffers* t)))))
       (consult-buffer (list consult-source-buffer)))))
 
 (use-package consult
