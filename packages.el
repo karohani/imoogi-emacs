@@ -53,7 +53,9 @@
     ;; 20-terminal (ghostel; 네이티브 모듈은 vendor/ghostel-module/ 에 동봉)
     ghostel
     ;; 21-native-compile
-    compile-angel)
+    compile-angel
+    ;; 27-ai (LiteLLM/OpenAI-compatible LLM client)
+    gptel)
   "imoogi-emacs 가 요구하는 top-level 패키지 목록.
 전이 의존성은 package.el 이 자동으로 함께 설치한다.")
 
