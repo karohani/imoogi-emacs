@@ -29,6 +29,7 @@
          (imoogi-test--remembered nil)
          (imoogi-test--switched nil)
          (imoogi-test--dired nil)
+         (imoogi-test--treemacs-opened nil)
          (current-prefix-arg nil))
      (cl-letf (((symbol-function 'project-current)
                 (lambda (&optional _maybe-prompt directory)
@@ -46,7 +47,11 @@
                ((symbol-function 'persp-switch)
                 (lambda (name)
                   (setq imoogi-test--current-perspective name
-                        imoogi-test--switched name))))
+                        imoogi-test--switched name)))
+               ((symbol-function 'imoogi-treemacs-open-project-workspace)
+                (lambda (project-root perspective-name)
+                  (setq imoogi-test--treemacs-opened
+                        (list project-root perspective-name)))))
        ,@body)))
 
 (ert-deftest imoogi-project-switch-perspective-is-bound-at-C-x-p-p ()
@@ -67,7 +72,9 @@
       (should imoogi-test--prompter-called)
       (should (equal (project-root imoogi-test--remembered) (file-truename root)))
       (should (equal imoogi-test--switched "alpha"))
-      (should (equal imoogi-test--dired "alpha")))))
+      (should (equal imoogi-test--dired "alpha"))
+      (should (equal imoogi-test--treemacs-opened
+                     (list (file-truename root) "alpha"))))))
 
 (ert-deftest imoogi-project-switch-perspective-with-prefix-keeps-current-workspace ()
   (let ((root (imoogi-test--root "beta")))
@@ -76,7 +83,8 @@
         (call-interactively #'imoogi-project-switch-perspective))
       (should (equal (project-root imoogi-test--remembered) (file-truename root)))
       (should-not imoogi-test--switched)
-      (should (equal imoogi-test--dired "scratch")))))
+      (should (equal imoogi-test--dired "scratch"))
+      (should-not imoogi-test--treemacs-opened))))
 
 (ert-deftest imoogi-project-perspective-registry-freezes-existing-name ()
   (let* ((root (imoogi-test--root "gamma"))
@@ -320,6 +328,48 @@
 (ert-deftest imoogi-treemacs-project-binding-uses-project-el-command ()
   (should (eq (lookup-key global-map (kbd "C-x t p"))
               #'treemacs-add-and-display-current-project)))
+
+(ert-deftest imoogi-treemacs-add-folder-has-global-binding ()
+  (should (eq (lookup-key global-map (kbd "C-x t a"))
+              #'treemacs-add-project-to-workspace)))
+
+(ert-deftest imoogi-treemacs-project-workspace-starts-with-project-root ()
+  (require 'treemacs)
+  (let* ((root (imoogi-test--root "treemacs-project"))
+         (workspace (treemacs-workspace->create!
+                     :name "Project: treemacs-project"))
+         (treemacs--workspaces (list workspace))
+         (added nil))
+    (cl-letf (((symbol-function 'treemacs-do-add-project-to-workspace)
+               (lambda (path name)
+                 (setq added (list path name))
+                 '(success project))))
+      (should (eq workspace
+                  (imoogi-treemacs--ensure-project-workspace
+                   root "treemacs-project")))
+      (should (equal added
+                     (list root "treemacs-project"))))))
+
+(ert-deftest imoogi-treemacs-project-workspace-preserves-user-added-folders ()
+  (require 'treemacs)
+  (let* ((root (imoogi-test--root "treemacs-root"))
+         (extra (imoogi-test--root "treemacs-extra"))
+         (workspace
+          (treemacs-workspace->create!
+           :name "Project: treemacs-root"
+           :projects
+           (list (treemacs-project->create! :name "treemacs-root" :path root)
+                 (treemacs-project->create! :name "treemacs-extra" :path extra))))
+         (treemacs--workspaces (list workspace))
+         (add-called nil))
+    (cl-letf (((symbol-function 'treemacs-do-add-project-to-workspace)
+               (lambda (&rest _)
+                 (setq add-called t))))
+      (should (eq workspace
+                  (imoogi-treemacs--ensure-project-workspace
+                   root "treemacs-root")))
+      (should-not add-called)
+      (should (= 2 (length (treemacs-workspace->projects workspace)))))))
 
 (ert-deftest imoogi-treemacs-does-not-auto-start-on-emacs-startup-hook ()
   "Treemacs no longer opens itself on startup — only via manual toggle."

@@ -283,6 +283,9 @@ Kotlin 과 Clojure 는 Emacs 에 ts-mode 가 내장돼 있지 않아 패키지(`
 | `C-x b` | 현재 Perspective 버퍼 전환 · `C-u C-x b` 전체 버퍼 |
 | `M-s r` / `M-s g` | consult-ripgrep / grep — 프로젝트·디렉터리 검색 |
 | `M-g g` | 줄 이동 · `M-g i` imenu · `M-g f` flymake 진단 |
+
+`C-c h z v`는 현재 버퍼의 `visual-line-mode`를 토글한다. 메뉴에는 문단
+줄바꿈의 현재 상태가 `켜짐`/`꺼짐`으로 표시되며, 메뉴를 유지한 채 바꿀 수 있다.
 | `M-y` | consult-yank-pop (kill-ring) |
 | `C-.` / `C-;` | embark-act / embark-dwim — 후보·심볼 컨텍스트 액션 |
 
@@ -347,6 +350,22 @@ L1 은 `M-g i`/`M-g I`, L4 의 `d`/`r` 은 `M-.`/`M-?` 로도 쓸 수 있다(Ema
 | `C-c h` → `w` | hydra-window (`h/l/j/k` 이동, `s/v` 분할, `d` 삭제, `H/L/J/K` 크기) |
 
 ### 프로젝트와 작업공간 (`project.el` + `perspective.el`)
+
+`C-x p p`로 프로젝트를 열면 프로젝트 폴더와 같은 이름의 Perspective로
+전환하고, 왼쪽에는 `Project: <Perspective 이름>` Treemacs workspace를 연다.
+처음에는 선택한 프로젝트 폴더 하나만 들어간다. `C-x t a`로 임의 폴더를,
+`C-x t p`로 현재 버퍼의 프로젝트를 나중에 추가할 수 있다. 추가한 폴더는 해당
+workspace에 저장되어 다음 전환에도 유지된다. `C-u C-x p p`는
+현재 Perspective를 유지하는 명시적 다중 프로젝트 동작이므로 Treemacs
+workspace도 자동으로 바꾸지 않는다.
+
+같은 기능은 `C-c h t` Treemacs 메뉴에서도 사용할 수 있다. 메뉴에서 `f`는
+파일 트리 토글, `a`는 임의 폴더 추가, `p`는 현재 프로젝트 추가, `w`는
+Treemacs workspace 전환이다.
+
+`C-c h m`은 현재 버퍼의 mode 안내 메뉴다. `m`으로 활성 minor mode 하나를
+선택하면 설명과 그 mode의 전용 키 바인딩을 보고, `l`은 활성 minor mode 목록,
+`b`는 현재 버퍼에서 실제로 유효한 전체 키 바인딩을 표시한다.
 | 키 | 동작 |
 |----|------|
 | `C-x p p` | 프로젝트 선택 → 대응 Perspective 전환/생성 → 프로젝트 Dired |

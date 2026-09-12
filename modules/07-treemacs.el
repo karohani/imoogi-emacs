@@ -345,6 +345,7 @@ selected, close it.  Otherwise replace any custom tool window and show it."
         ("C-x t 1"   . treemacs-delete-other-windows)
         ("C-x t t"   . imoogi-treemacs-toggle-file-tree)
         ("C-x t p"   . treemacs-add-and-display-current-project)
+        ("C-x t a"   . treemacs-add-project-to-workspace)
         ("C-x t d"   . treemacs-select-directory)
         ("C-x t B"   . treemacs-bookmark)
         ("C-x t C-t" . treemacs-find-file)
@@ -450,6 +451,54 @@ selected, close it.  Otherwise replace any custom tool window and show it."
 (defvar imoogi-treemacs-follow-perspective t
   "non-nil 이면 작업공간을 바꿀 때 treemacs workspace 도 따라 전환한다.")
 
+(defconst imoogi-treemacs-project-workspace-prefix "Project: "
+  "Prefix used for Treemacs workspaces managed by project Perspectives.")
+
+(defun imoogi-treemacs--project-workspace-name (perspective-name)
+  "Return the Treemacs workspace name for PERSPECTIVE-NAME."
+  (concat imoogi-treemacs-project-workspace-prefix perspective-name))
+
+(defun imoogi-treemacs--ensure-project-workspace (root perspective-name)
+  "Return the Treemacs workspace for ROOT and PERSPECTIVE-NAME.
+
+Create it with ROOT as its initial project when needed.  Existing projects are
+never removed, so folders added later by the user remain part of the workspace."
+  (let* ((name (imoogi-treemacs--project-workspace-name perspective-name))
+         (workspace (seq-find
+                     (lambda (candidate)
+                       (equal name (treemacs-workspace->name candidate)))
+                     (treemacs-workspaces))))
+    (unless workspace
+      (pcase (treemacs-do-create-workspace name)
+        (`(success ,created) (setq workspace created))
+        (`(duplicate-name ,existing) (setq workspace existing))
+        (result (error "Treemacs workspace creation failed: %S" result))))
+    (unless (imoogi-treemacs--workspace-has-p workspace root)
+      (let ((treemacs-override-workspace workspace))
+        (pcase (treemacs-do-add-project-to-workspace
+                root
+                (file-name-nondirectory (directory-file-name root)))
+          (`(success ,_project))
+          (`(duplicate-project ,_project))
+          (result (error "Treemacs project registration failed: %S" result)))))
+    workspace))
+
+(defun imoogi-treemacs-open-project-workspace (root perspective-name)
+  "Open ROOT in the Treemacs workspace for PERSPECTIVE-NAME.
+
+The editor window remains selected.  On first use the workspace contains only
+ROOT; folders the user adds later are preserved by Treemacs persistence."
+  (require 'treemacs)
+  (let* ((editor-window (imoogi-treemacs--editor-window))
+         (workspace
+          (imoogi-treemacs--ensure-project-workspace root perspective-name)))
+    (unless (eq workspace (treemacs-current-workspace))
+      (treemacs-do-switch-workspace workspace))
+    (imoogi-treemacs-hide-tool-window)
+    (treemacs-select-window)
+    (when (window-live-p editor-window)
+      (select-window editor-window))))
+
 (defun imoogi-treemacs--perspective-project-root ()
   "지금 작업공간이 가리키는 프로젝트 루트. 못 찾으면 nil."
   (or (when-let* ((project (and (fboundp 'project-current) (project-current nil))))
@@ -461,26 +510,26 @@ selected, close it.  Otherwise replace any custom tool window and show it."
         (car (rassoc (persp-current-name) imoogi-project-perspective-alist)))))
 
 (defun imoogi-treemacs-follow-perspective-maybe ()
-  "현재 작업공간의 프로젝트를 담은 treemacs workspace 로 전환한다.
+  "Switch Treemacs to the workspace owned by the current project Perspective.
 
-전환하는 경우는 하나뿐이다 — 그 프로젝트를 담은 workspace 가 **정확히 하나**일 때.
-나머지는 전부 그대로 둔다:
-  · 작업공간이 어느 프로젝트인지 알 수 없을 때
-  · 지금 workspace 가 이미 그 프로젝트를 담고 있을 때
-  · 담은 workspace 가 하나도 없을 때
-  · 담은 workspace 가 여럿일 때 ← 임의로 고르지 않는다
-
-마지막 항목이 유일성 강제를 대신한다. 후보가 여럿일 때 `car' 로 아무거나 집으면
-사용자가 골라 둔 맥락을 코드가 뒤집게 되므로, 아예 움직이지 않는 쪽을 택한다.
-덕분에 한 저장소를 여러 workspace 에 두는 treemacs 본래의 구성을 그대로 쓸 수 있다."
+This hook only follows an existing managed workspace.  Creation and automatic
+opening happen in `imoogi-treemacs-open-project-workspace' when a project is
+opened explicitly."
   (when (and imoogi-treemacs-follow-perspective
              (featurep 'treemacs))
     (when-let* ((root (imoogi-treemacs--perspective-project-root))
-                (current (ignore-errors (treemacs-current-workspace))))
-      (unless (imoogi-treemacs--workspace-has-p current root)
-        (let ((candidates (imoogi-treemacs--workspaces-with root current)))
-          (when (= (length candidates) 1)
-            (treemacs-do-switch-workspace (car candidates))))))))
+                (perspective-name (persp-current-name))
+                (workspace-name
+                 (imoogi-treemacs--project-workspace-name perspective-name))
+                (workspace
+                 (seq-find
+                  (lambda (candidate)
+                    (equal workspace-name
+                           (treemacs-workspace->name candidate)))
+                  (treemacs-workspaces))))
+      (when (and (imoogi-treemacs--workspace-has-p workspace root)
+                 (not (eq workspace (treemacs-current-workspace))))
+        (treemacs-do-switch-workspace workspace)))))
 
 (with-eval-after-load 'perspective
   (add-hook 'persp-switch-hook #'imoogi-treemacs-follow-perspective-maybe))

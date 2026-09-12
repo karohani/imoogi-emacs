@@ -102,7 +102,14 @@ the selected project without leaving the current Perspective."
     (unless keep-perspective
       (persp-switch (imoogi-project-perspective-name root)))
     (let ((default-directory root))
-      (project-dired))))
+      (project-dired))
+    ;; 07-treemacs.el owns the explorer integration.  A prefix argument is an
+    ;; explicit request to keep the current, potentially multi-project,
+    ;; Perspective, so leave its Treemacs workspace untouched as well.
+    (when (and (not keep-perspective)
+               (fboundp 'imoogi-treemacs-open-project-workspace))
+      (imoogi-treemacs-open-project-workspace
+       root (imoogi-project-perspective-name root)))))
 
 (defun imoogi-persp-new (name)
   "새 작업공간 NAME 을 만들고 그리로 전환한다.

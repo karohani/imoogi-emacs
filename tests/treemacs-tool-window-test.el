@@ -28,8 +28,11 @@
 ;; ((transient-suffix :key ... :command CMD) 의 cdr 이 plist). 향후 transient
 ;; 업그레이드로 형태가 바뀌면 (get 'imoogi-transient-master 'transient--layout)
 ;; 를 직접 들여다보는 방식으로 대체한다 (research.md §4.1).
-(ert-deftest imoogi-treemacs-file-tree-wrapper-is-used-by-master-transient ()
+(ert-deftest imoogi-treemacs-menu-is-used-by-master-transient ()
   (should (eq (plist-get (cdr (transient-get-suffix 'imoogi-transient-master "t"))
+                         :command)
+              #'imoogi-transient-treemacs))
+  (should (eq (plist-get (cdr (transient-get-suffix 'imoogi-transient-treemacs "f"))
                          :command)
               #'imoogi-treemacs-toggle-file-tree)))
 

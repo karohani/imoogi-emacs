@@ -79,9 +79,10 @@
      (persp-kill                       transient--do-exit)
      (project-forget-project           transient--do-exit)
      (transient-quit-one               transient--do-quit-one))
-    (imoogi-transient-zoom                        ; §C.3 (4)
+    (imoogi-transient-zoom                        ; §C.3
      (text-scale-increase              transient--do-call)
      (text-scale-decrease              transient--do-call)
+     (visual-line-mode                 transient--do-call)
      (imoogi-transient-zoom-reset      transient--do-exit)
      (transient-quit-one               transient--do-quit-one))
     (imoogi-transient-git                         ; §C.4 (5)
@@ -94,6 +95,19 @@
      (magit-blame                      transient--do-stack)
      (magit-diff-dwim                  transient--do-exit)
      (transient-quit-one               transient--do-quit-one))
+    (imoogi-transient-treemacs
+     (imoogi-treemacs-toggle-file-tree transient--do-exit)
+     (treemacs-add-project-to-workspace transient--do-exit)
+     (treemacs-add-and-display-current-project transient--do-exit)
+     (treemacs-switch-workspace          transient--do-exit)
+     (treemacs-remove-project-from-workspace transient--do-exit)
+     (transient-quit-one                 transient--do-quit-one))
+    (imoogi-transient-modes
+     (imoogi-describe-active-minor-mode transient--do-exit)
+     (imoogi-list-active-minor-modes     transient--do-exit)
+     (describe-bindings                  transient--do-exit)
+     (describe-mode                      transient--do-exit)
+     (transient-quit-one                 transient--do-quit-one))
     (imoogi-transient-master                      ; §C.5 (6)
      (imoogi-transient-window          transient--do-stack)
      (imoogi-transient-project         transient--do-stack)
@@ -101,7 +115,8 @@
      (imoogi-transient-zoom            transient--do-stack)
      (imoogi-transient-code            transient--do-stack)
      (imoogi-transient-tab             transient--do-stack)
-     (imoogi-treemacs-toggle-file-tree transient--do-exit)
+     (imoogi-transient-modes           transient--do-stack)
+     (imoogi-transient-treemacs        transient--do-stack)
      (imoogi-reload                    transient--do-exit)
      (transient-quit-one               transient--do-quit-one)))
   "plan.md §C 의 (prefix (command expected-pre-command)...) 전개.")
@@ -158,13 +173,38 @@
                    ("f" . imoogi-flashcards-transient)
                    ("g" . imoogi-transient-git)
                    ("l" . imoogi-transient-lsp)
+                   ("m" . imoogi-transient-modes)
                    ("n" . imoogi-notes-scratch)
                    ("o" . imoogi-org-agenda-transient)
                    ("p" . imoogi-transient-project)
                    ("q" . transient-quit-one)
-                   ("t" . imoogi-treemacs-toggle-file-tree)
+                   ("t" . imoogi-transient-treemacs)
                    ("w" . imoogi-transient-window)
                    ("z" . imoogi-transient-zoom)))))
+
+(ert-deftest imoogi-transient-treemacs-contains-project-tree-actions ()
+  (should (equal (imoogi-test--layout-bindings 'imoogi-transient-treemacs)
+                 '(("a" . treemacs-add-project-to-workspace)
+                   ("f" . imoogi-treemacs-toggle-file-tree)
+                   ("p" . treemacs-add-and-display-current-project)
+                   ("q" . transient-quit-one)
+                   ("r" . treemacs-remove-project-from-workspace)
+                   ("w" . treemacs-switch-workspace)))))
+
+(ert-deftest imoogi-transient-modes-shows-current-buffer-binding-tools ()
+  (should (equal (imoogi-test--layout-bindings 'imoogi-transient-modes)
+                 '(("M" . describe-mode)
+                   ("b" . describe-bindings)
+                   ("l" . imoogi-list-active-minor-modes)
+                   ("m" . imoogi-describe-active-minor-mode)
+                   ("q" . transient-quit-one)))))
+
+(ert-deftest imoogi-active-minor-modes-only-returns-enabled-modes ()
+  (let ((minor-mode-list '(visual-line-mode auto-fill-function))
+        (visual-line-mode t)
+        (auto-fill-function nil))
+    (should (equal (imoogi-active-minor-modes)
+                   '(visual-line-mode)))))
 
 ;;; 모듈이 스스로 등록한 Anki 메뉴 (modules/24-anki.el)
 
@@ -308,6 +348,27 @@ q 만 예외 — 접두 맵에서는 eglot-shutdown 이지만 transient 에서 q
           (execute-kbd-macro (kbd "0"))
           (should-not (imoogi-test--active-prefix))
           (should (= text-scale-mode-amount 0)))
+      (transient--stack-zap))))
+
+(ert-deftest imoogi-transient-zoom-toggles-visual-line-mode-in-place ()
+  "v toggles visual wrapping and keeps the zoom transient open."
+  (with-temp-buffer
+    (visual-line-mode -1)
+    (unwind-protect
+        (progn
+          (transient-setup 'imoogi-transient-zoom)
+          (should (string-match-p
+                   "꺼짐"
+                   (imoogi-transient-visual-line-description)))
+          (execute-kbd-macro (kbd "v"))
+          (should visual-line-mode)
+          (should (eq (imoogi-test--active-prefix) 'imoogi-transient-zoom))
+          (should (string-match-p
+                   "켜짐"
+                   (imoogi-transient-visual-line-description)))
+          (execute-kbd-macro (kbd "v"))
+          (should-not visual-line-mode)
+          (should (eq (imoogi-test--active-prefix) 'imoogi-transient-zoom)))
       (transient--stack-zap))))
 
 (ert-deftest imoogi-transient-window-stays-open-then-exits-on-delete-others ()

@@ -313,6 +313,10 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
   (interactive)
   (text-scale-set 0))
 
+(defun imoogi-transient-visual-line-description ()
+  "Return a menu label showing the current `visual-line-mode' state."
+  (format "문단 줄바꿈 [%s]" (if visual-line-mode "켜짐" "꺼짐")))
+
 ;; @MX:NOTE amaranth 였으므로 i/o 는 열린 채 유지, 0(초기화)과 q 만 닫힌다
 ;; (plan.md §C.3).
 (transient-define-prefix imoogi-transient-zoom ()
@@ -321,6 +325,7 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
   [["확대/축소 ---"
     ("i" "확대" text-scale-increase :transient t)
     ("o" "축소" text-scale-decrease :transient t)
+    ("v" imoogi-transient-visual-line-description visual-line-mode :transient t)
     ("0" "초기화" imoogi-transient-zoom-reset)
     ("q" "종료" transient-quit-one)]])
 
@@ -432,6 +437,61 @@ major-mode 로 언어를 역추적하지 않고 버퍼에 직접 묻는다 — `
     ("v" "가용성 보고" imoogi-code-capability-report)
     ("q" "종료" transient-quit-one)]])
 
+;; Treemacs
+(transient-define-prefix imoogi-transient-treemacs ()
+  "프로젝트 파일 트리와 Treemacs workspace 메뉴."
+  :column-widths '(19 22)
+  [["파일 트리 -----------"
+    ("f" "열기·포커스·닫기" imoogi-treemacs-toggle-file-tree)
+    ("a" "폴더 추가" treemacs-add-project-to-workspace)
+    ("p" "현재 프로젝트 추가" treemacs-add-and-display-current-project)]
+   ["Workspace ------------"
+    ("w" "workspace 전환" treemacs-switch-workspace)
+    ("r" "프로젝트 제거" treemacs-remove-project-from-workspace)
+    ("q" "종료" transient-quit-one)]])
+
+;; 현재 버퍼의 mode와 키 바인딩
+(defun imoogi-active-minor-modes ()
+  "Return enabled minor mode symbols in the current buffer."
+  (seq-filter (lambda (mode)
+                (and (boundp mode) (symbol-value mode)))
+              minor-mode-list))
+
+(defun imoogi-describe-active-minor-mode (mode)
+  "Describe one active minor MODE and its key bindings."
+  (interactive
+   (let ((modes (imoogi-active-minor-modes)))
+     (unless modes
+       (user-error "현재 버퍼에 활성화된 minor mode가 없습니다"))
+     (list
+      (intern
+       (completing-read "Minor mode: "
+                        (mapcar #'symbol-name modes) nil t)))))
+  (describe-minor-mode mode))
+
+(defun imoogi-list-active-minor-modes ()
+  "Show the minor modes enabled in the current buffer."
+  (interactive)
+  (let ((modes (imoogi-active-minor-modes)))
+    (with-help-window "*활성 Minor Modes*"
+      (princ (format "버퍼: %s\nMajor mode: %s\n\n"
+                     (buffer-name) major-mode))
+      (if modes
+          (dolist (mode modes)
+            (princ (format "  %s\n" mode)))
+        (princ "활성화된 minor mode가 없습니다.\n")))))
+
+(transient-define-prefix imoogi-transient-modes ()
+  "현재 버퍼의 mode와 유효 키 바인딩 안내 메뉴."
+  :column-widths '(22 22)
+  [["Minor mode -----------"
+    ("m" "모드 설명·전용 바인딩" imoogi-describe-active-minor-mode)
+    ("l" "활성 모드 목록" imoogi-list-active-minor-modes)]
+   ["현재 버퍼 ------------"
+    ("b" "전체 유효 바인딩" describe-bindings)
+    ("M" "Major mode 설명" describe-mode)
+    ("q" "종료" transient-quit-one)]])
+
 ;; 마스터 메뉴 (진입점)
 ;; @MX:ANCHOR C-c h 로 전역 바인딩된 유일한 공개 진입점. 하위 4개 메뉴의
 ;; 디스패치 지점이며, hydra-master/body 의 역할을 그대로 대체한다.
@@ -446,7 +506,8 @@ major-mode 로 언어를 역추적하지 않고 버퍼에 직접 묻는다 — `
    ["도구 ---------"
     ("n" "영속 Scratch" imoogi-notes-scratch)
     ("c" "코드 이해" imoogi-transient-code)
-    ("t" "treemacs" imoogi-treemacs-toggle-file-tree)]
+    ("m" "현재 모드" imoogi-transient-modes)
+    ("t" "treemacs" imoogi-transient-treemacs)]
    ["설정 -----------"
     ("R" "설정 재로드" imoogi-reload)
     ("q" "종료" transient-quit-one)]])
