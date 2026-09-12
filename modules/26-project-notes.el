@@ -2,11 +2,14 @@
 
 ;;; Code:
 
-(imoogi-require "26-project-notes" 'cl-lib 'json 'org 'project 'subr-x)
+(imoogi-require "26-project-notes" 'cl-lib 'json 'org 'org-agenda 'org-id
+                'project 'subr-x)
 
 (require 'cl-lib)
 (require 'json)
 (require 'org)
+(require 'org-agenda)
+(require 'org-id)
 (require 'project)
 (require 'subr-x)
 
@@ -38,6 +41,26 @@ a navigation file.  Changing this option does not migrate existing projects."
   '((domain . ("domain.org" . "도메인 모델"))
     (architecture . ("architecture.org" . "아키텍처"))
     (decisions . ("decisions.org" . "결정 기록"))))
+
+(defconst imoogi-project-notes--artifact-types
+  '((research "조사" "research"
+              "** 조사 질문\n\n** 확인한 자료\n\n** 비교와 근거\n\n** 결론\n\n** 남은 질문\n")
+    (requirements "요구사항" "requirements"
+                  "** 해결할 문제\n\n** 사용자 흐름\n\n** 완료 조건\n\n** 범위 밖\n\n** 미결 사항\n")
+    (design "설계" "design"
+            "** 목적\n\n** 현재 상태\n\n** 검토한 대안\n\n** 선택한 방안\n\n** 구현 범위\n\n** 검증 방법\n")
+    (investigation "문제 분석" "investigation"
+                   "** 증상\n\n** 재현 방법\n\n** 관찰한 증거\n\n** 원인\n\n** 해결과 검증\n")
+    (decision "결정" "decision"
+              "** 배경\n\n** 검토한 대안\n\n** 선택\n\n** 이유\n\n** 영향과 남는 제약\n")
+    (meeting "회의" "meeting"
+             "** 참석자와 목적\n\n** 논의 내용\n\n** 결정 사항\n\n** 후속 작업\n")
+    (verification "검증 결과" "verification"
+                  "** 검증 대상\n\n** 환경과 방법\n\n** 결과\n\n** 발견한 문제\n\n** 결론\n")
+    (runbook "작업 절차" "runbook"
+             "** 목적\n\n** 사전 조건\n\n** 절차\n\n** 확인 방법\n\n** 실패 시 복구\n")
+    (note "빈 문서" "note" "** 내용\n"))
+  "Artifact templates selectable from a project task.")
 
 (defun imoogi-project-notes--registry-file ()
   "Return the project notes registry path."
@@ -270,6 +293,8 @@ even though the project notes registry key is shared across worktrees."
            "* 중앙 Agenda 사용\n"
            "이 프로젝트는 TODO 원본을 중앙 agenda 파일에 둡니다.\n"
            "프로젝트별 작업 상태를 별도로 복사하지 말고 아래 파일에 기록합니다.\n\n"
+           "현재 프로젝트 Focus Agenda에서 분리하려면 각 TODO에 다음 속성을 둡니다.\n"
+           ":CATEGORY: {{PROJECT_NAME}}\n\n"
            "- [[{{TASKS_LINK}}][중앙 할 일 파일]]\n"
            "- [[file:project.org][프로젝트 개요]]\n"
            "- [[file:journal.org][작업 기록]]\n")
@@ -296,7 +321,8 @@ even though the project notes registry key is shared across worktrees."
   "Create non-document directories under project notes DIRECTORY."
   (make-directory directory t)
   (make-directory (expand-file-name "assets/" directory) t)
-  (make-directory (expand-file-name "references/" directory) t))
+  (make-directory (expand-file-name "references/" directory) t)
+  (make-directory (expand-file-name "artifacts/" directory) t))
 
 (defun imoogi-project-notes--safe-ensure-central-agenda ()
   "Ensure and return the central agenda file."
@@ -459,7 +485,7 @@ never overwritten."
     (imoogi-project-notes--save-entry entry)
     (imoogi-project-notes--register-agenda-target
      (imoogi-project-notes--alist-string 'tasks-file entry))
-    (message "imoogi: 프로젝트 노트 폴더: %s" notes-dir)
+    (message "imoogi: 작업 폴더 %s → 문서 폴더 %s" root notes-dir)
     notes-dir))
 
 ;;;###autoload
@@ -544,6 +570,206 @@ never overwritten."
                                                  task-file notes-dir)))
       (imoogi-project-notes--find-existing-or-create
        entry file (symbol-name document) values))))
+
+(defun imoogi-project-notes--entry-label (entry)
+  "Return a readable completion label for project notes ENTRY."
+  (let* ((root (imoogi-project-notes--alist-string 'source-root entry))
+         (name (file-name-nondirectory (directory-file-name root))))
+    (format "%-24s %s" name (abbreviate-file-name root))))
+
+(defun imoogi-project-notes--select-entry (&optional prompt)
+  "Prompt for and return a registered project-notes entry.
+Entries are identified by their source work directory; Org files live in the
+separate notes directory recorded by each entry."
+  (let* ((entries (imoogi-project-notes--read-registry))
+         (candidates (mapcar (lambda (entry)
+                               (cons (imoogi-project-notes--entry-label entry) entry))
+                             entries)))
+    (unless candidates
+      (user-error "등록된 프로젝트 노트가 없습니다"))
+    (cdr (assoc (completing-read (or prompt "소스 작업 폴더의 프로젝트: ")
+                                 candidates nil t)
+                candidates))))
+
+;;;###autoload
+(defun imoogi-project-notes-setup-guide ()
+  "Explain the distinction between source work and project note folders."
+  (interactive)
+  (with-help-window "*imoogi 프로젝트 기록 안내*"
+    (princ "프로젝트 기록 폴더 안내\n\n")
+    (princ "imoogi에서 프로젝트를 선택할 때 보이는 경로는 소스 작업 폴더입니다.\n")
+    (princ "예: ~/workspace/imoogi-emacs/\n\n")
+    (princ "Org 문서는 소스나 Git worktree 안에 만들지 않습니다. 기본 문서 위치는\n")
+    (princ "별도의 ~/project-notes/<프로젝트>/ 폴더입니다.\n")
+    (princ "예: ~/project-notes/imoogi-emacs/project.org\n\n")
+    (princ "C-c h p m s  현재 소스 작업 폴더에 문서 폴더를 연결·생성\n")
+    (princ "C-u C-c h p m s  문서가 저장될 폴더를 직접 지정\n")
+    (princ "C-c h p m l  소스 작업 폴더 기준으로 등록 프로젝트를 선택·이동\n\n")
+    (princ "같은 Git 저장소의 worktree는 한 문서 폴더를 공유하지만 journal의\n")
+    (princ "재개 지점은 실제 작업 폴더별로 나뉩니다. 기존 문서는 덮어쓰지 않습니다.\n")))
+
+(defun imoogi-project-notes--open-entry-file (entry key)
+  "Open the file at KEY from project notes ENTRY."
+  (imoogi-project-notes--find-file
+   entry (imoogi-project-notes--alist-string key entry)
+   (imoogi-project-notes--alist-string 'source-root entry)))
+
+;;;###autoload
+(defun imoogi-project-notes-list ()
+  "Choose a registered project and open its source or principal note."
+  (interactive)
+  (let* ((entry (imoogi-project-notes--select-entry))
+         (destinations '(("프로젝트 개요" . project-file)
+                         ("할 일" . tasks-file)
+                         ("작업 기록·재개" . journal-file)
+                         ("소스 프로젝트" . source)))
+         (destination (cdr (assoc
+                            (completing-read "열기: " destinations nil t)
+                            destinations))))
+    (if (eq destination 'source)
+        (let ((project-prompter
+               (lambda () (imoogi-project-notes--alist-string
+                           'source-root entry))))
+          (imoogi-project-switch-perspective nil))
+      (imoogi-project-notes--open-entry-file entry destination))))
+
+(defun imoogi-project-notes--agenda-files ()
+  "Return existing task files for all registered project notes."
+  (delete-dups
+   (delq nil
+         (mapcar (lambda (entry)
+                   (let ((file (imoogi-project-notes--alist-string
+                                'tasks-file entry)))
+                     (and file (file-exists-p file) file)))
+                 (imoogi-project-notes--read-registry)))))
+
+(defun imoogi-project-notes--run-agenda (title files &optional category)
+  "Show project execution dashboard TITLE using FILES.
+When CATEGORY is non-nil, apply it as a global category filter."
+  (unless files
+    (user-error "Agenda에 표시할 프로젝트 작업 파일이 없습니다"))
+  (let ((org-agenda-files files)
+        (org-agenda-category-filter-preset
+         (and category (list (concat "+" category)))))
+    (org-agenda-run-series
+     title
+     '(((tags "DEADLINE<>\"\""
+              ((org-agenda-overriding-header "기한 지난 작업")
+               (org-agenda-skip-function #'imoogi-org-agenda-skip-not-overdue)
+               (org-agenda-sorting-strategy
+                '(deadline-up priority-down category-keep))))
+        (todo "DOING" ((org-agenda-overriding-header "진행 중")))
+        (todo "NEXT" ((org-agenda-overriding-header "다음 행동")))
+        (agenda "" ((org-agenda-overriding-header "일정")
+                    (org-agenda-span 7)
+                    (org-agenda-skip-function #'imoogi-org-agenda-skip-overdue)))
+        (todo "WAIT" ((org-agenda-overriding-header "대기 중"))))))))
+
+;;;###autoload
+(defun imoogi-project-notes-agenda-current ()
+  "Show the execution agenda for the current project."
+  (interactive)
+  (let ((entry (or (imoogi-project-notes--current-entry)
+                   (imoogi-project-notes--select-entry "Focus 프로젝트: "))))
+    (let ((central (eq (imoogi-project-notes--entry-todo-storage entry)
+                       'central)))
+      (imoogi-project-notes--run-agenda
+       "프로젝트 Focus"
+       (list (imoogi-project-notes--alist-string 'tasks-file entry))
+       (and central
+            (file-name-nondirectory
+             (directory-file-name
+              (imoogi-project-notes--alist-string 'source-root entry))))))))
+
+;;;###autoload
+(defun imoogi-project-notes-agenda-all ()
+  "Show one execution dashboard across registered projects."
+  (interactive)
+  (imoogi-project-notes--run-agenda
+   "전체 프로젝트 Dashboard" (imoogi-project-notes--agenda-files)))
+
+(defun imoogi-project-notes--artifact-spec (kind)
+  "Return the artifact template specification for KIND."
+  (or (assq kind imoogi-project-notes--artifact-types)
+      (user-error "알 수 없는 산출물 종류: %s" kind)))
+
+(defun imoogi-project-notes--unique-artifact-file (directory prefix title)
+  "Return a new artifact path below DIRECTORY for PREFIX and TITLE."
+  (let* ((base (format "%s-%s-%s" (format-time-string "%Y%m%d") prefix
+                       (imoogi-project-notes--slug title)))
+         (candidate (expand-file-name (concat base ".org") directory))
+         (number 2))
+    (while (file-exists-p candidate)
+      (setq candidate (expand-file-name
+                       (format "%s-%d.org" base number) directory)
+            number (1+ number)))
+    candidate))
+
+(defun imoogi-project-notes--append-artifact-link (artifact-id title)
+  "Append a link to ARTIFACT-ID named TITLE under the current Org heading."
+  (let ((link (format "- [[id:%s][%s]]" artifact-id title))
+        (subtree-end (save-excursion (org-end-of-subtree t t))))
+    (save-excursion
+      (forward-line 1)
+      (if (re-search-forward "^산출물:[[:space:]]*$" subtree-end t)
+          (progn
+            (forward-line 1)
+            (while (and (< (point) subtree-end) (looking-at "^- "))
+              (forward-line 1))
+            (insert link "\n"))
+        (goto-char subtree-end)
+        (unless (bolp) (insert "\n"))
+        (insert "\n산출물:\n" link "\n")))))
+
+;;;###autoload
+(defun imoogi-project-notes-create-artifact (kind title)
+  "Create a KIND artifact named TITLE and link it to the current TODO.
+The command assigns stable Org IDs to both sides, saves the task link, and
+opens the new file below the project's artifacts directory."
+  (interactive
+   (progn
+     (unless (derived-mode-p 'org-mode)
+       (user-error "Org TODO heading에서 실행하세요"))
+     (org-back-to-heading t)
+     (let* ((labels (mapcar (lambda (spec)
+                              (cons (nth 1 spec) (car spec)))
+                            imoogi-project-notes--artifact-types))
+            (kind (cdr (assoc (completing-read "산출물 종류: " labels nil t)
+                              labels)))
+            (default-title (org-get-heading t t t t)))
+       (list kind (read-string "산출물 제목: " default-title)))))
+  (unless (derived-mode-p 'org-mode)
+    (user-error "Org TODO heading에서 실행하세요"))
+  (org-back-to-heading t)
+  (let* ((entry (or (imoogi-project-notes--current-entry)
+                    (imoogi-project-notes--select-entry "산출물 프로젝트: ")))
+         (spec (imoogi-project-notes--artifact-spec kind))
+         (task-title (org-get-heading t t t t))
+         (task-id (org-id-get-create))
+         (artifact-id (org-id-new))
+         (notes-dir (imoogi-project-notes--alist-string 'notes-dir entry))
+         (artifact-dir (expand-file-name "artifacts/" notes-dir))
+         (file (imoogi-project-notes--unique-artifact-file
+                artifact-dir (nth 2 spec) title))
+         (project-name (file-name-nondirectory
+                        (directory-file-name
+                         (imoogi-project-notes--alist-string 'source-root entry))))
+         (content (imoogi-project-notes--template
+                   "artifact"
+                   `(("ARTIFACT_TITLE" . ,title)
+                     ("ARTIFACT_TYPE" . ,(nth 1 spec))
+                     ("ARTIFACT_ID" . ,artifact-id)
+                     ("TASK_ID" . ,task-id)
+                     ("TASK_TITLE" . ,task-title)
+                     ("PROJECT_NAME" . ,project-name)
+                     ("ARTIFACT_SECTIONS" . ,(nth 3 spec))))))
+    (make-directory artifact-dir t)
+    (imoogi-project-notes--write-new-file file content)
+    (imoogi-project-notes--append-artifact-link artifact-id title)
+    (when buffer-file-name (save-buffer))
+    (org-id-add-location artifact-id file)
+    (imoogi-project-notes--find-file
+     entry file (imoogi-project-notes--current-source-root entry))))
 
 ;;;###autoload
 (defun imoogi-notes-scratch ()

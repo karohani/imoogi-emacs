@@ -296,15 +296,21 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
 
 (transient-define-prefix imoogi-project-notes-transient ()
   "프로젝트 기록과 영속 Scratch 메뉴."
-  :column-widths '(24 24)
+  :column-widths '(23 23 23)
   [["프로젝트 기록 --------"
     ("o" "개요" imoogi-project-notes-open)
     ("t" "할 일" imoogi-project-notes-tasks)
-    ("j" "작업 기록·재개" imoogi-project-notes-journal)]
+    ("j" "작업 기록·재개" imoogi-project-notes-journal)
+    ("l" "작업 폴더 목록·이동" imoogi-project-notes-list)]
+   ["실행·산출물 ----------"
+    ("a" "현재 Focus Agenda" imoogi-project-notes-agenda-current)
+    ("A" "전체 Dashboard" imoogi-project-notes-agenda-all)
+    ("r" "TODO 산출물 생성" imoogi-project-notes-create-artifact)]
    ["준비 -----------------"
-    ("s" "폴더·템플릿 설정" imoogi-project-notes-setup)
+    ("s" "작업 폴더에 문서 연결" imoogi-project-notes-setup)
     ("d" "개발 문서 추가" imoogi-project-notes-add-document)
     ("n" "영속 Scratch" imoogi-notes-scratch)
+    ("h" "폴더 구조 안내" imoogi-project-notes-setup-guide)
     ("q" "종료" transient-quit-one)]])
 
 ;; 텍스트 확대/축소

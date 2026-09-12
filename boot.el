@@ -94,7 +94,8 @@ tests/assert-boot.el 이 이 값을 설치 검증의 판정 근거로 쓴다.")
                   ;; Anki 가 없는 폐쇄망용 Emacs-native flashcard fallback.
                   ;; 24-anki 와 상태를 공유하지 않고, sqlite 가 없으면 이 모듈만 건너뛴다.
                   "25-flashcards"
-                  "26-project-notes"))
+                  "26-project-notes"
+                  "27-gptel"))
   (condition-case err
       (load (expand-file-name (concat "modules/" module) imoogi-emacs-dir))
     (error

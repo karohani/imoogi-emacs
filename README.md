@@ -405,6 +405,11 @@ Perspective의 파일/Dired 버퍼와 창 배치는 정상 종료 시 저장되�
 기존 파일은 덮어쓰지 않는다. `C-u M-x imoogi-project-notes-setup`으로
 프로젝트별 저장 폴더를 직접 지정할 수 있다.
 
+메뉴와 프로젝트 목록에서 선택하는 **프로젝트는 소스 작업 폴더**다. 예를 들어
+`~/workspace/imoogi-emacs/`를 선택하면 이 작업 폴더를 별도의
+`~/project-notes/imoogi-emacs/` 문서 폴더와 연결한다. 현재 연결 관계와 worktree
+동작은 `C-c h p m h`의 내장 안내에서 확인할 수 있다.
+
 ```text
 ~/notes/
   agenda.org                 개인 할 일 / 중앙 관리 선택 시 프로젝트 할 일
@@ -415,6 +420,7 @@ Perspective의 파일/Dired 버퍼와 창 배치는 정상 종료 시 저장되�
   journal.org                작업 기록·worktree별 재개 지점
   assets/                    이미지 등 첨부 자료
   references/                참고 자료
+  artifacts/                 TODO에서 파생된 조사·설계·검증 산출물
   development/               필요한 문서만 명령으로 생성
     domain.org               용어·개념·관계·업무 규칙
     architecture.org         구성 요소·책임·데이터 흐름
@@ -425,12 +431,17 @@ Perspective의 파일/Dired 버퍼와 창 배치는 정상 종료 시 저장되�
 
 | 키 | 명령 | 용도 |
 |----|------|------|
-| `s` | `imoogi-project-notes-setup` | 기록 폴더 등록·기본 템플릿 생성 |
+| `s` | `imoogi-project-notes-setup` | 현재 소스 작업 폴더에 별도 문서 폴더 연결·생성 |
 | `o` | `imoogi-project-notes-open` | 프로젝트 개요 |
 | `t` | `imoogi-project-notes-tasks` | 할 일 원본 열기 |
 | `j` | `imoogi-project-notes-journal` | 현재 작업 공간의 재개 지점 |
+| `l` | `imoogi-project-notes-list` | 소스 작업 폴더 기준으로 골라 소스·개요·할 일·기록으로 이동 |
+| `a` | `imoogi-project-notes-agenda-current` | 현재 프로젝트 Focus Agenda |
+| `A` | `imoogi-project-notes-agenda-all` | 등록된 전체 프로젝트 Dashboard |
+| `r` | `imoogi-project-notes-create-artifact` | 현재 TODO의 산출물 파일과 양방향 ID 링크 생성 |
 | `d` | `imoogi-project-notes-add-document` | 도메인·구조·결정 문서 추가 |
 | `n` | `imoogi-notes-scratch` | `~/notes/scratch.org` 열기 |
+| `h` | `imoogi-project-notes-setup-guide` | 작업 폴더와 문서 폴더의 차이 안내 |
 
 영속 Scratch는 메인 메뉴에서 **`C-c h n`**으로 바로 열 수도 있다.
 Scratch와 작업 기록은 일반 파일 버퍼이므로 `C-x C-s`로 저장한다.
@@ -440,6 +451,12 @@ Scratch와 작업 기록은 일반 파일 버퍼이므로 `C-x C-s`로 저장한
 `CANCELLED`로 표현한다. 모든 상태를 순서대로 거칠 필요는 없다.
 프로젝트 작업 파일의 `CATEGORY`는 프로젝트 이름으로 초기화하여 Agenda에서 구분한다.
 개발 문서는 `d` 명령을 쓸 때 생성하며, 처음에는 기본 Org 문서 세 개만 만든다.
+
+TODO heading에서 `r`을 누르면 조사·요구사항·설계·문제 분석·결정·회의·검증 결과·
+작업 절차·빈 문서 중 하나를 선택한다. 새 파일은 `artifacts/`에 만들어지고 TODO의
+`산출물:` 목록과 새 문서의 `관련 작업`이 `org-id`로 서로 연결된다. `tasks.org`에는
+상태·완료 조건·일정·산출물 링크만 두고 긴 분석과 결과는 산출물 파일에 기록한다.
+같은 이름의 파일이 있으면 번호를 붙이며 기존 산출물은 덮어쓰지 않는다.
 
 같은 Git 저장소의 worktree는 공통 Git 디렉터리를 기준으로 같은 기록 폴더를
 공유한다. 재개 지점은 각 worktree 경로별로 나뉜다. 별도 clone은 별도 프로젝트로
@@ -570,6 +587,54 @@ Markdown의 `#`부터 `######`까지 글자색과 줄 전체 배경색이 적용
 5·6단계는 빨강·파랑을 반복한다. `markdown-mode`와 `gfm-mode` 모두 지원한다.
 본문 영역에는 테두리를 표시하지 않는다.
 
+### gptel: LiteLLM · Codex · Claude · 기타 API
+
+`gptel`은 `vendor/elpa/`에 동봉되어 있어 Emacs 부팅과 패키지 로딩에는 인터넷이
+필요하지 않다. `M-x imoogi-gptel-setup`을 실행하면 먼저 연결 방식을 묻는다.
+
+- **LiteLLM Gateway**: Gateway 주소와 `model_name` 별칭 사용
+- **Codex / ChatGPT Plus·Pro OAuth**: OpenAI 계정 로그인 사용, API key 불필요
+- **Claude / Anthropic API**: Anthropic API와 `auth-source`의 API key 사용
+- **기타 OpenAI 호환 API**: base URL, endpoint, 모델 이름을 직접 지정
+
+LiteLLM을 선택했다면 먼저 Gateway의 `config.yaml`에 사용할 모델 별칭을 등록한다.
+
+```yaml
+model_list:
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-sonnet-4-5
+  - model_name: coding-small
+    litellm_params:
+      model: openai/gpt-4.1-mini
+```
+
+LiteLLM 또는 기타 OpenAI 호환 API는 다음 값을 입력한다.
+
+1. Gateway URL: 경로 없는 주소, 예: `http://localhost:4000`
+2. Model aliases: LiteLLM의 `model_name`, 쉼표로 구분
+3. Default model: 위 목록 중 하나
+4. Chat endpoint: 기본값 `/v1/chat/completions`
+
+설정 함수는 공급자, 주소와 모델만 `~/.emacs.d/imoogi-gptel.json`에 저장한다.
+LiteLLM·Claude·기타 API key는 설정 마지막 질문이나 `M-x imoogi-gptel-store-key`로 Emacs
+`auth-source`에 별도로 저장한다. 저장소와 JSON 파일에는 API key가 들어가지 않는다.
+Codex를 선택하면 `gptel-openai-oauth-login`이 OpenAI 로그인을 진행하고 토큰은 gptel의
+OAuth 토큰 파일에 저장된다.
+암호화 저장을 원하면 `auth-sources`에 `~/.authinfo.gpg`를 우선 등록한 뒤 setup을
+실행한다. 전체 안내는 `M-x imoogi-gptel-setup-guide`에서 다시 볼 수 있다.
+
+| 키 | 동작 |
+| --- | --- |
+| `C-c h i c` | LiteLLM 채팅 버퍼 열기 |
+| `C-c h i s` | 현재 영역 또는 버퍼의 prompt 전송 |
+| `C-c h i m` | gptel 모델·옵션·도구 Transient 열기 |
+| `C-c h i a` | 현재 영역 또는 버퍼를 추가 문맥으로 등록 |
+| `C-c h i f` | 파일을 추가 문맥으로 등록 |
+| `C-c h i S` | LiteLLM Gateway 설정 |
+| `C-c h i k` | virtual key를 auth-source에 등록 |
+| `C-c h i h` | 내장 설정 가이드 보기 |
+
 ### Org/Markdown 브라우저 미리보기 (간단 버전)
 
 한 번 `make build-org-preview`로 Go 서버를 빌드한다. Org 파일에서는
@@ -662,6 +727,7 @@ Anki 메뉴(`C-c a a`)의 **동기화 대상**에서도 같은 명령을 실행�
 | `12-navigation` | avy · helpful · diff-hl · bufferfile | 점프, 향상된 도움말, 여백 Git 표시, 파일 조작 |
 | `13-system` | exec-path-from-shell · server · buffer-terminator · persist-text-scale | 환경변수 동기화, 서버, 버퍼 정리, 텍스트 배율 유지 |
 | `14-org` | org · org-appear | org-mode |
+| `27-gptel` | gptel · auth-source | LiteLLM Gateway 기반 LLM 채팅·문맥·요청 |
 | `15-markdown` | markdown-mode · markdown-toc | Markdown + Org-style 구조 편집 키 |
 | `16-elisp` | aggressive-indent · highlight-defined · paredit · page-break-lines · elisp-refs | Elisp 개발 |
 | `17-lsp` | Eglot · Flymake · xref (Emacs 30 내장) | 공통 LSP 설정 + `modules/lsp/*.el` 언어별 자동 로더 |

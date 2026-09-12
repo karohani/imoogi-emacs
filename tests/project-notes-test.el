@@ -11,6 +11,7 @@
           (imoogi-project-notes-todo-storage 'project)
           (personal (expand-file-name "notes/" sandbox))
           (root (file-name-as-directory (expand-file-name "source/" sandbox)))
+          (org-id-locations-file (expand-file-name "org-id-locations" sandbox))
           (org-agenda-files nil)
           (org-directory personal))
      (make-directory root t)
@@ -154,8 +155,41 @@
 (ert-deftest imoogi-project-notes-transient-commands-available ()
   (should (eq (plist-get (cdr (transient-get-suffix 'imoogi-transient-project "m")) :command)
               'imoogi-project-notes-transient))
-  (dolist (key '("s" "o" "t" "j" "d" "n"))
+  (dolist (key '("s" "o" "t" "j" "l" "a" "A" "r" "d" "n" "h"))
     (should (commandp (plist-get (cdr (transient-get-suffix 'imoogi-project-notes-transient key))
                                  :command)))))
+
+(ert-deftest imoogi-project-notes-artifact-links-task-both-ways ()
+  (imoogi-project-notes-test--isolated
+    (let* ((directory (imoogi-project-notes-setup root))
+           (tasks (expand-file-name "tasks.org" directory)))
+      (find-file tasks)
+      (goto-char (point-max))
+      (insert "\n* TODO 모델 조회 구현\n완료 조건:\n- 목록을 선택한다.\n")
+      (forward-line -3)
+      (imoogi-project-notes-create-artifact 'design "모델 조회 설계")
+      (let* ((artifact buffer-file-name)
+             (task-text (imoogi-project-notes-test--read tasks))
+             (artifact-text (imoogi-project-notes-test--read artifact)))
+        (should (file-in-directory-p artifact
+                                     (expand-file-name "artifacts/" directory)))
+        (should (string-match-p "산출물:" task-text))
+        (should (string-match-p
+                 "\\[\\[id:[^]]+\\]\\[모델 조회 설계\\]\\]" task-text))
+        (should (string-match-p "\\* 모델 조회 설계" artifact-text))
+        (should (string-match-p "\\*\\* 관련 작업" artifact-text))
+        (should (string-match-p
+                 "\\[\\[id:[^]]+\\]\\[모델 조회 구현\\]\\]" artifact-text))
+        (should (string-match-p "\\*\\* 검토한 대안" artifact-text))))))
+
+(ert-deftest imoogi-project-notes-agenda-files-cover-each-project-once ()
+  (imoogi-project-notes-test--isolated
+    (let ((other (file-name-as-directory (expand-file-name "other/" sandbox))))
+      (make-directory other t)
+      (imoogi-project-notes-setup root)
+      (imoogi-project-notes-setup other)
+      (let ((files (imoogi-project-notes--agenda-files)))
+        (should (= (length files) 2))
+        (should (cl-every #'file-exists-p files))))))
 
 ;;; project-notes-test.el ends here
