@@ -4,6 +4,7 @@
 
 (require 'ert)
 (require 'org)
+(require 'markdown-mode)
 (require 'imoogi-org-preview)
 
 (ert-deftest imoogi-org-preview-payload-uses-unsaved-buffer-text ()
@@ -20,9 +21,29 @@
       (should (equal (alist-get 'version payload) "org-preview/v1"))
       (should (equal (alist-get 'origin payload) "emacs"))
       (should (equal (alist-get 'path payload) ""))
+      (should (equal (alist-get 'syntax payload) "org"))
       (should (listp (alist-get 'allowed_roots payload)))
       (should (= (alist-get 'cursor_byte payload)
                  (string-bytes (encode-coding-string "* Draft\nUnsaved text" 'utf-8)))))))
+
+(ert-deftest imoogi-org-preview-markdown-payload-identifies-syntax ()
+  (with-temp-buffer
+    (markdown-mode)
+    (insert "# Draft\n\nUnsaved **Markdown** text")
+    (setq-local imoogi-org-preview--session-id "session-md"
+                imoogi-org-preview--buffer-id "buffer-md"
+                imoogi-org-preview--revision 3)
+    (let ((payload (imoogi-org-preview--build-update-payload)))
+      (should (equal (alist-get 'syntax payload) "markdown"))
+      (should (equal (alist-get 'text payload) (buffer-string))))))
+
+(ert-deftest imoogi-org-preview-enables-in-markdown-mode ()
+  (with-temp-buffer
+    (markdown-mode)
+    (let ((imoogi-org-preview-command '("/no/such/imoogi-org-preview")))
+      (imoogi-org-preview-mode 1)
+      (should imoogi-org-preview-mode)
+      (should (eq imoogi-org-preview--status 'failed)))))
 
 (ert-deftest imoogi-org-preview-payload-uses-utf8-byte-cursor ()
   (with-temp-buffer

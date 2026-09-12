@@ -188,7 +188,11 @@ func (s *Server) handleRevision(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, resp)
 		return
 	}
-	doc, err := s.parser.Parse(req.Text)
+	parser := s.parser
+	if req.Syntax == "markdown" {
+		parser = MarkdownParser{}
+	}
+	doc, err := parser.Parse(req.Text)
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return

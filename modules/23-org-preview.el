@@ -1,4 +1,4 @@
-;;; 23-org-preview.el --- live Org HTML preview client -*- lexical-binding: t; -*-
+;;; 23-org-preview.el --- live Org/Markdown HTML preview client -*- lexical-binding: t; -*-
 
 ;;; Code:
 
@@ -16,7 +16,7 @@
 (declare-function project-root "project")
 
 (defgroup imoogi-org-preview nil
-  "Live Org HTML preview backed by the local imoogi-org-preview server."
+  "Live Org/Markdown preview backed by the local imoogi-org-preview server."
   :group 'org)
 
 (defcustom imoogi-org-preview-command
@@ -39,7 +39,7 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
   :type '(choice (const :tag "Use server bootstrap token" nil) string))
 
 (defcustom imoogi-org-preview-debounce-seconds 0.5
-  "Trailing debounce before sending an edited Org buffer revision."
+  "Trailing debounce before sending an edited document revision."
   :type 'number)
 
 (defcustom imoogi-org-preview-reconnect-seconds 1.0
@@ -86,7 +86,7 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
 
 ;;;###autoload
 (define-minor-mode imoogi-org-preview-mode
-  "Send unsaved Org buffer revisions to the local HTML preview server."
+  "Send unsaved Org or Markdown revisions to the local HTML preview server."
   :init-value nil
   :lighter (:eval (imoogi-org-preview--status-text))
   (if imoogi-org-preview-mode
@@ -95,10 +95,10 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
 
 ;;;###autoload
 (defun imoogi-org-preview ()
-  "Enable live Org HTML preview for the current buffer and open the browser."
+  "Enable live Org or Markdown HTML preview and open the browser."
   (interactive)
-  (unless (derived-mode-p 'org-mode)
-    (user-error "Org preview is only available in org-mode buffers"))
+  (unless (derived-mode-p 'org-mode 'markdown-mode)
+    (user-error "Preview is available only in Org and Markdown buffers"))
   (imoogi-org-preview-mode 1)
   (imoogi-org-preview-open))
 
@@ -124,15 +124,15 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
 
 ;;;###autoload
 (defun imoogi-org-preview-stop ()
-  "Stop live Org preview for the current buffer."
+  "Stop live document preview for the current buffer."
   (interactive)
   (imoogi-org-preview-mode -1))
 
 (defun imoogi-org-preview--enable ()
   "Enable preview state and hooks for the current buffer."
-  (unless (derived-mode-p 'org-mode)
+  (unless (derived-mode-p 'org-mode 'markdown-mode)
     (setq imoogi-org-preview-mode nil)
-    (user-error "Org preview is only available in org-mode buffers"))
+    (user-error "Preview is available only in Org and Markdown buffers"))
   (setq imoogi-org-preview--session-id (or imoogi-org-preview--session-id
                                            (imoogi-org-preview--make-id "session"))
         imoogi-org-preview--buffer-id (or imoogi-org-preview--buffer-id
@@ -271,7 +271,7 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
      (format "Org preview server stopped: %s" (string-trim event)))))
 
 (defun imoogi-org-preview--connect-buffers ()
-  "Connect all active Org preview buffers to the server."
+  "Connect all active preview buffers to the server."
   (dolist (buffer (copy-sequence imoogi-org-preview--buffers))
     (when (buffer-live-p buffer)
       (with-current-buffer buffer
@@ -299,7 +299,7 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
   (message "%s" message))
 
 (defun imoogi-org-preview--after-change (&rest _args)
-  "Schedule a preview update after an Org buffer edit."
+  "Schedule a preview update after a document edit."
   (imoogi-org-preview--schedule-update))
 
 (defun imoogi-org-preview--post-command ()
@@ -390,6 +390,7 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
   (imoogi-org-preview--base-payload
    `((event_id . ,(imoogi-org-preview--make-id "event"))
      (path . ,(if buffer-file-name (expand-file-name buffer-file-name) ""))
+     (syntax . ,(if (derived-mode-p 'markdown-mode) "markdown" "org"))
      (buffer_name . ,(buffer-name))
      (allowed_roots . ,(imoogi-org-preview--allowed-roots))
      (text . ,(buffer-substring-no-properties (point-min) (point-max)))

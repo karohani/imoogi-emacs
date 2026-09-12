@@ -39,6 +39,7 @@ func (r *RevisionRequest) UnmarshalJSON(data []byte) error {
 		EventIDCamel      string   `json:"eventId"`
 		Origin            Origin   `json:"origin"`
 		Path              string   `json:"path"`
+		Syntax            string   `json:"syntax"`
 		Text              string   `json:"text"`
 		CursorByte        int      `json:"cursor_byte"`
 		CursorByteCamel   int      `json:"cursorByte"`
@@ -57,6 +58,7 @@ func (r *RevisionRequest) UnmarshalJSON(data []byte) error {
 		Origin:    raw.Origin,
 	}
 	r.Path = raw.Path
+	r.Syntax = raw.Syntax
 	r.Text = raw.Text
 	r.CursorByte = raw.CursorByte
 	if raw.CursorByteCamel != 0 {
@@ -109,6 +111,7 @@ func (e *NavigationEvent) UnmarshalJSON(data []byte) error {
 type RevisionRequest struct {
 	Envelope
 	Path         string   `json:"path,omitempty"`
+	Syntax       string   `json:"syntax,omitempty"`
 	Text         string   `json:"text"`
 	CursorByte   int      `json:"cursor_byte,omitempty"`
 	AllowedRoots []string `json:"allowed_roots,omitempty"`

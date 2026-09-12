@@ -481,12 +481,36 @@ major-mode 로 언어를 역추적하지 않고 버퍼에 직접 묻는다 — `
             (princ (format "  %s\n" mode)))
         (princ "활성화된 minor mode가 없습니다.\n")))))
 
+(defun imoogi-minor-mode-active-p (mode)
+  "Return non-nil when minor MODE is enabled in the current buffer."
+  (and (boundp mode) (symbol-value mode)))
+
+(defun imoogi-preview-mode-available-p ()
+  "Return non-nil when the current major mode supports browser preview."
+  (derived-mode-p 'org-mode 'markdown-mode))
+
+(defun imoogi-yas-expand ()
+  "Expand the yasnippet at point when yasnippet is available."
+  (interactive)
+  (unless (require 'yasnippet nil t)
+    (user-error "yasnippet을 불러올 수 없습니다"))
+  (call-interactively #'yas-expand))
+
 (transient-define-prefix imoogi-transient-modes ()
   "현재 버퍼의 mode와 유효 키 바인딩 안내 메뉴."
-  :column-widths '(22 22)
+  :column-widths '(22 22 22)
   [["Minor mode -----------"
     ("m" "모드 설명·전용 바인딩" imoogi-describe-active-minor-mode)
     ("l" "활성 모드 목록" imoogi-list-active-minor-modes)]
+   ["자주 쓰는 전용 동작 ---"
+    ("w" "visual-line 토글" visual-line-mode)
+    ("f" "outline 폴딩 토글" outline-minor-mode)
+    ("y" "yasnippet 펼치기" imoogi-yas-expand
+     :inapt-if-not (lambda () (imoogi-minor-mode-active-p 'yas-minor-mode)))
+    ("d" "Flymake 진단" flymake-show-buffer-diagnostics
+     :inapt-if-not (lambda () (imoogi-minor-mode-active-p 'flymake-mode)))
+    ("v" "Org/Markdown 미리보기" imoogi-org-preview
+     :inapt-if-not imoogi-preview-mode-available-p)]
    ["현재 버퍼 ------------"
     ("b" "전체 유효 바인딩" describe-bindings)
     ("M" "Major mode 설명" describe-mode)

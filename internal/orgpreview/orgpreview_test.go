@@ -59,6 +59,29 @@ func TestFallbackParserV1Constructs(t *testing.T) {
 	checkIDs(doc.Nodes)
 }
 
+func TestMarkdownParserConstructsAndHeadingPalette(t *testing.T) {
+	source := "# Red\n## Blue\n### Green\n#### Yellow\n\nParagraph with [doc](doc.txt) and ![image](image.png).\n\n- first\n- second\n\n```go\nfmt.Println(\"ok\")\n```\n"
+	doc, err := MarkdownParser{}.Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Parser != "fallback-markdown-v1" {
+		t.Fatalf("parser = %q", doc.Parser)
+	}
+	types := flattenTypes(doc.Nodes)
+	for _, want := range []string{"heading", "paragraph", "link", "image", "list", "list_item", "code_block"} {
+		if !contains(types, want) {
+			t.Fatalf("missing node type %q in %#v", want, types)
+		}
+	}
+	out := Renderer{}.Render(doc)
+	for _, want := range []string{"palette-red", "palette-blue", "palette-green", "palette-yellow"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("rendered Markdown heading palette missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestRendererEscapesHTMLAndMapsElements(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "doc.txt"), []byte("ok"), 0o644); err != nil {
@@ -201,6 +224,25 @@ func TestServerRevisionAuthAndNewestWins(t *testing.T) {
 	server.Handler().ServeHTTP(rec, httpReq)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated revision status = %d", rec.Code)
+	}
+}
+
+func TestServerSelectsMarkdownParserFromRevisionSyntax(t *testing.T) {
+	server, err := NewServer(ServerConfig{Token: "test-token", Parser: FallbackParser{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := RevisionRequest{
+		Envelope: NewEnvelope("s-md", "b-md", 1, OriginEmacs, "e-md"),
+		Syntax:   "markdown",
+		Text:     "# Markdown title\n",
+	}
+	resp := postRevision(t, server.Handler(), "test-token", req)
+	if resp.Document.Parser != "fallback-markdown-v1" {
+		t.Fatalf("parser = %q", resp.Document.Parser)
+	}
+	if !strings.Contains(resp.HTML, "Markdown title") || !strings.Contains(resp.HTML, "palette-red") {
+		t.Fatalf("unexpected Markdown HTML: %s", resp.HTML)
 	}
 }
 

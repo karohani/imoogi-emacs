@@ -29,10 +29,21 @@
 
 (defun imoogi-test--predicate-map (prefix)
   "PREFIX 를 setup 한 뒤 pre-command 디스패치 keymap 을 돌려준다."
-  (unwind-protect
-      (progn (transient-setup prefix)
-             (transient--make-predicate-map))
-    (transient--stack-zap)))
+  (let ((build-map
+         (lambda ()
+           (unwind-protect
+               (progn (transient-setup prefix)
+                      (transient--make-predicate-map))
+             (transient--stack-zap)))))
+    ;; Context-sensitive mode commands must be apt while this test verifies
+    ;; their dispatch policy.  Separate tests cover their disabled state.
+    (if (eq prefix 'imoogi-transient-modes)
+        (with-temp-buffer
+          (org-mode)
+          (setq-local yas-minor-mode t
+                      flymake-mode t)
+          (funcall build-map))
+      (funcall build-map))))
 
 (defun imoogi-test--dispatch (prefix command)
   "PREFIX 안에서 COMMAND 가 디스패치될 pre-command 를 돌려준다."
@@ -105,6 +116,11 @@
     (imoogi-transient-modes
      (imoogi-describe-active-minor-mode transient--do-exit)
      (imoogi-list-active-minor-modes     transient--do-exit)
+     (visual-line-mode                   transient--do-exit)
+     (outline-minor-mode                 transient--do-exit)
+     (imoogi-yas-expand                  transient--do-exit)
+     (flymake-show-buffer-diagnostics    transient--do-exit)
+     (imoogi-org-preview                 transient--do-exit)
      (describe-bindings                  transient--do-exit)
      (describe-mode                      transient--do-exit)
      (transient-quit-one                 transient--do-quit-one))
@@ -195,9 +211,14 @@
   (should (equal (imoogi-test--layout-bindings 'imoogi-transient-modes)
                  '(("M" . describe-mode)
                    ("b" . describe-bindings)
+                   ("d" . flymake-show-buffer-diagnostics)
+                   ("f" . outline-minor-mode)
                    ("l" . imoogi-list-active-minor-modes)
                    ("m" . imoogi-describe-active-minor-mode)
-                   ("q" . transient-quit-one)))))
+                   ("q" . transient-quit-one)
+                   ("v" . imoogi-org-preview)
+                   ("w" . visual-line-mode)
+                   ("y" . imoogi-yas-expand)))))
 
 (ert-deftest imoogi-active-minor-modes-only-returns-enabled-modes ()
   (let ((minor-mode-list '(visual-line-mode auto-fill-function))
@@ -205,6 +226,17 @@
         (auto-fill-function nil))
     (should (equal (imoogi-active-minor-modes)
                    '(visual-line-mode)))))
+
+(ert-deftest imoogi-transient-modes-greys-out-context-only-actions ()
+  (with-temp-buffer
+    (fundamental-mode)
+    (should (equal (imoogi-test--inapt-keys 'imoogi-transient-modes)
+                   '("d" "v" "y"))))
+  (with-temp-buffer
+    (markdown-mode)
+    (setq-local yas-minor-mode t
+                flymake-mode t)
+    (should-not (imoogi-test--inapt-keys 'imoogi-transient-modes))))
 
 ;;; 모듈이 스스로 등록한 Anki 메뉴 (modules/24-anki.el)
 
