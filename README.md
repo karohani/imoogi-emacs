@@ -623,9 +623,10 @@ LiteLLM은 다음 순서로 설정한다.
 2. Base URL: API prefix까지 포함한 정확한 주소, 예: `https://gateway.example.com/custom`
 3. API 형식: 기본값 `자동 / OpenAI Chat`; 필요할 때 `Anthropic Messages` 선택
 4. Chat endpoint: base URL 뒤의 상대 경로, 예: `/v1/chat/completions`
-5. API key: Gateway host별로 `auth-source`에 저장
-6. Model aliases: base URL 뒤의 `/v1/models`에서 자동 조회
-7. `C-c h i m`의 요청 메뉴에서 `-m`을 눌러 실제 사용할 모델 선택
+5. Model list endpoint: 모델 목록을 조회할 상대 경로, 예: `/v1/models`
+6. API key: Gateway host별로 `auth-source`에 저장
+7. Model aliases: 지정한 Model list endpoint에서 자동 조회
+8. `C-c h i m`의 요청 메뉴에서 `-m`을 눌러 실제 사용할 모델 선택
 
 `C-c h i N`은 새 profile만 등록하며 이미 사용 중인 이름은 거부한다. `C-c h i E`는
 등록된 이름을 자동완성으로 선택하고 Gateway 설정을 수정한다. `C-c h i G` 또는
@@ -633,8 +634,38 @@ LiteLLM은 다음 순서로 설정한다.
 일반 `M-x imoogi-gptel-setup`에서 LiteLLM을 선택하면 새 profile 등록 흐름으로 들어간다.
 경로 prefix가 있는 Gateway는 그 경로까지 base URL에 넣는다. Base URL이
 `https://gateway.example.com/custom`이고 Chat endpoint가 `/v1/chat/completions`라면
-채팅은 `/custom/v1/chat/completions`, 모델은 `/custom/v1/models`를 사용한다. Base
-URL이 이미 `/v1`로 끝나면 `/v1/v1/models`가 되지 않도록 `/models`만 붙인다.
+채팅은 `/custom/v1/chat/completions`, 모델은 `/custom/v1/models`를 사용한다.
+두 endpoint는 프로필별로 저장되므로 특수한 Gateway에서는 Chat endpoint와 Model list
+endpoint를 서로 다른 경로로 지정할 수 있다.
+
+`C-c h i O`로 `~/.emacs.d/imoogi-gptel.json`을 직접 열 수 있다. API key는 이 파일에
+쓰지 않는다. `litellm_profiles` 배열에서 profile의 `gateway_url`, `endpoint`,
+`models_endpoint`, `models`, `default_model`을 수정하고 저장한 다음 `C-c h i R`로 다시
+읽는다. `active_profile`과 이름이 같은 profile이 현재 설정으로 적용된다.
+
+```json
+{
+  "gateway_url": "https://gateway.example.com/custom",
+  "provider": "litellm",
+  "api_protocol": "openai-chat",
+  "endpoint": "/v1/chat/completions",
+  "models_endpoint": "/special/models",
+  "models": ["company-model"],
+  "default_model": "company-model",
+  "active_profile": "company",
+  "litellm_profiles": [
+    {
+      "name": "company",
+      "gateway_url": "https://gateway.example.com/custom",
+      "api_protocol": "openai-chat",
+      "endpoint": "/v1/chat/completions",
+      "models_endpoint": "/special/models",
+      "models": ["company-model"],
+      "default_model": "company-model"
+    }
+  ]
+}
+```
 
 setup은 기존 선택 모델이 조회 목록에 있으면 유지하고, 없으면 첫 모델을 임시
 기본값으로 등록한다. setup 중에는 모델을 묻지 않는다. 모델 조회에 실패하면
@@ -661,6 +692,8 @@ OAuth 토큰 파일에 저장된다.
 | `C-c h i N` | 새 LiteLLM Gateway profile 등록 |
 | `C-c h i E` | 등록된 LiteLLM Gateway profile 수정 |
 | `C-c h i G` | 저장된 LiteLLM Gateway profile 전환 |
+| `C-c h i O` | gptel 설정 JSON 직접 열기 |
+| `C-c h i R` | 수정한 gptel 설정 JSON 다시 읽기 |
 | `C-c h i a` | 현재 영역 또는 버퍼를 추가 문맥으로 등록 |
 | `C-c h i f` | 파일을 추가 문맥으로 등록 |
 | `C-c h i S` | LiteLLM Gateway 설정 |

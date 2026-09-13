@@ -52,7 +52,7 @@
         (progn
           (imoogi-gptel-setup "https://gateway-a.example.test"
                               '(model-a) 'model-a nil file 'litellm
-                              'openai-chat "company")
+                              'openai-chat "company" "/catalog/models")
           (imoogi-gptel-setup "https://gateway-b.example.test"
                               '(model-b) 'model-b nil file 'litellm
                               'openai-chat "personal")
@@ -66,7 +66,8 @@
           (should (equal imoogi-gptel-active-profile "company"))
           (should (equal imoogi-gptel-gateway-url
                          "https://gateway-a.example.test"))
-          (should (equal imoogi-gptel-models '(model-a))))
+          (should (equal imoogi-gptel-models '(model-a)))
+          (should (equal imoogi-gptel-models-endpoint "/catalog/models")))
       (delete-directory directory t))))
 
 (ert-deftest imoogi-gptel-updating-profile-does-not-duplicate-it ()
@@ -83,6 +84,38 @@
     (should (equal
              (alist-get 'gateway_url (car imoogi-gptel-litellm-profiles))
              "https://new.example.test"))))
+
+(ert-deftest imoogi-gptel-active-profile-overrides-stale-top-level-fields ()
+  (let* ((directory (make-temp-file "imoogi-gptel-manual-config" t))
+         (file (expand-file-name "config.json" directory))
+         (imoogi-gptel-litellm-profiles nil)
+         (imoogi-gptel-active-profile nil))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (insert "{\"gateway_url\":\"https://stale.example.test\",")
+            (insert "\"provider\":\"litellm\",\"api_protocol\":\"openai-chat\",")
+            (insert "\"endpoint\":\"/v1/chat/completions\",")
+            (insert "\"models_endpoint\":\"/v1/models\",")
+            (insert "\"models\":[\"stale\"],\"default_model\":\"stale\",")
+            (insert "\"active_profile\":\"custom\",\"litellm_profiles\":[{")
+            (insert "\"name\":\"custom\",\"gateway_url\":\"https://gateway.example.test/prefix\",")
+            (insert "\"api_protocol\":\"openai-chat\",")
+            (insert "\"endpoint\":\"/chat\",\"models_endpoint\":\"/catalog\",")
+            (insert "\"models\":[\"custom-model\"],")
+            (insert "\"default_model\":\"custom-model\"}]}"))
+          (should (imoogi-gptel--read-config file))
+          (should (equal imoogi-gptel-gateway-url
+                         "https://gateway.example.test/prefix"))
+          (should (equal imoogi-gptel-endpoint "/chat"))
+          (should (equal imoogi-gptel-models-endpoint "/catalog"))
+          (should (eq imoogi-gptel-default-model 'custom-model)))
+      (delete-directory directory t))))
+
+(ert-deftest imoogi-gptel-open-config-requires-an-existing-file ()
+  (let ((imoogi-gptel-config-file
+         (expand-file-name "missing.json" (make-temp-file "imoogi-gptel" t))))
+    (should-error (imoogi-gptel-open-config) :type 'user-error)))
 
 (ert-deftest imoogi-gptel-new-profile-rejects-an-existing-name ()
   (let ((imoogi-gptel-litellm-profiles
@@ -116,15 +149,17 @@
   (let ((imoogi-gptel-litellm-profiles nil)
         (answers '("company"
                    "https://llm-gateway.example.test/custom"
-                   "/v1/chat/completions")))
+                   "/v1/chat/completions"
+                   "/internal/models")))
     (cl-letf (((symbol-function 'read-string)
                (lambda (&rest _) (pop answers)))
               ((symbol-function 'y-or-n-p) (lambda (&rest _) nil))
               ((symbol-function 'imoogi-gptel--fetch-models)
-               (lambda (gateway &optional endpoint)
+               (lambda (gateway &optional endpoint models-endpoint)
                  (should (equal gateway
                                 "https://llm-gateway.example.test/custom"))
                  (should (equal endpoint "/v1/chat/completions"))
+                 (should (equal models-endpoint "/internal/models"))
                  '(gateway-model)))
               ((symbol-function 'imoogi-gptel--read-api-protocol)
                (lambda (&optional _) 'openai-chat)))
@@ -134,7 +169,7 @@
         '("https://llm-gateway.example.test/custom"
           (gateway-model) gateway-model
           "/v1/chat/completions"
-          nil litellm openai-chat "company"))))))
+          nil litellm openai-chat "company" "/internal/models"))))))
 
 (ert-deftest imoogi-gptel-litellm-base-path-is-added-to-backend-endpoint ()
   (let* ((file (make-temp-file "imoogi-gptel-test" nil ".json"))
@@ -232,6 +267,11 @@
                      "Bearer virtual-key")))))
 
 (ert-deftest imoogi-gptel-models-url-preserves-custom-chat-prefix ()
+  (should
+   (equal
+    (imoogi-gptel--models-url
+     "https://gateway.example.test/custom" nil "/catalog/models")
+    "https://gateway.example.test/custom/catalog/models"))
   (should
    (equal
     (imoogi-gptel--models-url

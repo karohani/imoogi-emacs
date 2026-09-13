@@ -40,6 +40,9 @@
 (defvar imoogi-gptel-endpoint "/v1/chat/completions"
   "Configured LiteLLM chat completion endpoint.")
 
+(defvar imoogi-gptel-models-endpoint "/v1/models"
+  "Configured LiteLLM model-list endpoint relative to the base URL.")
+
 (defvar imoogi-gptel-api-protocol 'openai-chat
   "Configured HTTP API protocol: `openai-chat' or `anthropic-messages'.")
 
@@ -123,6 +126,7 @@ rejected because gptel endpoints are stable paths, not individual requests."
     (provider . ,(symbol-name imoogi-gptel-provider))
     (api_protocol . ,(symbol-name imoogi-gptel-api-protocol))
     (endpoint . ,imoogi-gptel-endpoint)
+    (models_endpoint . ,imoogi-gptel-models-endpoint)
     ;; `json-serialize' uses vectors for JSON arrays.  A Lisp list is
     ;; otherwise interpreted as an object/alist and model strings fail.
     (models . ,(vconcat (mapcar #'symbol-name imoogi-gptel-models)))
@@ -137,6 +141,7 @@ rejected because gptel endpoints are stable paths, not individual requests."
               (api_protocol . ,(symbol-name
                                 (alist-get 'api_protocol profile)))
               (endpoint . ,(alist-get 'endpoint profile))
+              (models_endpoint . ,(alist-get 'models_endpoint profile))
               (models . ,(vconcat
                           (mapcar #'symbol-name
                                   (alist-get 'models profile))))
@@ -144,14 +149,16 @@ rejected because gptel endpoints are stable paths, not individual requests."
                                  (alist-get 'default_model profile)))))
           imoogi-gptel-litellm-profiles)))))
 
-(defun imoogi-gptel--profile-record (name gateway models default protocol endpoint)
+(defun imoogi-gptel--profile-record (name gateway models default protocol endpoint
+                                          &optional models-endpoint)
   "Build a LiteLLM profile named NAME from the supplied settings."
   `((name . ,name)
     (gateway_url . ,gateway)
     (models . ,models)
     (default_model . ,default)
     (api_protocol . ,protocol)
-    (endpoint . ,endpoint)))
+    (endpoint . ,endpoint)
+    (models_endpoint . ,(or models-endpoint "/v1/models"))))
 
 (defun imoogi-gptel--upsert-litellm-profile (profile)
   "Add or replace PROFILE in `imoogi-gptel-litellm-profiles'."
@@ -199,6 +206,8 @@ rejected because gptel endpoints are stable paths, not individual requests."
                     'openai-chat)))
                (gateway-url (alist-get 'gateway_url data))
                (endpoint (alist-get 'endpoint data))
+               (models-endpoint (or (alist-get 'models_endpoint data)
+                                    "/v1/models"))
                (models (imoogi-gptel--normalize-models
                         (alist-get 'models data)))
                (default-model (intern (alist-get 'default_model data)))
@@ -214,7 +223,9 @@ rejected because gptel endpoints are stable paths, not individual requests."
                     (intern (or (alist-get 'api_protocol profile)
                                 "openai-chat"))
                     (or (alist-get 'endpoint profile)
-                        "/v1/chat/completions")))
+                        "/v1/chat/completions")
+                    (or (alist-get 'models_endpoint profile)
+                        "/v1/models")))
                  (or (alist-get 'litellm_profiles data) nil))))
           (unless (memq provider '(litellm codex claude openai-compatible))
             (error "지원하지 않는 gptel provider입니다: %s" provider))
@@ -228,6 +239,7 @@ rejected because gptel endpoints are stable paths, not individual requests."
                 imoogi-gptel-gateway-url gateway-url
                 imoogi-gptel-api-protocol api-protocol
                 imoogi-gptel-endpoint endpoint
+                imoogi-gptel-models-endpoint models-endpoint
                 imoogi-gptel-models models
                 imoogi-gptel-default-model default-model
                 imoogi-gptel-active-profile (alist-get 'active_profile data)
@@ -240,7 +252,28 @@ rejected because gptel endpoints are stable paths, not individual requests."
                   imoogi-gptel-litellm-profiles
                   (list (imoogi-gptel--profile-record
                          imoogi-gptel-active-profile gateway-url models
-                         default-model api-protocol endpoint))))
+                         default-model api-protocol endpoint models-endpoint))))
+          ;; The profile list is the editable source of truth for LiteLLM.
+          ;; Top-level fields remain for backward compatibility and for other
+          ;; providers, but must not override a manually edited active profile.
+          (when (and (eq provider 'litellm) profiles
+                     imoogi-gptel-active-profile)
+            (let ((active
+                   (seq-find
+                    (lambda (profile)
+                      (equal (alist-get 'name profile)
+                             imoogi-gptel-active-profile))
+                    profiles)))
+              (unless active
+                (error "active_profile에 해당하는 LiteLLM profile이 없습니다: %s"
+                       imoogi-gptel-active-profile))
+              (setq imoogi-gptel-gateway-url (alist-get 'gateway_url active)
+                    imoogi-gptel-models (alist-get 'models active)
+                    imoogi-gptel-default-model (alist-get 'default_model active)
+                    imoogi-gptel-api-protocol (alist-get 'api_protocol active)
+                    imoogi-gptel-endpoint (alist-get 'endpoint active)
+                    imoogi-gptel-models-endpoint
+                    (alist-get 'models_endpoint active))))
           t)))))
 
 (defun imoogi-gptel--auth-host ()
@@ -286,13 +319,17 @@ configured auth file exists.  Existing files are never overwritten.  Encrypted
                   (car files)))
      (t nil))))
 
-(defun imoogi-gptel--models-url (gateway-url &optional chat-endpoint)
-  "Return the models URL for GATEWAY-URL and optional CHAT-ENDPOINT.
+(defun imoogi-gptel--models-url (gateway-url &optional chat-endpoint
+                                             models-endpoint)
+  "Return the models URL for GATEWAY-URL and optional endpoints.
 Preserve a custom path prefix and append the standard `/v1/models' path.
 When the base already ends in `/v1', append only `/models'.  CHAT-ENDPOINT
-supports profiles written by the earlier full-chat-URL setup flow."
+supports profiles written by the earlier full-chat-URL setup flow.  An
+explicit MODELS-ENDPOINT always takes precedence."
   (let ((base (string-remove-suffix "/" gateway-url)))
     (cond
+     (models-endpoint
+      (concat base models-endpoint))
      ((string-suffix-p "/v1" base)
       (concat base "/models"))
      ;; Compatibility with profiles created by the earlier full-chat-URL UI.
@@ -301,12 +338,14 @@ supports profiles written by the earlier full-chat-URL setup flow."
       (concat base (match-string 1 chat-endpoint) "/models"))
      (t (concat base "/v1/models")))))
 
-(defun imoogi-gptel--fetch-models (gateway-url &optional chat-endpoint)
-  "Fetch model identifiers for GATEWAY-URL and optional CHAT-ENDPOINT.
+(defun imoogi-gptel--fetch-models (gateway-url &optional chat-endpoint
+                                               models-endpoint)
+  "Fetch model identifiers for GATEWAY-URL and optional endpoints.
 Authenticate with the key stored in `auth-source'.  Return model symbols in
 server order, or signal an error that the interactive setup can recover from."
   (imoogi-gptel--url-components gateway-url)
-  (let* ((models-url (imoogi-gptel--models-url gateway-url chat-endpoint))
+  (let* ((models-url (imoogi-gptel--models-url
+                      gateway-url chat-endpoint models-endpoint))
          (key (imoogi-gptel--api-key))
          (url-request-method "GET")
          (url-request-extra-headers
@@ -456,15 +495,17 @@ to save it.  Verify the persisted entry before reporting success."
               (read-string "Chat endpoint: " "/v1/chat/completions")))
     location))
 
-(defun imoogi-gptel--discover-litellm-models (gateway &optional chat-endpoint)
-  "Offer key storage, then discover models from GATEWAY and CHAT-ENDPOINT.
+(defun imoogi-gptel--discover-litellm-models
+    (gateway &optional chat-endpoint models-endpoint)
+  "Offer key storage, then discover models using the supplied endpoints.
 Signal a useful setup error when discovery is unavailable."
   (setq imoogi-gptel-provider 'litellm
         imoogi-gptel-gateway-url gateway)
   (when (y-or-n-p "API key를 auth-source에 등록하거나 확인할까요? ")
     (imoogi-gptel-store-key))
   (condition-case err
-      (let ((models (imoogi-gptel--fetch-models gateway chat-endpoint)))
+      (let ((models (imoogi-gptel--fetch-models
+                     gateway chat-endpoint models-endpoint)))
         (message "LiteLLM에서 model %d개를 불러왔습니다" (length models))
         models)
     (error
@@ -521,6 +562,7 @@ model until the user chooses."
          (saved (and edit (imoogi-gptel--find-profile name)))
          (saved-gateway (alist-get 'gateway_url saved))
          (saved-endpoint (alist-get 'endpoint saved))
+         (saved-models-endpoint (alist-get 'models_endpoint saved))
          (gateway (read-string "LiteLLM base URL: "
                                (or saved-gateway
                                    "http://localhost:4000/v1")))
@@ -532,11 +574,16 @@ model until the user chooses."
                                     (if (eq protocol 'anthropic-messages)
                                         "/v1/messages"
                                       "/v1/chat/completions"))))
-         (models (imoogi-gptel--discover-litellm-models gateway endpoint))
+         (models-endpoint
+          (read-string "Model list endpoint: "
+                       (or saved-models-endpoint "/v1/models")))
+         (models (imoogi-gptel--discover-litellm-models
+                  gateway endpoint models-endpoint))
          (default (let ((imoogi-gptel-default-model
                          (alist-get 'default_model saved)))
                     (imoogi-gptel--setup-default-model 'litellm models))))
-    (list gateway models default endpoint nil 'litellm protocol name)))
+    (list gateway models default endpoint nil 'litellm protocol name
+          models-endpoint)))
 
 (defun imoogi-gptel--read-setup-arguments ()
   "Read provider-specific arguments for `imoogi-gptel-setup'."
@@ -582,12 +629,12 @@ model until the user chooses."
             (_ (if (eq api-protocol 'anthropic-messages)
                    "/v1/messages"
                  "/v1/chat/completions")))))
-        (list gateway models default endpoint nil provider api-protocol nil)))))
+        (list gateway models default endpoint nil provider api-protocol nil nil)))))
 
 ;;;###autoload
 (defun imoogi-gptel-setup (gateway-url models default-model
                            &optional endpoint config-file provider api-protocol
-                           profile-name)
+                           profile-name models-endpoint)
   "Configure gptel for PROVIDER with DEFAULT-MODEL from MODELS.
 PROVIDER is one of `litellm', `codex', `claude', or `openai-compatible'.
 GATEWAY-URL and ENDPOINT apply to HTTP API providers.  API-PROTOCOL selects
@@ -624,10 +671,14 @@ with `auth-source'."
       (user-error "기본 model은 model aliases 목록에 있어야 합니다"))
     (unless (string-prefix-p "/" endpoint-value)
       (user-error "endpoint는 /로 시작해야 합니다"))
+    (when (and models-endpoint
+               (not (string-prefix-p "/" models-endpoint)))
+      (user-error "model endpoint는 /로 시작해야 합니다"))
     (setq imoogi-gptel-provider provider-value
           imoogi-gptel-gateway-url gateway-url
           imoogi-gptel-api-protocol protocol-value
           imoogi-gptel-endpoint endpoint-value
+          imoogi-gptel-models-endpoint (or models-endpoint "/v1/models")
           imoogi-gptel-models normalized
           imoogi-gptel-default-model default)
     (if (eq provider-value 'litellm)
@@ -638,7 +689,8 @@ with `auth-source'."
           (setq imoogi-gptel-active-profile name)
           (imoogi-gptel--upsert-litellm-profile
            (imoogi-gptel--profile-record
-            name gateway-url normalized default protocol-value endpoint-value)))
+            name gateway-url normalized default protocol-value endpoint-value
+            imoogi-gptel-models-endpoint)))
       (setq imoogi-gptel-active-profile nil))
     (imoogi-gptel--write-config target)
     (imoogi-gptel--configure-backend)
@@ -653,25 +705,27 @@ with `auth-source'."
     (message "gptel 설정 완료: %s / %s" provider-value default)
     target))
 
-(defun imoogi-gptel-add-litellm-profile (gateway models default-model endpoint
-                                                 api-protocol profile-name)
+(defun imoogi-gptel-add-litellm-profile
+    (gateway models default-model endpoint api-protocol profile-name
+             models-endpoint)
   "Interactively register a new LiteLLM Gateway profile."
   (interactive
    (let ((args (imoogi-gptel--read-litellm-profile-arguments)))
      (list (nth 0 args) (nth 1 args) (nth 2 args) (nth 3 args)
-           (nth 6 args) (nth 7 args))))
+           (nth 6 args) (nth 7 args) (nth 8 args))))
   (imoogi-gptel-setup gateway models default-model endpoint nil 'litellm
-                      api-protocol profile-name))
+                      api-protocol profile-name models-endpoint))
 
-(defun imoogi-gptel-edit-litellm-profile (gateway models default-model endpoint
-                                                  api-protocol profile-name)
+(defun imoogi-gptel-edit-litellm-profile
+    (gateway models default-model endpoint api-protocol profile-name
+             models-endpoint)
   "Interactively update a saved LiteLLM Gateway profile."
   (interactive
    (let ((args (imoogi-gptel--read-litellm-profile-arguments t)))
      (list (nth 0 args) (nth 1 args) (nth 2 args) (nth 3 args)
-           (nth 6 args) (nth 7 args))))
+           (nth 6 args) (nth 7 args) (nth 8 args))))
   (imoogi-gptel-setup gateway models default-model endpoint nil 'litellm
-                      api-protocol profile-name))
+                      api-protocol profile-name models-endpoint))
 
 (defun imoogi-gptel-switch-litellm-profile (name)
   "Activate the saved LiteLLM Gateway profile NAME."
@@ -686,11 +740,29 @@ with `auth-source'."
           imoogi-gptel-models (alist-get 'models profile)
           imoogi-gptel-default-model (alist-get 'default_model profile)
           imoogi-gptel-api-protocol (alist-get 'api_protocol profile)
-          imoogi-gptel-endpoint (alist-get 'endpoint profile))
+          imoogi-gptel-endpoint (alist-get 'endpoint profile)
+          imoogi-gptel-models-endpoint
+          (or (alist-get 'models_endpoint profile) "/v1/models"))
     (imoogi-gptel--configure-backend)
     (imoogi-gptel--write-config imoogi-gptel-config-file)
     (message "LiteLLM profile 전환: %s (%s)"
              name imoogi-gptel-gateway-url)))
+
+(defun imoogi-gptel-open-config ()
+  "Open the non-secret gptel JSON configuration for direct editing."
+  (interactive)
+  (unless (file-exists-p imoogi-gptel-config-file)
+    (user-error "gptel 설정 파일이 없습니다. 먼저 M-x imoogi-gptel-setup을 실행하세요"))
+  (find-file imoogi-gptel-config-file))
+
+(defun imoogi-gptel-reload-config ()
+  "Reload the directly edited gptel configuration and activate its backend."
+  (interactive)
+  (unless (imoogi-gptel--read-config imoogi-gptel-config-file)
+    (user-error "gptel 설정 파일을 읽을 수 없습니다: %s"
+                imoogi-gptel-config-file))
+  (imoogi-gptel--configure-backend)
+  (message "gptel 설정을 다시 읽었습니다: %s" imoogi-gptel-config-file))
 
 (defun imoogi-gptel--ensure-configured ()
   "Signal a helpful error unless the LiteLLM backend is configured."
@@ -721,8 +793,9 @@ with `auth-source'."
   (with-help-window "*imoogi gptel 설정*"
     (princ "gptel 공급자 설정\n\n")
     (princ "1. M-x imoogi-gptel-setup을 실행하고 연결 방식을 선택합니다.\n")
-    (princ "2. LiteLLM은 Gateway URL과 key로 /v1/models를 조회합니다.\n")
+    (princ "2. LiteLLM은 Gateway URL과 key로 지정한 model endpoint를 조회합니다.\n")
     (princ "   새 등록과 기존 profile 수정을 분리하며 선택에는 자동완성을 씁니다.\n")
+    (princ "   Model list와 Chat endpoint는 profile별로 따로 지정합니다.\n")
     (princ "   API 형식을 고른 뒤 C-c h i m, -m에서 모델을 선택합니다.\n")
     (princ "   조회 실패 시 Gateway 주소와 auth-source key를 확인합니다.\n")
     (princ "3. Codex는 ChatGPT Plus/Pro OAuth를 사용하며 API key가 필요 없습니다.\n")
@@ -763,6 +836,8 @@ with `auth-source'."
       ("N" "LiteLLM 새 profile" imoogi-gptel-add-litellm-profile)
       ("E" "LiteLLM profile 수정" imoogi-gptel-edit-litellm-profile)
       ("G" "LiteLLM profile 전환" imoogi-gptel-switch-litellm-profile)
+      ("O" "설정 JSON 열기" imoogi-gptel-open-config)
+      ("R" "설정 JSON 다시 읽기" imoogi-gptel-reload-config)
       ("k" "API key 등록" imoogi-gptel-store-key)
       ("h" "설정 가이드" imoogi-gptel-setup-guide)
       ("q" "종료" transient-quit-one)]])
