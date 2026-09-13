@@ -60,20 +60,28 @@
 
 (defun imoogi-gptel--url-components (gateway-url)
   "Validate GATEWAY-URL and return its protocol and host.
-GATEWAY-URL is a base URL and therefore may not contain a path."
+GATEWAY-URL may include an API path prefix; the returned host never does."
   (let* ((url (url-generic-parse-url gateway-url))
          (protocol (url-type url))
          (hostname (url-host url))
-         (port (url-port url))
-         (path (url-filename url)))
+         (port (url-port url)))
     (unless (member protocol '("http" "https"))
       (user-error "LiteLLM 주소는 http:// 또는 https://로 시작해야 합니다"))
     (unless (and hostname (not (string-empty-p hostname)))
       (user-error "LiteLLM 주소에 호스트가 없습니다"))
-    (unless (member path '(nil "" "/"))
-      (user-error "Gateway 주소에는 경로를 넣지 말고 endpoint를 별도로 지정하세요"))
     (cons protocol
           (if port (format "%s:%d" hostname port) hostname))))
+
+(defun imoogi-gptel--base-path (base-url)
+  "Return BASE-URL's normalized path prefix, or an empty string."
+  (let ((path (url-filename (url-generic-parse-url base-url))))
+    (if (member path '(nil "" "/"))
+        ""
+      (string-remove-suffix "/" path))))
+
+(defun imoogi-gptel--resolved-endpoint (base-url endpoint)
+  "Combine BASE-URL's path prefix with relative ENDPOINT."
+  (concat (imoogi-gptel--base-path base-url) endpoint))
 
 (defun imoogi-gptel--split-api-url (api-url)
   "Split API-URL into a path-free base URL and optional endpoint path.
@@ -278,16 +286,29 @@ configured auth file exists.  Existing files are never overwritten.  Encrypted
                   (car files)))
      (t nil))))
 
-(defun imoogi-gptel--models-url (gateway-url)
-  "Return the OpenAI-compatible models URL for GATEWAY-URL."
-  (concat (string-remove-suffix "/" gateway-url) "/v1/models"))
+(defun imoogi-gptel--models-url (gateway-url &optional chat-endpoint)
+  "Return the models URL for GATEWAY-URL and optional CHAT-ENDPOINT.
+Preserve a custom path prefix by replacing a trailing `/chat/completions'
+with `/models'.  Fall back to the standard `/v1/models' endpoint when the
+chat endpoint does not provide that shape."
+  (let ((base (string-remove-suffix "/" gateway-url)))
+    (cond
+     ;; Exact OpenAI-style base URLs include their prefix, commonly `/v1'.
+     ((not (string-empty-p (imoogi-gptel--base-path gateway-url)))
+      (concat base "/models"))
+     ;; Compatibility with profiles created by the earlier full-chat-URL UI.
+     ((and chat-endpoint
+           (string-match "\\`\\(.*\\)/chat/completions/?\\'" chat-endpoint))
+      (concat base (match-string 1 chat-endpoint) "/models"))
+     (t (concat base "/v1/models")))))
 
-(defun imoogi-gptel--fetch-models (gateway-url)
-  "Fetch model identifiers from GATEWAY-URL's `/v1/models' endpoint.
+(defun imoogi-gptel--fetch-models (gateway-url &optional chat-endpoint)
+  "Fetch model identifiers for GATEWAY-URL and optional CHAT-ENDPOINT.
 Authenticate with the key stored in `auth-source'.  Return model symbols in
 server order, or signal an error that the interactive setup can recover from."
   (imoogi-gptel--url-components gateway-url)
-  (let* ((key (imoogi-gptel--api-key))
+  (let* ((models-url (imoogi-gptel--models-url gateway-url chat-endpoint))
+         (key (imoogi-gptel--api-key))
          (url-request-method "GET")
          (url-request-extra-headers
           `(("Accept" . "application/json")
@@ -296,20 +317,21 @@ server order, or signal an error that the interactive setup can recover from."
          buffer)
     (unless (and (stringp key) (not (string-empty-p key)))
       (error "Gateway API key를 auth-source에서 찾을 수 없습니다"))
-    (setq buffer (url-retrieve-synchronously
-                  (imoogi-gptel--models-url gateway-url) t t 10))
+    (setq buffer (url-retrieve-synchronously models-url t t 10))
     (unless buffer
-      (error "Gateway의 /v1/models에 연결할 수 없습니다"))
+      (error "Gateway model endpoint에 연결할 수 없습니다: %s" models-url))
     (unwind-protect
         (with-current-buffer buffer
           (unless (and (boundp 'url-http-response-status)
                        (= url-http-response-status 200))
-            (error "/v1/models 응답 실패: HTTP %s"
+            (error "Model endpoint 응답 실패: HTTP %s (%s)"
                    (if (boundp 'url-http-response-status)
-                       url-http-response-status "unknown")))
+                       url-http-response-status "unknown")
+                   models-url))
           (goto-char (point-min))
           (unless (re-search-forward "\r?\n\r?\n" nil t)
-            (error "/v1/models 응답에 HTTP 본문이 없습니다"))
+            (error "Model endpoint 응답에 HTTP 본문이 없습니다: %s"
+                   models-url))
           (let* ((json-object-type 'alist)
                  (json-array-type 'list)
                  (payload (json-read))
@@ -336,7 +358,12 @@ server order, or signal an error that the interactive setup can recover from."
                (gptel-make-anthropic
                    (if (eq imoogi-gptel-provider 'litellm)
                        "LiteLLM Messages" "Claude")
-                 :host host :protocol protocol :endpoint imoogi-gptel-endpoint
+                 :host host :protocol protocol
+                 :endpoint (if (eq imoogi-gptel-provider 'litellm)
+                               (imoogi-gptel--resolved-endpoint
+                                imoogi-gptel-gateway-url
+                                imoogi-gptel-endpoint)
+                             imoogi-gptel-endpoint)
                  :stream t :key #'imoogi-gptel--api-key
                  :models imoogi-gptel-models)))
             ((or 'litellm 'openai-compatible)
@@ -345,7 +372,12 @@ server order, or signal an error that the interactive setup can recover from."
                (gptel-make-openai
                    (if (eq imoogi-gptel-provider 'litellm)
                        "LiteLLM" "OpenAI-compatible")
-                 :host host :protocol protocol :endpoint imoogi-gptel-endpoint
+                 :host host :protocol protocol
+                 :endpoint (if (eq imoogi-gptel-provider 'litellm)
+                               (imoogi-gptel--resolved-endpoint
+                                imoogi-gptel-gateway-url
+                                imoogi-gptel-endpoint)
+                             imoogi-gptel-endpoint)
                  :stream t :key #'imoogi-gptel--api-key
                  :models imoogi-gptel-models))))
           gptel-backend imoogi-gptel-backend
@@ -425,15 +457,15 @@ to save it.  Verify the persisted entry before reporting success."
               (read-string "Chat endpoint: " "/v1/chat/completions")))
     location))
 
-(defun imoogi-gptel--discover-litellm-models (gateway)
-  "Offer key storage, then discover models from LiteLLM GATEWAY.
+(defun imoogi-gptel--discover-litellm-models (gateway &optional chat-endpoint)
+  "Offer key storage, then discover models from GATEWAY and CHAT-ENDPOINT.
 Signal a useful setup error when discovery is unavailable."
   (setq imoogi-gptel-provider 'litellm
         imoogi-gptel-gateway-url gateway)
   (when (y-or-n-p "API key를 auth-source에 등록하거나 확인할까요? ")
     (imoogi-gptel-store-key))
   (condition-case err
-      (let ((models (imoogi-gptel--fetch-models gateway)))
+      (let ((models (imoogi-gptel--fetch-models gateway chat-endpoint)))
         (message "LiteLLM에서 model %d개를 불러왔습니다" (length models))
         models)
     (error
@@ -490,24 +522,21 @@ model until the user chooses."
          (saved (and edit (imoogi-gptel--find-profile name)))
          (saved-gateway (alist-get 'gateway_url saved))
          (saved-endpoint (alist-get 'endpoint saved))
-         (input (read-string
-                 "LiteLLM base 또는 Chat endpoint URL: "
-                 (if saved-gateway
-                     (concat saved-gateway (or saved-endpoint ""))
-                   "http://localhost:4000")))
-         (location (imoogi-gptel--split-api-url input))
-         (gateway (car location))
-         (models (imoogi-gptel--discover-litellm-models gateway))
-         (default (let ((imoogi-gptel-default-model
-                         (alist-get 'default_model saved)))
-                    (imoogi-gptel--setup-default-model 'litellm models)))
+         (gateway (read-string "LiteLLM base URL: "
+                               (or saved-gateway
+                                   "http://localhost:4000/v1")))
+         (_ (imoogi-gptel--url-components gateway))
          (protocol (imoogi-gptel--read-api-protocol
                     (alist-get 'api_protocol saved)))
-         (endpoint (or (cdr location)
-                       saved-endpoint
-                       (if (eq protocol 'anthropic-messages)
-                           "/v1/messages"
-                         "/v1/chat/completions"))))
+         (endpoint (read-string "Chat endpoint: "
+                                (or saved-endpoint
+                                    (if (eq protocol 'anthropic-messages)
+                                        "/messages"
+                                      "/chat/completions"))))
+         (models (imoogi-gptel--discover-litellm-models gateway endpoint))
+         (default (let ((imoogi-gptel-default-model
+                         (alist-get 'default_model saved)))
+                    (imoogi-gptel--setup-default-model 'litellm models))))
     (list gateway models default endpoint nil 'litellm protocol name)))
 
 (defun imoogi-gptel--read-setup-arguments ()

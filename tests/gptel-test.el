@@ -112,27 +112,43 @@
       (should (eq (nth 1 (nth 2 captured)) t))
       (should (equal (nth 4 (nth 2 captured)) "personal")))))
 
-(ert-deftest imoogi-gptel-litellm-accepts-complete-chat-endpoint-url ()
+(ert-deftest imoogi-gptel-litellm-reads-exact-base-and-chat-endpoint ()
   (let ((imoogi-gptel-litellm-profiles nil)
         (answers '("company"
-                   "llm-gateway.example.test/custom/chat/completions")))
+                   "https://llm-gateway.example.test/custom/v1"
+                   "/chat/completions")))
     (cl-letf (((symbol-function 'read-string)
                (lambda (&rest _) (pop answers)))
               ((symbol-function 'y-or-n-p) (lambda (&rest _) nil))
               ((symbol-function 'imoogi-gptel--fetch-models)
-               (lambda (gateway)
+               (lambda (gateway &optional endpoint)
                  (should (equal gateway
-                                "https://llm-gateway.example.test"))
+                                "https://llm-gateway.example.test/custom/v1"))
+                 (should (equal endpoint "/chat/completions"))
                  '(gateway-model)))
               ((symbol-function 'imoogi-gptel--read-api-protocol)
                (lambda (&optional _) 'openai-chat)))
       (should
        (equal
         (imoogi-gptel--read-litellm-profile-arguments)
-        '("https://llm-gateway.example.test"
+        '("https://llm-gateway.example.test/custom/v1"
           (gateway-model) gateway-model
-          "/custom/chat/completions"
+          "/chat/completions"
           nil litellm openai-chat "company"))))))
+
+(ert-deftest imoogi-gptel-litellm-base-path-is-added-to-backend-endpoint ()
+  (let* ((file (make-temp-file "imoogi-gptel-test" nil ".json"))
+         (imoogi-gptel-backend nil))
+    (unwind-protect
+        (progn
+          (imoogi-gptel-setup "https://gateway.example.test/custom/v1"
+                              '(model) 'model "/chat/completions" file
+                              'litellm 'openai-chat "custom")
+          (should (equal (gptel-backend-host imoogi-gptel-backend)
+                         "gateway.example.test:443"))
+          (should (equal (gptel-backend-endpoint imoogi-gptel-backend)
+                         "/custom/v1/chat/completions")))
+      (delete-file file))))
 
 (ert-deftest imoogi-gptel-setup-builds-openai-compatible-backend ()
   (let* ((file (make-temp-file "imoogi-gptel-test" nil ".json"))
@@ -215,6 +231,23 @@
       (should (equal (cdr (assoc "Authorization" captured-headers))
                      "Bearer virtual-key")))))
 
+(ert-deftest imoogi-gptel-models-url-preserves-custom-chat-prefix ()
+  (should
+   (equal
+    (imoogi-gptel--models-url
+     "https://gateway.example.test"
+     "/custom/v1/chat/completions")
+    "https://gateway.example.test/custom/v1/models"))
+  (should
+   (equal
+    (imoogi-gptel--models-url
+     "https://gateway.example.test/api/ai_interface"
+     "/chat/completions")
+    "https://gateway.example.test/api/ai_interface/models"))
+  (should
+   (equal (imoogi-gptel--models-url "https://gateway.example.test")
+          "https://gateway.example.test/v1/models")))
+
 (ert-deftest imoogi-gptel-fetch-models-rejects-http-error ()
   (let ((imoogi-gptel-gateway-url "https://gateway.example.test"))
     (cl-letf (((symbol-function 'imoogi-gptel--api-key) (lambda () "key"))
@@ -272,10 +305,6 @@
         (progn
           (should-error
            (imoogi-gptel-setup "localhost:4000" '(model) 'model nil file)
-           :type 'user-error)
-          (should-error
-           (imoogi-gptel-setup "http://localhost:4000/path"
-                               '(model) 'model nil file)
            :type 'user-error)
           (should-error
            (imoogi-gptel-setup "http://localhost:4000"
