@@ -259,13 +259,14 @@ to save it.  Verify the persisted entry before reporting success."
              (save (and entry (plist-get entry :save-function))))
         (unless entry
           (user-error "사용 가능한 auth-source 저장소가 없습니다"))
-        (unless save
-          (user-error "auth-source가 API key 저장 기능을 제공하지 않습니다"))
         ;; The user already answered yes to registering the key.  Avoid the
         ;; backend's redundant save confirmation, where choosing `no' used to
-        ;; discard the key while this function still reported success.
-        (let ((auth-source-save-behavior t))
-          (funcall save))
+        ;; discard the key while this function still reported success.  Some
+        ;; backends persist during creation and therefore provide no separate
+        ;; `:save-function'; the read-back check below covers both forms.
+        (when save
+          (let ((auth-source-save-behavior t))
+            (funcall save)))
         (auth-source-forget-all-cached)
         (let ((saved (funcall search)))
           (unless saved

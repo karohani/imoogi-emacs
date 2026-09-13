@@ -236,5 +236,20 @@
               ((symbol-function 'auth-source-forget-all-cached) #'ignore))
       (should-error (imoogi-gptel-store-key) :type 'user-error))))
 
+(ert-deftest imoogi-gptel-store-key-supports-backend-without-save-function ()
+  (let ((imoogi-gptel-provider 'litellm)
+        (imoogi-gptel-gateway-url "http://gateway.internal:4000")
+        (search-count 0))
+    (cl-letf (((symbol-function 'auth-source-search)
+               (lambda (&rest args)
+                 (if (plist-get args :create)
+                     (list (list :secret (lambda () "new-key")))
+                   (setq search-count (1+ search-count))
+                   (when (= search-count 2)
+                     (list (list :secret (lambda () "new-key")))))))
+              ((symbol-function 'auth-source-forget-all-cached) #'ignore))
+      (should (imoogi-gptel-store-key))
+      (should (= search-count 2)))))
+
 (provide 'gptel-test)
 ;;; gptel-test.el ends here
