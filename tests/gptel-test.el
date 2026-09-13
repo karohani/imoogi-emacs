@@ -84,6 +84,34 @@
              (alist-get 'gateway_url (car imoogi-gptel-litellm-profiles))
              "https://new.example.test"))))
 
+(ert-deftest imoogi-gptel-new-profile-rejects-an-existing-name ()
+  (let ((imoogi-gptel-litellm-profiles
+         (list (imoogi-gptel--profile-record
+                "company" "https://gateway.example.test" '(model) 'model
+                'openai-chat "/v1/chat/completions"))))
+    (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "company")))
+      (should-error (imoogi-gptel--read-new-profile-name)
+                    :type 'user-error))))
+
+(ert-deftest imoogi-gptel-existing-profile-selection-uses-completion ()
+  (let ((imoogi-gptel-active-profile "personal")
+        (imoogi-gptel-litellm-profiles
+         (list (imoogi-gptel--profile-record
+                "company" "https://a.example.test" '(a) 'a
+                'openai-chat "/v1/chat/completions")
+               (imoogi-gptel--profile-record
+                "personal" "https://b.example.test" '(b) 'b
+                'openai-chat "/v1/chat/completions")))
+        captured)
+    (cl-letf (((symbol-function 'completing-read)
+               (lambda (prompt collection &rest args)
+                 (setq captured (list prompt collection args))
+                 "company")))
+      (should (equal (imoogi-gptel--read-existing-profile-name) "company"))
+      (should (equal (nth 1 captured) '("company" "personal")))
+      (should (eq (nth 1 (nth 2 captured)) t))
+      (should (equal (nth 4 (nth 2 captured)) "personal")))))
+
 (ert-deftest imoogi-gptel-setup-builds-openai-compatible-backend ()
   (let* ((file (make-temp-file "imoogi-gptel-test" nil ".json"))
          (imoogi-gptel-backend nil))

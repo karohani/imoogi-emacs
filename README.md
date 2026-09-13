@@ -619,17 +619,17 @@ model_list:
 
 LiteLLM은 다음 순서로 설정한다.
 
-1. Profile 이름: Gateway를 구분할 이름, 예: `company`, `personal`
+1. `새 profile 등록`: Gateway를 구분할 새 이름 입력, 예: `company`, `personal`
 2. Gateway URL: 경로 없는 주소, 예: `http://localhost:4000`
 3. API key: Gateway host별로 `auth-source`에 저장
 4. Model aliases: `GET /v1/models`로 자동 조회
 5. API 형식: 기본값 `자동 / OpenAI Chat`; 필요할 때 `Anthropic Messages` 선택
 6. `C-c h i m`의 요청 메뉴에서 `-m`을 눌러 실제 사용할 모델 선택
 
-`M-x imoogi-gptel-setup`을 다시 실행해 다른 profile 이름과 Gateway를 입력하면 기존
-설정을 덮어쓰지 않고 추가한다. `C-c h i G` 또는
-`M-x imoogi-gptel-switch-litellm-profile`로 활성 Gateway를 바꾼다. 같은 profile 이름을
-사용하면 그 profile만 갱신한다.
+`C-c h i N`은 새 profile만 등록하며 이미 사용 중인 이름은 거부한다. `C-c h i E`는
+등록된 이름을 자동완성으로 선택하고 Gateway 설정을 수정한다. `C-c h i G` 또는
+`M-x imoogi-gptel-switch-litellm-profile`은 자동완성 목록에서 활성 Gateway를 바꾼다.
+일반 `M-x imoogi-gptel-setup`에서 LiteLLM을 선택하면 새 profile 등록 흐름으로 들어간다.
 
 setup은 기존 선택 모델이 조회 목록에 있으면 유지하고, 없으면 첫 모델을 임시
 기본값으로 등록한다. setup 중에는 모델을 묻지 않는다. 모델 조회에 실패하면
@@ -653,6 +653,8 @@ OAuth 토큰 파일에 저장된다.
 | `C-c h i c` | LiteLLM 채팅 버퍼 열기 |
 | `C-c h i s` | 현재 영역 또는 버퍼의 prompt 전송 |
 | `C-c h i m` | gptel 모델·옵션·도구 Transient 열기 |
+| `C-c h i N` | 새 LiteLLM Gateway profile 등록 |
+| `C-c h i E` | 등록된 LiteLLM Gateway profile 수정 |
 | `C-c h i G` | 저장된 LiteLLM Gateway profile 전환 |
 | `C-c h i a` | 현재 영역 또는 버퍼를 추가 문맥으로 등록 |
 | `C-c h i f` | 파일을 추가 문맥으로 등록 |

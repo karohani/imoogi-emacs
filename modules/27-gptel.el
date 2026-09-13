@@ -404,12 +404,15 @@ to save it.  Verify the persisted entry before reporting success."
                               (mapconcat #'symbol-name initial ","))
                  "," t "[[:space:]]*")))
 
-(defun imoogi-gptel--read-api-protocol ()
-  "Prompt for the HTTP request protocol and return its symbol."
+(defun imoogi-gptel--read-api-protocol (&optional initial)
+  "Prompt for the HTTP request protocol, defaulting to INITIAL."
   (let ((choices '(("자동 / OpenAI Chat (권장)" . openai-chat)
-                   ("Anthropic Messages" . anthropic-messages))))
+                   ("Anthropic Messages" . anthropic-messages)))
+        (default (if (eq initial 'anthropic-messages)
+                     "Anthropic Messages"
+                   "자동 / OpenAI Chat (권장)")))
     (alist-get (completing-read "API 형식: " choices nil t nil nil
-                                "자동 / OpenAI Chat (권장)")
+                                default)
                choices nil nil #'string=)))
 
 (defun imoogi-gptel--read-openai-compatible-location ()
@@ -450,6 +453,57 @@ model until the user chooses."
      (completing-read "Default model: " models nil t nil nil
                       (symbol-name (car models))))))
 
+(defun imoogi-gptel--profile-names ()
+  "Return saved LiteLLM profile names."
+  (mapcar (lambda (profile) (alist-get 'name profile))
+          imoogi-gptel-litellm-profiles))
+
+(defun imoogi-gptel--find-profile (name)
+  "Return the saved LiteLLM profile named NAME."
+  (seq-find (lambda (profile) (equal (alist-get 'name profile) name))
+            imoogi-gptel-litellm-profiles))
+
+(defun imoogi-gptel--read-existing-profile-name (&optional prompt)
+  "Read an existing LiteLLM profile name with completion using PROMPT."
+  (unless imoogi-gptel-litellm-profiles
+    (user-error "저장된 LiteLLM profile이 없습니다. 먼저 새 profile을 등록하세요"))
+  (completing-read (or prompt "LiteLLM profile: ")
+                   (imoogi-gptel--profile-names) nil t nil nil
+                   imoogi-gptel-active-profile))
+
+(defun imoogi-gptel--read-new-profile-name ()
+  "Read a new LiteLLM profile name and reject an existing name."
+  (let ((name (string-trim (read-string "새 LiteLLM profile 이름: "))))
+    (when (string-empty-p name)
+      (user-error "Profile 이름은 비워둘 수 없습니다"))
+    (when (imoogi-gptel--find-profile name)
+      (user-error "이미 등록된 profile입니다. '기존 profile 수정'을 사용하세요: %s"
+                  name))
+    name))
+
+(defun imoogi-gptel--read-litellm-profile-arguments (&optional edit)
+  "Read LiteLLM setup arguments for a new profile, or an existing one if EDIT."
+  (let* ((name (if edit
+                   (imoogi-gptel--read-existing-profile-name
+                    "수정할 LiteLLM profile: ")
+                 (imoogi-gptel--read-new-profile-name)))
+         (saved (and edit (imoogi-gptel--find-profile name)))
+         (gateway (read-string
+                   "LiteLLM Gateway URL: "
+                   (or (alist-get 'gateway_url saved)
+                       "http://localhost:4000")))
+         (_ (imoogi-gptel--url-components gateway))
+         (models (imoogi-gptel--discover-litellm-models gateway))
+         (default (let ((imoogi-gptel-default-model
+                         (alist-get 'default_model saved)))
+                    (imoogi-gptel--setup-default-model 'litellm models)))
+         (protocol (imoogi-gptel--read-api-protocol
+                    (alist-get 'api_protocol saved)))
+         (endpoint (if (eq protocol 'anthropic-messages)
+                       "/v1/messages"
+                     "/v1/chat/completions")))
+    (list gateway models default endpoint nil 'litellm protocol name)))
+
 (defun imoogi-gptel--read-setup-arguments ()
   "Read provider-specific arguments for `imoogi-gptel-setup'."
   (let* ((choices '(("LiteLLM Gateway" . litellm)
@@ -458,21 +512,16 @@ model until the user chooses."
                     ("기타 OpenAI 호환 API" . openai-compatible)))
          (provider (alist-get
                     (completing-read "사용할 LLM 연결 방식: " choices nil t)
-                    choices nil nil #'string=))
-         (profile-name
-          (when (eq provider 'litellm)
-            (read-string "LiteLLM profile 이름: "
-                         (or imoogi-gptel-active-profile "default"))))
-         (openai-location
+                    choices nil nil #'string=)))
+    (if (eq provider 'litellm)
+        (imoogi-gptel--read-litellm-profile-arguments)
+      (let* ((openai-location
           (when (eq provider 'openai-compatible)
             (imoogi-gptel--read-openai-compatible-location)))
          (gateway
           (pcase provider
             ('codex nil)
             ('claude "https://api.anthropic.com")
-            ('litellm (read-string "LiteLLM Gateway URL: "
-                                   (or imoogi-gptel-gateway-url
-                                       "http://localhost:4000")))
             ('openai-compatible (car openai-location))))
          (_ (unless (eq provider 'codex)
               (imoogi-gptel--url-components gateway)))
@@ -484,9 +533,7 @@ model until the user chooses."
             ('claude (seq-take (imoogi-gptel--model-symbols
                                 gptel--anthropic-models) 4))
             (_ imoogi-gptel-models)))
-         (models (if (eq provider 'litellm)
-                     (imoogi-gptel--discover-litellm-models gateway)
-                   (imoogi-gptel--read-models defaults)))
+         (models (imoogi-gptel--read-models defaults))
          (default (imoogi-gptel--setup-default-model provider models))
          (api-protocol
           (pcase provider
@@ -501,8 +548,7 @@ model until the user chooses."
             (_ (if (eq api-protocol 'anthropic-messages)
                    "/v1/messages"
                  "/v1/chat/completions")))))
-    (list gateway models default endpoint nil provider api-protocol
-          profile-name)))
+        (list gateway models default endpoint nil provider api-protocol nil)))))
 
 ;;;###autoload
 (defun imoogi-gptel-setup (gateway-url models default-model
@@ -573,19 +619,31 @@ with `auth-source'."
     (message "gptel 설정 완료: %s / %s" provider-value default)
     target))
 
+(defun imoogi-gptel-add-litellm-profile (gateway models default-model endpoint
+                                                 api-protocol profile-name)
+  "Interactively register a new LiteLLM Gateway profile."
+  (interactive
+   (let ((args (imoogi-gptel--read-litellm-profile-arguments)))
+     (list (nth 0 args) (nth 1 args) (nth 2 args) (nth 3 args)
+           (nth 6 args) (nth 7 args))))
+  (imoogi-gptel-setup gateway models default-model endpoint nil 'litellm
+                      api-protocol profile-name))
+
+(defun imoogi-gptel-edit-litellm-profile (gateway models default-model endpoint
+                                                  api-protocol profile-name)
+  "Interactively update a saved LiteLLM Gateway profile."
+  (interactive
+   (let ((args (imoogi-gptel--read-litellm-profile-arguments t)))
+     (list (nth 0 args) (nth 1 args) (nth 2 args) (nth 3 args)
+           (nth 6 args) (nth 7 args))))
+  (imoogi-gptel-setup gateway models default-model endpoint nil 'litellm
+                      api-protocol profile-name))
+
 (defun imoogi-gptel-switch-litellm-profile (name)
   "Activate the saved LiteLLM Gateway profile NAME."
   (interactive
-   (list
-    (completing-read
-     "LiteLLM profile: "
-     (mapcar (lambda (profile) (alist-get 'name profile))
-             imoogi-gptel-litellm-profiles)
-     nil t nil nil imoogi-gptel-active-profile)))
-  (let ((profile
-         (seq-find (lambda (saved)
-                     (equal (alist-get 'name saved) name))
-                   imoogi-gptel-litellm-profiles)))
+   (list (imoogi-gptel--read-existing-profile-name "전환할 LiteLLM profile: ")))
+  (let ((profile (imoogi-gptel--find-profile name)))
     (unless profile
       (user-error "저장된 LiteLLM profile이 없습니다: %s" name))
     (setq imoogi-gptel-provider 'litellm
@@ -630,7 +688,7 @@ with `auth-source'."
     (princ "gptel 공급자 설정\n\n")
     (princ "1. M-x imoogi-gptel-setup을 실행하고 연결 방식을 선택합니다.\n")
     (princ "2. LiteLLM은 Gateway URL과 key로 /v1/models를 조회합니다.\n")
-    (princ "   profile 이름으로 여러 Gateway를 저장하고 전환할 수 있습니다.\n")
+    (princ "   새 등록과 기존 profile 수정을 분리하며 선택에는 자동완성을 씁니다.\n")
     (princ "   API 형식을 고른 뒤 C-c h i m, -m에서 모델을 선택합니다.\n")
     (princ "   조회 실패 시 Gateway 주소와 auth-source key를 확인합니다.\n")
     (princ "3. Codex는 ChatGPT Plus/Pro OAuth를 사용하며 API key가 필요 없습니다.\n")
@@ -668,6 +726,8 @@ with `auth-source'."
       ("a" "영역·버퍼 문맥" gptel-add)
       ("f" "파일 문맥" gptel-add-file)
       ("S" "공급자 설정" imoogi-gptel-setup)
+      ("N" "LiteLLM 새 profile" imoogi-gptel-add-litellm-profile)
+      ("E" "LiteLLM profile 수정" imoogi-gptel-edit-litellm-profile)
       ("G" "LiteLLM profile 전환" imoogi-gptel-switch-litellm-profile)
       ("k" "API key 등록" imoogi-gptel-store-key)
       ("h" "설정 가이드" imoogi-gptel-setup-guide)
