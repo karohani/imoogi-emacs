@@ -11,6 +11,7 @@
          (file (expand-file-name "config.json" directory))
          (imoogi-gptel-config-file file)
          (imoogi-gptel-provider 'litellm)
+         (imoogi-gptel-api-protocol 'openai-chat)
          (imoogi-gptel-gateway-url nil)
          (imoogi-gptel-endpoint "/v1/chat/completions")
          (imoogi-gptel-models nil)
@@ -34,6 +35,7 @@
                          "http://gateway.internal:4000"))
           (should (equal imoogi-gptel-models '(claude-sonnet gpt-4.1)))
           (should (eq imoogi-gptel-provider 'litellm))
+          (should (eq imoogi-gptel-api-protocol 'openai-chat))
           (should (eq imoogi-gptel-default-model 'claude-sonnet)))
       (delete-directory directory t))))
 
@@ -76,6 +78,74 @@
           (should (gptel-anthropic-p imoogi-gptel-backend))
           (should (eq gptel-model 'claude-sonnet-4-6))
           (should (eq imoogi-gptel-provider 'claude)))
+      (delete-file file))))
+
+(ert-deftest imoogi-gptel-setup-builds-litellm-anthropic-backend ()
+  (let* ((file (make-temp-file "imoogi-gptel-test" nil ".json"))
+         (imoogi-gptel-backend nil))
+    (unwind-protect
+        (progn
+          (imoogi-gptel-setup "https://llm.example.test"
+                              '(claude-gateway) 'claude-gateway
+                              "/v1/messages" file 'litellm
+                              'anthropic-messages)
+          (should (gptel-anthropic-p imoogi-gptel-backend))
+          (should (eq imoogi-gptel-api-protocol 'anthropic-messages))
+          (should (equal (gptel-backend-endpoint imoogi-gptel-backend)
+                         "/v1/messages")))
+      (delete-file file))))
+
+(ert-deftest imoogi-gptel-fetch-models-reads-openai-model-list ()
+  (let ((imoogi-gptel-gateway-url "https://gateway.example.test")
+        captured-url
+        captured-headers)
+    (cl-letf (((symbol-function 'imoogi-gptel--api-key)
+               (lambda () "virtual-key"))
+              ((symbol-function 'url-retrieve-synchronously)
+               (lambda (url &rest _)
+                 (setq captured-url url
+                       captured-headers url-request-extra-headers)
+                 (let ((buffer (generate-new-buffer " *gptel models*")))
+                   (with-current-buffer buffer
+                     (setq-local url-http-response-status 200)
+                     (insert "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n")
+                     (insert "{\"data\":[{\"id\":\"claude-sonnet\"},")
+                     (insert "{\"id\":\"gpt-5\"},{\"id\":\"claude-sonnet\"}]}"))
+                   buffer))))
+      (should (equal (imoogi-gptel--fetch-models
+                      "https://gateway.example.test")
+                     '(claude-sonnet gpt-5)))
+      (should (equal captured-url
+                     "https://gateway.example.test/v1/models"))
+      (should (equal (cdr (assoc "Authorization" captured-headers))
+                     "Bearer virtual-key")))))
+
+(ert-deftest imoogi-gptel-fetch-models-rejects-http-error ()
+  (let ((imoogi-gptel-gateway-url "https://gateway.example.test"))
+    (cl-letf (((symbol-function 'imoogi-gptel--api-key) (lambda () "key"))
+              ((symbol-function 'url-retrieve-synchronously)
+               (lambda (&rest _)
+                 (let ((buffer (generate-new-buffer " *gptel models error*")))
+                   (with-current-buffer buffer
+                     (setq-local url-http-response-status 401)
+                     (insert "HTTP/1.1 401 Unauthorized\r\n\r\n{}"))
+                   buffer))))
+      (should-error
+       (imoogi-gptel--fetch-models "https://gateway.example.test")
+       :type 'error))))
+
+(ert-deftest imoogi-gptel-old-config-defaults-to-openai-chat ()
+  (let ((file (make-temp-file "imoogi-gptel-old-config" nil ".json"))
+        (imoogi-gptel-api-protocol 'anthropic-messages))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (insert "{\"gateway_url\":\"http://gateway.internal:4000\",")
+            (insert "\"provider\":\"litellm\",")
+            (insert "\"endpoint\":\"/v1/chat/completions\",")
+            (insert "\"models\":[\"model-a\"],\"default_model\":\"model-a\"}"))
+          (should (imoogi-gptel--read-config file))
+          (should (eq imoogi-gptel-api-protocol 'openai-chat)))
       (delete-file file))))
 
 (ert-deftest imoogi-gptel-setup-rejects-invalid-input ()

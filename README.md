@@ -593,7 +593,7 @@ Markdown의 `#`부터 `######`까지 글자색과 줄 전체 배경색이 적용
 `gptel`은 `vendor/elpa/`에 동봉되어 있어 Emacs 부팅과 패키지 로딩에는 인터넷이
 필요하지 않다. `M-x imoogi-gptel-setup`을 실행하면 먼저 연결 방식을 묻는다.
 
-- **LiteLLM Gateway**: Gateway 주소와 `model_name` 별칭 사용
+- **LiteLLM Gateway**: Gateway 주소와 key를 입력하면 `/v1/models`에서 모델 목록 조회
 - **Codex / ChatGPT Plus·Pro OAuth**: OpenAI 계정 로그인 사용, API key 불필요
 - **Claude / Anthropic API**: Anthropic API와 `auth-source`의 API key 사용
 - **기타 OpenAI 호환 API**: base URL, endpoint, 모델 이름을 직접 지정
@@ -610,12 +610,18 @@ model_list:
       model: openai/gpt-4.1-mini
 ```
 
-LiteLLM 또는 기타 OpenAI 호환 API는 다음 값을 입력한다.
+LiteLLM은 다음 순서로 설정한다.
 
 1. Gateway URL: 경로 없는 주소, 예: `http://localhost:4000`
-2. Model aliases: LiteLLM의 `model_name`, 쉼표로 구분
-3. Default model: 위 목록 중 하나
-4. Chat endpoint: 기본값 `/v1/chat/completions`
+2. API key: `auth-source`에만 저장
+3. Model aliases: `GET /v1/models`로 자동 조회
+4. Default model: 조회된 목록 중 하나 선택
+5. API 형식: 기본값 `자동 / OpenAI Chat`; 필요할 때 `Anthropic Messages` 선택
+
+자동 조회에 실패하면 기존처럼 모델 이름을 쉼표로 직접 입력할 수 있다. OpenAI Chat은
+`/v1/chat/completions`와 `gptel-make-openai`를 사용하고, Anthropic Messages는
+`/v1/messages`와 `gptel-make-anthropic`을 사용한다. 이전 설정 파일에 API 형식이
+없으면 OpenAI Chat으로 읽어 기존 동작을 유지한다.
 
 설정 함수는 공급자, 주소와 모델만 `~/.emacs.d/imoogi-gptel.json`에 저장한다.
 LiteLLM·Claude·기타 API key는 설정 마지막 질문이나 `M-x imoogi-gptel-store-key`로 Emacs

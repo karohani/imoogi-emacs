@@ -3,7 +3,8 @@
 ;;; Code:
 
 (imoogi-require "27-gptel" 'gptel 'gptel-transient 'gptel-anthropic
-                'gptel-openai-oauth 'auth-source 'json 'seq 'url-parse 'subr-x)
+                'gptel-openai-oauth 'auth-source 'json 'seq 'url 'url-http
+                'url-parse 'subr-x)
 
 ;; `transient-define-prefix' is expanded inside `with-eval-after-load' below.
 ;; Make the macro available while compile-angel byte-compiles this module;
@@ -15,6 +16,8 @@
 (require 'seq)
 (require 'subr-x)
 (require 'url-parse)
+(require 'url)
+(require 'url-http)
 (require 'gptel)
 (require 'gptel-anthropic)
 (require 'gptel-openai-oauth)
@@ -36,6 +39,9 @@
 
 (defvar imoogi-gptel-endpoint "/v1/chat/completions"
   "Configured LiteLLM chat completion endpoint.")
+
+(defvar imoogi-gptel-api-protocol 'openai-chat
+  "Configured HTTP API protocol: `openai-chat' or `anthropic-messages'.")
 
 (defvar imoogi-gptel-models nil
   "Model aliases exposed by the configured LiteLLM Gateway.")
@@ -83,6 +89,7 @@ GATEWAY-URL is a base URL and therefore may not contain a path."
   "Return the current non-secret configuration as an alist."
   `((gateway_url . ,imoogi-gptel-gateway-url)
     (provider . ,(symbol-name imoogi-gptel-provider))
+    (api_protocol . ,(symbol-name imoogi-gptel-api-protocol))
     (endpoint . ,imoogi-gptel-endpoint)
     ;; `json-serialize' uses vectors for JSON arrays.  A Lisp list is
     ;; otherwise interpreted as an object/alist and model strings fail.
@@ -117,6 +124,13 @@ GATEWAY-URL is a base URL and therefore may not contain a path."
                (data (json-read))
                (provider-name (or (alist-get 'provider data) "litellm"))
                (provider (intern provider-name))
+               (api-protocol-name (alist-get 'api_protocol data))
+               (api-protocol
+                (if api-protocol-name
+                    (intern api-protocol-name)
+                  (if (eq provider 'claude)
+                      'anthropic-messages
+                    'openai-chat)))
                (gateway-url (alist-get 'gateway_url data))
                (endpoint (alist-get 'endpoint data))
                (models (imoogi-gptel--normalize-models
@@ -124,12 +138,15 @@ GATEWAY-URL is a base URL and therefore may not contain a path."
                (default-model (intern (alist-get 'default_model data))))
           (unless (memq provider '(litellm codex claude openai-compatible))
             (error "지원하지 않는 gptel provider입니다: %s" provider))
+          (unless (memq api-protocol '(openai-chat anthropic-messages))
+            (error "지원하지 않는 API protocol입니다: %s" api-protocol))
           (unless (eq provider 'codex)
             (imoogi-gptel--url-components gateway-url))
           (unless (memq default-model models)
             (error "기본 model %s이 models 목록에 없습니다" default-model))
           (setq imoogi-gptel-provider provider
                 imoogi-gptel-gateway-url gateway-url
+                imoogi-gptel-api-protocol api-protocol
                 imoogi-gptel-endpoint endpoint
                 imoogi-gptel-models models
                 imoogi-gptel-default-model default-model)
@@ -143,6 +160,47 @@ GATEWAY-URL is a base URL and therefore may not contain a path."
   "Read the LiteLLM virtual key from auth-source."
   (gptel-api-key-from-auth-source (imoogi-gptel--auth-host) "apikey"))
 
+(defun imoogi-gptel--models-url (gateway-url)
+  "Return the OpenAI-compatible models URL for GATEWAY-URL."
+  (concat (string-remove-suffix "/" gateway-url) "/v1/models"))
+
+(defun imoogi-gptel--fetch-models (gateway-url)
+  "Fetch model identifiers from GATEWAY-URL's `/v1/models' endpoint.
+Authenticate with the key stored in `auth-source'.  Return model symbols in
+server order, or signal an error that the interactive setup can recover from."
+  (imoogi-gptel--url-components gateway-url)
+  (let* ((key (imoogi-gptel--api-key))
+         (url-request-method "GET")
+         (url-request-extra-headers
+          `(("Accept" . "application/json")
+            ("Authorization" . ,(and (stringp key)
+                                      (concat "Bearer " key)))))
+         buffer)
+    (unless (and (stringp key) (not (string-empty-p key)))
+      (error "Gateway API key를 auth-source에서 찾을 수 없습니다"))
+    (setq buffer (url-retrieve-synchronously
+                  (imoogi-gptel--models-url gateway-url) t t 10))
+    (unless buffer
+      (error "Gateway의 /v1/models에 연결할 수 없습니다"))
+    (unwind-protect
+        (with-current-buffer buffer
+          (unless (and (boundp 'url-http-response-status)
+                       (= url-http-response-status 200))
+            (error "/v1/models 응답 실패: HTTP %s"
+                   (if (boundp 'url-http-response-status)
+                       url-http-response-status "unknown")))
+          (goto-char (point-min))
+          (unless (re-search-forward "\r?\n\r?\n" nil t)
+            (error "/v1/models 응답에 HTTP 본문이 없습니다"))
+          (let* ((json-object-type 'alist)
+                 (json-array-type 'list)
+                 (payload (json-read))
+                 (models
+                  (mapcar (lambda (item) (alist-get 'id item))
+                          (alist-get 'data payload))))
+            (imoogi-gptel--normalize-models models)))
+      (kill-buffer buffer))))
+
 (defun imoogi-gptel--configure-backend ()
   "Create and select the gptel backend from the loaded configuration."
   (when (and imoogi-gptel-models imoogi-gptel-default-model)
@@ -151,10 +209,15 @@ GATEWAY-URL is a base URL and therefore may not contain a path."
             ('codex
              (gptel-make-openai-oauth "Codex"
                :stream t :models imoogi-gptel-models))
-            ('claude
+            ((or 'claude
+                 (and 'litellm
+                      (guard (eq imoogi-gptel-api-protocol
+                                 'anthropic-messages))))
              (pcase-let ((`(,protocol . ,host)
                           (imoogi-gptel--url-components imoogi-gptel-gateway-url)))
-               (gptel-make-anthropic "Claude"
+               (gptel-make-anthropic
+                   (if (eq imoogi-gptel-provider 'litellm)
+                       "LiteLLM Messages" "Claude")
                  :host host :protocol protocol :endpoint imoogi-gptel-endpoint
                  :stream t :key #'imoogi-gptel--api-key
                  :models imoogi-gptel-models)))
@@ -205,6 +268,30 @@ The secret is requested and saved by the selected auth-source backend."
                               (mapconcat #'symbol-name initial ","))
                  "," t "[[:space:]]*")))
 
+(defun imoogi-gptel--read-api-protocol ()
+  "Prompt for the HTTP request protocol and return its symbol."
+  (let ((choices '(("자동 / OpenAI Chat (권장)" . openai-chat)
+                   ("Anthropic Messages" . anthropic-messages))))
+    (alist-get (completing-read "API 형식: " choices nil t nil nil
+                                "자동 / OpenAI Chat (권장)")
+               choices nil nil #'string=)))
+
+(defun imoogi-gptel--discover-litellm-models (gateway)
+  "Offer key storage, then discover models from LiteLLM GATEWAY.
+Fall back to manual model input when discovery is unavailable."
+  (setq imoogi-gptel-provider 'litellm
+        imoogi-gptel-gateway-url gateway)
+  (when (y-or-n-p "API key를 auth-source에 등록하거나 확인할까요? ")
+    (imoogi-gptel-store-key))
+  (condition-case err
+      (let ((models (imoogi-gptel--fetch-models gateway)))
+        (message "LiteLLM에서 model %d개를 불러왔습니다" (length models))
+        models)
+    (error
+     (message "모델 자동 조회 실패, 수동 입력으로 전환합니다: %s"
+              (error-message-string err))
+     (imoogi-gptel--read-models imoogi-gptel-models))))
+
 (defun imoogi-gptel--read-setup-arguments ()
   "Read provider-specific arguments for `imoogi-gptel-setup'."
   (let* ((choices '(("LiteLLM Gateway" . litellm)
@@ -214,18 +301,6 @@ The secret is requested and saved by the selected auth-source backend."
          (provider (alist-get
                     (completing-read "사용할 LLM 연결 방식: " choices nil t)
                     choices nil nil #'string=))
-         (defaults
-          (pcase provider
-            ('codex '(gpt-5.3-codex gpt-5.3-codex-spark gpt-5.4-mini
-                      gpt-5.4 gpt-5.5 gpt-5.6-sol gpt-5.6-terra
-                      gpt-5.6-luna))
-            ('claude (seq-take (imoogi-gptel--model-symbols
-                                gptel--anthropic-models) 4))
-            (_ imoogi-gptel-models)))
-         (models (imoogi-gptel--read-models defaults))
-         (default (intern
-                   (completing-read "Default model: " models nil t nil nil
-                                    (symbol-name (car models)))))
          (gateway
           (pcase provider
             ('codex nil)
@@ -236,24 +311,54 @@ The secret is requested and saved by the selected auth-source backend."
             ('openai-compatible
              (read-string "OpenAI 호환 API base URL: "
                           (or imoogi-gptel-gateway-url "http://localhost:8000")))))
+         (_ (unless (eq provider 'codex)
+              (imoogi-gptel--url-components gateway)))
+         (defaults
+          (pcase provider
+            ('codex '(gpt-5.3-codex gpt-5.3-codex-spark gpt-5.4-mini
+                      gpt-5.4 gpt-5.5 gpt-5.6-sol gpt-5.6-terra
+                      gpt-5.6-luna))
+            ('claude (seq-take (imoogi-gptel--model-symbols
+                                gptel--anthropic-models) 4))
+            (_ imoogi-gptel-models)))
+         (models (if (eq provider 'litellm)
+                     (imoogi-gptel--discover-litellm-models gateway)
+                   (imoogi-gptel--read-models defaults)))
+         (default (intern
+                   (completing-read "Default model: " models nil t nil nil
+                                    (symbol-name (car models)))))
+         (api-protocol
+          (pcase provider
+            ('claude 'anthropic-messages)
+            ('codex 'openai-chat)
+            (_ (imoogi-gptel--read-api-protocol))))
          (endpoint
           (pcase provider
             ('codex "/backend-api/codex/responses")
             ('claude "/v1/messages")
-            (_ (read-string "Chat endpoint: " "/v1/chat/completions")))))
-    (list gateway models default endpoint nil provider)))
+            (_ (if (eq api-protocol 'anthropic-messages)
+                   "/v1/messages"
+                 "/v1/chat/completions")))))
+    (list gateway models default endpoint nil provider api-protocol)))
 
 ;;;###autoload
 (defun imoogi-gptel-setup (gateway-url models default-model
-                                       &optional endpoint config-file provider)
+                           &optional endpoint config-file provider api-protocol)
   "Configure gptel for PROVIDER with DEFAULT-MODEL from MODELS.
 PROVIDER is one of `litellm', `codex', `claude', or `openai-compatible'.
-GATEWAY-URL and ENDPOINT apply to HTTP API providers.  Existing Lisp callers
-that omit PROVIDER retain the original LiteLLM behavior.  CONFIG-FILE contains
-only non-secret settings; API keys are stored separately with `auth-source'."
+GATEWAY-URL and ENDPOINT apply to HTTP API providers.  API-PROTOCOL selects
+`openai-chat' or `anthropic-messages'.  Existing Lisp callers that omit
+PROVIDER and API-PROTOCOL retain the original LiteLLM OpenAI Chat behavior.
+CONFIG-FILE contains only non-secret settings; API keys are stored separately
+with `auth-source'."
   (interactive
    (imoogi-gptel--read-setup-arguments))
   (let* ((provider-value (or provider 'litellm))
+         (protocol-value
+          (or api-protocol
+              (if (eq provider-value 'claude)
+                  'anthropic-messages
+                'openai-chat)))
          (normalized (imoogi-gptel--normalize-models models))
          (default (if (symbolp default-model)
                       default-model
@@ -267,6 +372,8 @@ only non-secret settings; API keys are stored separately with `auth-source'."
          (target (or config-file imoogi-gptel-config-file)))
     (unless (memq provider-value '(litellm codex claude openai-compatible))
       (user-error "지원하지 않는 provider입니다: %s" provider-value))
+    (unless (memq protocol-value '(openai-chat anthropic-messages))
+      (user-error "지원하지 않는 API protocol입니다: %s" protocol-value))
     (unless (eq provider-value 'codex)
       (imoogi-gptel--url-components gateway-url))
     (unless (memq default normalized)
@@ -275,13 +382,14 @@ only non-secret settings; API keys are stored separately with `auth-source'."
       (user-error "endpoint는 /로 시작해야 합니다"))
     (setq imoogi-gptel-provider provider-value
           imoogi-gptel-gateway-url gateway-url
+          imoogi-gptel-api-protocol protocol-value
           imoogi-gptel-endpoint endpoint-value
           imoogi-gptel-models normalized
           imoogi-gptel-default-model default)
     (imoogi-gptel--write-config target)
     (imoogi-gptel--configure-backend)
     (when (and (called-interactively-p 'interactive)
-               (not (eq provider-value 'codex))
+               (not (memq provider-value '(codex litellm)))
                (y-or-n-p "API key를 auth-source에 등록할까요? "))
       (imoogi-gptel-store-key))
     (when (and (called-interactively-p 'interactive)
@@ -320,7 +428,9 @@ only non-secret settings; API keys are stored separately with `auth-source'."
   (with-help-window "*imoogi gptel 설정*"
     (princ "gptel 공급자 설정\n\n")
     (princ "1. M-x imoogi-gptel-setup을 실행하고 연결 방식을 선택합니다.\n")
-    (princ "2. LiteLLM은 Gateway URL과 config.yaml의 model_name을 입력합니다.\n")
+    (princ "2. LiteLLM은 Gateway URL과 key로 /v1/models를 조회합니다.\n")
+    (princ "   조회된 모델 중 기본 모델을 고르고 API 형식을 선택합니다.\n")
+    (princ "   조회 실패 시 model_name을 직접 입력할 수 있습니다.\n")
     (princ "3. Codex는 ChatGPT Plus/Pro OAuth를 사용하며 API key가 필요 없습니다.\n")
     (princ "4. Claude는 Anthropic 모델을 고르고 API key를 auth-source에 저장합니다.\n")
     (princ "5. 기타는 OpenAI 호환 base URL, endpoint, 모델 이름을 입력합니다.\n")
