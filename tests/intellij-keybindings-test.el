@@ -3,6 +3,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'cl-lib)
 
 (defconst imoogi-test-korean-key-pairs
   '(("ㅁ" . "a") ("ㅠ" . "b") ("ㅊ" . "c") ("ㅇ" . "d")
@@ -16,6 +17,44 @@
 (ert-deftest imoogi-close-current-buffer-is-bound-at-s-w ()
   (should (eq (lookup-key global-map (kbd "s-w"))
               #'kill-current-buffer)))
+
+(ert-deftest imoogi-format-code-has-intellij-and-emacs-bindings ()
+  (should (eq (lookup-key global-map (kbd "s-M-l"))
+              #'imoogi-format-code))
+  (should (eq (lookup-key global-map (kbd "C-M-\\"))
+              #'imoogi-format-code)))
+
+(ert-deftest imoogi-format-code-prefers-eglot-formatter ()
+  (let (called)
+    (cl-letf (((symbol-function 'eglot-managed-p) (lambda () t))
+              ((symbol-function 'eglot-format)
+               (lambda (&rest _) (interactive) (setq called 'eglot)))
+              ((symbol-function 'indent-region)
+               (lambda (&rest _) (ert-fail "indent fallback was used"))))
+      (call-interactively #'imoogi-format-code)
+      (should (eq called 'eglot)))))
+
+(ert-deftest imoogi-format-code-uses-language-formatter-before-indentation ()
+  (let (called)
+    (cl-letf (((symbol-function 'eglot-managed-p) (lambda () nil))
+              ((symbol-function 'derived-mode-p)
+               (lambda (&rest modes) (memq 'go-mode modes)))
+              ((symbol-function 'executable-find) (lambda (_) "/tmp/gofmt"))
+              ((symbol-function 'gofmt) (lambda () (setq called 'gofmt)))
+              ((symbol-function 'indent-region)
+               (lambda (&rest _) (ert-fail "indent fallback was used"))))
+      (imoogi-format-code)
+      (should (eq called 'gofmt)))))
+
+(ert-deftest imoogi-format-code-falls-back-to-major-mode-indentation ()
+  (with-temp-buffer
+    (insert "first\nsecond\n")
+    (let (bounds)
+      (cl-letf (((symbol-function 'eglot-managed-p) (lambda () nil))
+                ((symbol-function 'indent-region)
+                 (lambda (beg end &rest _) (setq bounds (cons beg end)))))
+        (imoogi-format-code)
+        (should (equal bounds (cons (point-min) (point-max))))))))
 
 (ert-deftest imoogi-modified-commands-support-korean-input ()
   (dolist (modifier '("C-" "M-" "s-"))

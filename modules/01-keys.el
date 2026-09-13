@@ -70,5 +70,36 @@
 (global-set-key (kbd "s-z") 'undo)
 (global-set-key (kbd "s-a") 'mark-whole-buffer)
 
+;;; IntelliJ-compatible code formatting (Cmd+Option+L / C-M-\)
+(defun imoogi-format-code ()
+  "Format the active region or current buffer for its major mode.
+Prefer an active Eglot server, then a bundled language formatter, and finally
+fall back to the current major mode's indentation rules."
+  (interactive)
+  (cond
+   ((and (fboundp 'eglot-managed-p)
+         (eglot-managed-p)
+         (fboundp 'eglot-format))
+    (call-interactively #'eglot-format))
+   ((and (derived-mode-p 'go-mode 'go-ts-mode)
+         (fboundp 'gofmt)
+         (executable-find (if (boundp 'gofmt-command)
+                              gofmt-command
+                            "gofmt")))
+    (gofmt))
+   ((and (derived-mode-p 'rust-mode 'rust-ts-mode)
+         (fboundp 'rust-format-buffer)
+         (executable-find "rustfmt"))
+    (rust-format-buffer))
+   ((and (derived-mode-p 'json-mode 'js-json-mode 'json-ts-mode)
+         (fboundp 'json-pretty-print-buffer))
+    (json-pretty-print-buffer))
+   (t
+    (indent-region (if (use-region-p) (region-beginning) (point-min))
+                   (if (use-region-p) (region-end) (point-max))))))
+
+(global-set-key (kbd "s-M-l") #'imoogi-format-code)
+(global-set-key (kbd "C-M-\\") #'imoogi-format-code)
+
 (provide 'imoogi-keys)
 ;;; keys.el ends here

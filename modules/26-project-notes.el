@@ -240,6 +240,12 @@ even though the project notes registry key is shared across worktrees."
       (user-error "원격 프로젝트는 project-notes 대상으로 등록하지 않습니다: %s" root))
     (unless (file-directory-p root)
       (user-error "소스 프로젝트 폴더가 없습니다: %s" root))
+    (when (file-in-directory-p
+           root
+           (imoogi-project-notes--directory-file-name
+            imoogi-project-notes-directory))
+      (user-error
+       "문서 폴더를 작업 프로젝트로 등록할 수 없습니다: %s" root))
     root))
 
 (defun imoogi-project-notes--validate-notes-directory (directory key entries)
@@ -251,18 +257,23 @@ even though the project notes registry key is shared across worktrees."
       (user-error "이미 다른 프로젝트가 사용하는 노트 폴더입니다: %s" directory))
     directory))
 
+(defun imoogi-project-notes--start-date ()
+  "Return the date prefix used for a newly created project notes directory."
+  (format-time-string "%y%m%d"))
+
 (defun imoogi-project-notes--default-notes-directory (root key entries)
   "Return the default notes directory for ROOT and KEY."
   (let* ((base (imoogi-project-notes--directory-file-name
                 imoogi-project-notes-directory))
          (slug (imoogi-project-notes--slug
                 (file-name-nondirectory (directory-file-name root))))
-         (plain (expand-file-name (file-name-as-directory slug) base)))
+         (dated-slug (format "%s-%s" (imoogi-project-notes--start-date) slug))
+         (plain (expand-file-name (file-name-as-directory dated-slug) base)))
     (if (or (file-exists-p plain)
             (imoogi-project-notes--notes-directory-in-use-p plain key entries))
         (expand-file-name
          (file-name-as-directory
-          (format "%s-%s" slug (substring (secure-hash 'sha1 key) 0 10)))
+          (format "%s-%s" dated-slug (substring (secure-hash 'sha1 key) 0 10)))
          base)
       plain)))
 
@@ -600,8 +611,8 @@ separate notes directory recorded by each entry."
     (princ "imoogi에서 프로젝트를 선택할 때 보이는 경로는 소스 작업 폴더입니다.\n")
     (princ "예: ~/workspace/imoogi-emacs/\n\n")
     (princ "Org 문서는 소스나 Git worktree 안에 만들지 않습니다. 기본 문서 위치는\n")
-    (princ "별도의 ~/project-notes/<프로젝트>/ 폴더입니다.\n")
-    (princ "예: ~/project-notes/imoogi-emacs/project.org\n\n")
+    (princ "별도의 ~/project-notes/<시작일>-<프로젝트>/ 폴더입니다.\n")
+    (princ "예: ~/project-notes/260918-imoogi-emacs/project.org\n\n")
     (princ "C-c h p m s  현재 소스 작업 폴더에 문서 폴더를 연결·생성\n")
     (princ "C-u C-c h p m s  문서가 저장될 폴더를 직접 지정\n")
     (princ "C-c h p m l  소스 작업 폴더 기준으로 등록 프로젝트를 선택·이동\n\n")

@@ -5,6 +5,11 @@
 (imoogi-require "27-gptel" 'gptel 'gptel-transient 'gptel-anthropic
                 'gptel-openai-oauth 'auth-source 'json 'seq 'url-parse 'subr-x)
 
+;; `transient-define-prefix' is expanded inside `with-eval-after-load' below.
+;; Make the macro available while compile-angel byte-compiles this module;
+;; otherwise the compiled form evaluates the prefix name as a variable.
+(eval-when-compile (require 'transient))
+
 (require 'auth-source)
 (require 'json)
 (require 'seq)

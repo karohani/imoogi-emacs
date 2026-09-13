@@ -120,6 +120,38 @@ func TestRendererEscapesHTMLAndMapsElements(t *testing.T) {
 	}
 }
 
+func TestRendererEmitsMermaidContainerOnlyForMermaidSourceBlocks(t *testing.T) {
+	source := `#+begin_src mermaid
+flowchart LR
+  A["<script>alert(1)</script>"] --> B
+#+end_src
+
+#+begin_src go
+fmt.Println("ordinary code")
+#+end_src
+`
+	doc, err := FallbackParser{}.Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := Renderer{}.Render(doc)
+	for _, want := range []string{
+		`class="mermaid"`,
+		`data-org-kind="code_block"`,
+		`flowchart LR`,
+		`&lt;script&gt;alert(1)&lt;/script&gt;`,
+		`<pre data-org-id=`,
+		`ordinary code`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("rendered Mermaid HTML missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, `<script>alert(1)</script>`) {
+		t.Fatalf("Mermaid source was not escaped:\n%s", out)
+	}
+}
+
 func TestRendererStylesHeadingPaletteByOrgDepth(t *testing.T) {
 	doc, err := FallbackParser{}.Parse("* Red\n** Blue\n*** Green\n**** Yellow\n***** Red Again\n****** Blue Again\n")
 	if err != nil {
@@ -366,6 +398,9 @@ func TestServerServesPreviewShellAndBrowserWebSocketQueryContract(t *testing.T) 
 		"function rebuildSidebars",
 		"function levelOf(el){return Number(el.dataset.orgLevel)",
 		"window.scrollTo(x, y)",
+		`<script src="/static/mermaid.min.js"></script>`,
+		"mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'dark'})",
+		"await mermaid.run({nodes:nodes,suppressErrors:true})",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("preview shell missing %q:\n%s", want, body)
@@ -375,6 +410,25 @@ func TestServerServesPreviewShellAndBrowserWebSocketQueryContract(t *testing.T) 
 		if strings.Contains(body, unwanted) {
 			t.Fatalf("preview shell should not auto-scroll on navigation; found %q:\n%s", unwanted, body)
 		}
+	}
+}
+
+func TestServerServesEmbeddedMermaidRuntime(t *testing.T) {
+	server, err := NewServer(ServerConfig{Token: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/static/mermaid.min.js", nil)
+	recorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("Mermaid runtime status = %d", recorder.Code)
+	}
+	if got := recorder.Header().Get("Content-Type"); !strings.Contains(got, "text/javascript") {
+		t.Fatalf("Mermaid runtime content type = %q", got)
+	}
+	if recorder.Body.Len() < 1_000_000 || !strings.Contains(recorder.Body.String(), "mermaid") {
+		t.Fatalf("embedded Mermaid runtime looks incomplete: %d bytes", recorder.Body.Len())
 	}
 }
 

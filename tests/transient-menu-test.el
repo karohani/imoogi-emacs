@@ -487,6 +487,26 @@ tests/assert-boot.el 이 잘못 읽는다(실제로 발생했던 버그).
     (should (equal (imoogi-test--layout-bindings 'imoogi-transient-master) before))
     (should (eq (lookup-key global-map (kbd "C-c h")) #'imoogi-transient-master))))
 
+(ert-deftest imoogi-reload-from-read-only-treemacs-buffer-emits-no-recentf-error ()
+  "Reloading from a Treemacs buffer must not make recentf write to that buffer."
+  (let ((buffer (generate-new-buffer " *imoogi readonly treemacs reload*"))
+        warnings)
+    (unwind-protect
+        (with-current-buffer buffer
+          (treemacs-mode)
+          (cl-letf (((symbol-function 'display-warning)
+                     (lambda (type message &optional level buffer-name)
+                       (push (list type message level buffer-name) warnings))))
+            (imoogi-reload))
+          (should-not
+           (seq-find
+            (lambda (warning)
+              (and (eq (car warning) 'use-package)
+                   (string-match-p "recentf/:config"
+                                   (or (cadr warning) ""))))
+            warnings)))
+      (kill-buffer buffer))))
+
 ;;; 코드 이해 5단계 메뉴 (C-c h c)
 
 (ert-deftest imoogi-transient-code-bindings-match-the-five-levels ()

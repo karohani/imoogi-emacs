@@ -66,6 +66,12 @@ func (r Renderer) renderNode(b *strings.Builder, n Node) {
 		r.renderChildrenOrText(b, n)
 		b.WriteString("</li>")
 	case "code_block":
+		if codeBlockLanguage(n.Attrs["info"]) == "mermaid" {
+			r.openMappedAttrs(b, "div", n, map[string]string{"class": "mermaid"})
+			b.WriteString(escapeText(n.Text))
+			b.WriteString("</div>")
+			break
+		}
 		r.openMapped(b, "pre", n)
 		b.WriteString("<code>")
 		b.WriteString(escapeText(n.Text))
@@ -110,6 +116,20 @@ func (r Renderer) renderNode(b *strings.Builder, n Node) {
 		b.WriteString(escapeText(n.Text))
 		b.WriteString("</span>")
 	}
+}
+
+func codeBlockLanguage(info string) string {
+	fields := strings.Fields(strings.ToLower(info))
+	if len(fields) == 0 {
+		return ""
+	}
+	if fields[0] == "#+begin_src" {
+		if len(fields) < 2 {
+			return ""
+		}
+		return fields[1]
+	}
+	return fields[0]
 }
 
 func (r Renderer) renderChildrenOrText(b *strings.Builder, n Node) {

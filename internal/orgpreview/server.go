@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha1"
+	_ "embed"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -20,6 +21,9 @@ import (
 	"strings"
 	"sync"
 )
+
+//go:embed web/mermaid.min.js
+var mermaidJS []byte
 
 type ServerConfig struct {
 	Token        string
@@ -128,6 +132,18 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/sessions/", s.handleSessionRender)
 	s.mux.HandleFunc("/ws/browser", s.handleBrowserWebSocket)
 	s.mux.HandleFunc("/asset", s.handleAsset)
+	s.mux.HandleFunc("/static/mermaid.min.js", s.handleMermaidJS)
+}
+
+func (s *Server) handleMermaidJS(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write(mermaidJS)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -792,6 +808,7 @@ body{margin:0;font:16px/1.65 ui-sans-serif,system-ui,-apple-system,BlinkMacSyste
 .org-preview p{margin:1em 0;color:#d5dbe6}.org-preview a{color:var(--active)}.org-preview img{max-width:100%;border-radius:8px;border:1px solid var(--line)}
 .org-preview ul{padding-left:1.35rem}.org-preview li{margin:.35em 0}
 pre,code{border-radius:6px;background:#11151b}code{padding:2px 5px;color:#cdd6e3}pre{padding:14px 16px;overflow:auto;border:1px solid var(--line)}pre code{padding:0;background:transparent}
+.mermaid{margin:1.25em 0;padding:18px;overflow:auto;border:1px solid var(--line);border-radius:8px;background:#11151b;text-align:center}.mermaid svg{max-width:100%;height:auto}
 table{width:100%;border-collapse:collapse;margin:1.1em 0;overflow:hidden;border-radius:7px}td{border:1px solid var(--line);padding:7px 10px}
 [data-org-id].active-block{outline:2px solid var(--active);outline-offset:5px;background-color:rgba(137,221,255,.07)}
 .toc-item.active,.overview-item.active{background:rgba(137,221,255,.10);box-shadow:inset 2px 0 0 var(--active)}
@@ -809,7 +826,9 @@ table{width:100%;border-collapse:collapse;margin:1.1em 0;overflow:hidden;border-
   </aside>
   <div id="root"></div>
 </div>
+<script src="/static/mermaid.min.js"></script>
 <script>
+mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'dark'});
 const params = new URLSearchParams(location.search);
 const statusEl = document.getElementById('status');
 const root = document.getElementById('root');
@@ -849,7 +868,18 @@ function renderRevision(msg){
   decorateDocument();
   rebuildSidebars();
   restoreActive();
+  renderMermaid(revision);
   requestAnimationFrame(() => window.scrollTo(x, y));
+}
+async function renderMermaid(targetRevision){
+  const nodes = root.querySelectorAll('.mermaid:not([data-processed])');
+  if (!nodes.length) return;
+  try {
+    await mermaid.run({nodes:nodes,suppressErrors:true});
+  } catch (_) {
+    nodes.forEach(node => node.classList.add('mermaid-error'));
+  }
+  if (targetRevision === revision) restoreActive();
 }
 function markFromMessage(msg){
   if (!msg.element_id && !msg.range) return;

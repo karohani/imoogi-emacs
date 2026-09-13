@@ -400,21 +400,22 @@ Perspective의 파일/Dired 버퍼와 창 배치는 정상 종료 시 저장되�
 ### 프로젝트 기록 (`project-notes`)
 
 개인 메모는 `~/notes/`, 프로젝트 기록은 소스와 분리된
-`~/project-notes/<프로젝트>/`에 둔다. 프로젝트에서 `C-c h p m s`
+`~/project-notes/<시작일>-<프로젝트>/`에 둔다. 프로젝트에서 `C-c h p m s`
 (`M-x imoogi-project-notes-setup`)를 실행하면 기본 문서와 자료 폴더를 만든다.
 기존 파일은 덮어쓰지 않는다. `C-u M-x imoogi-project-notes-setup`으로
 프로젝트별 저장 폴더를 직접 지정할 수 있다.
 
 메뉴와 프로젝트 목록에서 선택하는 **프로젝트는 소스 작업 폴더**다. 예를 들어
 `~/workspace/imoogi-emacs/`를 선택하면 이 작업 폴더를 별도의
-`~/project-notes/imoogi-emacs/` 문서 폴더와 연결한다. 현재 연결 관계와 worktree
-동작은 `C-c h p m h`의 내장 안내에서 확인할 수 있다.
+`~/project-notes/260918-imoogi-emacs/` 같은 문서 폴더와 연결한다. 앞의 날짜는
+프로젝트 기록을 처음 만든 날이며, 폴더 이름 정렬로 시작 순서를 확인할 수 있다.
+현재 연결 관계와 worktree 동작은 `C-c h p m h`의 내장 안내에서 확인할 수 있다.
 
 ```text
 ~/notes/
   agenda.org                 개인 할 일 / 중앙 관리 선택 시 프로젝트 할 일
   scratch.org                분류 전 메모 (Scratch 명령에서 생성)
-~/project-notes/<프로젝트>/
+~/project-notes/<YYMMDD>-<프로젝트>/
   project.org                목적·범위·현재 상황·큰 작업 요약
   tasks.org                  실제 TODO와 완료 조건
   journal.org                작업 기록·worktree별 재개 지점
@@ -648,6 +649,18 @@ OAuth 토큰 파일에 저장된다.
 7단계 이상에서도 같은 순서를 반복하며, 제목 HTML 자체에 글자색과 배경색을 포함한다.
 **개요** 탭은 문단·목록·코드 등을 제목 색상을 따른 카드로 보여준다.
 항목을 클릭하면 본문의 해당 위치로 이동한다. 작은 화면에서는 목차가 본문 위에 배치된다.
+
+Org의 Mermaid source block은 브라우저에서 다이어그램으로 렌더링한다.
+
+```org
+#+begin_src mermaid
+flowchart LR
+  자료 --> 개념정리 --> 암기카드 --> 복습
+#+end_src
+```
+
+Mermaid 12.0.0 런타임은 미리보기 실행 파일에 포함되므로 CDN이나 인터넷 연결이
+필요하지 않다. 다른 언어의 source block은 기존처럼 코드로 표시한다.
 
 Org 해석과 HTML 생성은 별도 Go 프로세스가 담당한다. Emacs는 비동기 HTTP로
 내용을 전달하며, 전송 중 변경은 모아서 다음 요청에 최신 내용을 보낸다.
