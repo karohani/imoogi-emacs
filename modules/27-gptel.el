@@ -4,7 +4,7 @@
 
 (imoogi-require "27-gptel" 'gptel 'gptel-transient 'gptel-anthropic
                 'gptel-openai-oauth 'auth-source 'json 'seq 'url 'url-http
-                'url-parse 'subr-x)
+                'url-parse 'network-stream 'subr-x)
 
 ;; `transient-define-prefix' is expanded inside `with-eval-after-load' below.
 ;; Make the macro available while compile-angel byte-compiles this module;
@@ -13,6 +13,7 @@
 
 (require 'auth-source)
 (require 'json)
+(require 'network-stream)
 (require 'seq)
 (require 'subr-x)
 (require 'url-parse)
@@ -36,6 +37,10 @@
                     (expand-file-name ".cache" user-emacs-directory))
   "Private diagnostic log for gptel setup and auth-source actions."
   :type 'file)
+
+(defcustom imoogi-gptel-network-probe-timeout 3
+  "Seconds allowed for each DNS, TCP, and TLS diagnostic probe."
+  :type 'number)
 
 (defvar imoogi-gptel-gateway-url nil
   "Configured API base URL, when the provider needs one.")
@@ -440,12 +445,78 @@ LIMIT defaults to 2048 characters.  Point and narrowing are preserved."
    :content-type (imoogi-gptel--response-header "Content-Type")
    :body-preview (imoogi-gptel--response-body-preview)))
 
+(defun imoogi-gptel--probe-network (url)
+  "Log bounded DNS, TCP, and TLS diagnostics for URL.
+The probes never send HTTP headers or credentials."
+  (let* ((parsed (url-generic-parse-url url))
+         (host (url-host parsed))
+         (scheme (url-type parsed))
+         (port (or (url-port parsed) (if (equal scheme "https") 443 80)))
+         (timeout imoogi-gptel-network-probe-timeout))
+    (imoogi-gptel--log 'model-network-ca
+                       :configured (and imoogi-ca-certificate-file t)
+                       :file (and imoogi-ca-certificate-file
+                                  (expand-file-name imoogi-ca-certificate-file))
+                       :readable (and imoogi-ca-certificate-file
+                                      (file-readable-p
+                                       (expand-file-name
+                                        imoogi-ca-certificate-file))))
+    (condition-case err
+        (let ((addresses
+               (with-timeout (timeout (signal 'timeout '("DNS probe")))
+                 (network-lookup-address-info host))))
+          (imoogi-gptel--log 'model-network-dns
+                             :host host :result (if addresses 'ok 'not-found)
+                             :address-count (length addresses)))
+      (error
+       (imoogi-gptel--log 'model-network-dns :host host :result 'failed
+                          :error-type (car-safe err)
+                          :message (error-message-string err))))
+    (condition-case err
+        (let ((process
+               (with-timeout (timeout (signal 'timeout '("TCP probe")))
+                 (open-network-stream
+                  "imoogi-gptel-tcp-probe" nil host port
+                  :type 'plain :nogreeting t :noquery t))))
+          (unwind-protect
+              (imoogi-gptel--log 'model-network-tcp
+                                 :host host :port port :result 'ok)
+            (when (processp process) (delete-process process))))
+      (error
+       (imoogi-gptel--log 'model-network-tcp
+                          :host host :port port :result 'failed
+                          :error-type (car-safe err)
+                          :message (error-message-string err))))
+    (when (equal scheme "https")
+      (condition-case err
+          (let* ((connection
+                  (with-timeout (timeout (signal 'timeout '("TLS probe")))
+                    (open-network-stream
+                     "imoogi-gptel-tls-probe" nil host port
+                     :type 'tls :return-list t :nogreeting t :noquery t)))
+                 (process (car connection))
+                 (properties (cdr connection)))
+            (unwind-protect
+                (imoogi-gptel--log
+                 'model-network-tls :host host :port port
+                 :result (if (and (processp process) (process-live-p process))
+                             'ok 'failed)
+                 :negotiated-type (plist-get properties :type)
+                 :message (plist-get properties :error))
+              (when (processp process) (delete-process process))))
+        (error
+         (imoogi-gptel--log 'model-network-tls
+                            :host host :port port :result 'failed
+                            :error-type (car-safe err)
+                            :message (error-message-string err)))))))
+
 (defun imoogi-gptel--fetch-models (gateway-url &optional chat-endpoint
                                                models-endpoint)
   "Fetch model identifiers for GATEWAY-URL and optional endpoints.
 Authenticate with the key stored in `auth-source'.  Return model symbols in
 server order, or signal an error that the interactive setup can recover from."
   (imoogi-gptel--url-components gateway-url)
+  (imoogi-system-configure-ca-certificate)
   (let* ((models-url (imoogi-gptel--models-url
                       gateway-url chat-endpoint models-endpoint))
          (key (imoogi-gptel--api-key))
@@ -471,6 +542,7 @@ server order, or signal an error that the interactive setup can recover from."
     (unless buffer
       (imoogi-gptel--log 'model-fetch-no-response :url models-url
                          :timeout-seconds 10)
+      (imoogi-gptel--probe-network models-url)
       (error "Gateway model endpoint에 연결할 수 없습니다: %s" models-url))
     (unwind-protect
         (with-current-buffer buffer
@@ -499,6 +571,7 @@ server order, or signal an error that the interactive setup can recover from."
 
 (defun imoogi-gptel--configure-backend ()
   "Create and select the gptel backend from the loaded configuration."
+  (imoogi-system-configure-ca-certificate)
   (imoogi-gptel--log 'backend-configure-start
                      :provider imoogi-gptel-provider
                      :protocol imoogi-gptel-api-protocol

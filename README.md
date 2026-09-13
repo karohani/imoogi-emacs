@@ -701,6 +701,21 @@ gptel 설정과 등록 과정은 `~/.emacs.d/.cache/imoogi-gptel.log`에 단계�
 `model-fetch-response`에 기록한다. DNS/TLS 등의 네트워크 예외와 10초 무응답은 각각
 `model-fetch-network-error`, `model-fetch-no-response`로 구분한다. API key, token,
 secret, password 값은 로그에서 가린다.
+`model-fetch-no-response` 뒤에는 DNS, TCP, TLS probe 결과가
+`model-network-dns`, `model-network-tcp`, `model-network-tls` 순서로 기록된다.
+각 probe는 기본 3초로 제한되며 HTTP 인증 정보는 전송하지 않는다.
+
+폐쇄망 Gateway가 사설 CA를 사용한다면 PEM CA bundle을 지정한다.
+
+```elisp
+(setq imoogi-ca-certificate-file "/내부/경로/company-ca.pem")
+```
+
+파일은 기존 시스템 trust store에 추가되며 모델 조회와 실제 gptel 요청에 함께
+사용된다. 설정 여부와 읽기 가능 여부만 `model-network-ca`에 기록되고 인증서 내용은
+로그에 기록하지 않는다.
+Emacs 안에서는 `C-c h s P`로 PEM을 선택하면 전역 시스템 설정에 경로가 저장된다.
+`C-c h s X`는 추가한 CA 설정을 해제한다.
 한 실행에 속한 기록은 같은 `action-id`로 묶이며 공급자 선택, profile 추가·수정·전환,
 설정 파일 읽기·쓰기, auth-source 파일 확인과 key 저장·재조회, endpoint와 모델 조회,
 backend 생성을 추적할 수 있다. API key, token, secret, password 값은 항상
@@ -720,6 +735,8 @@ backend 생성을 추적할 수 있다. API key, token, secret, password 값은 
 | `C-c h i E` | 등록된 LiteLLM Gateway profile 수정 |
 | `C-c h i G` | 저장된 LiteLLM Gateway profile 전환 |
 | `C-c h i O` | gptel 설정 JSON 직접 열기 |
+| `C-c h s P` | 사설 CA PEM을 Emacs 전역에 설정하고 저장 |
+| `C-c h s X` | Emacs 전역 사설 CA 설정 해제 |
 | `C-c h i R` | 수정한 gptel 설정 JSON 다시 읽기 |
 | `C-c h i a` | 현재 영역 또는 버퍼를 추가 문맥으로 등록 |
 | `C-c h i f` | 파일을 추가 문맥으로 등록 |
