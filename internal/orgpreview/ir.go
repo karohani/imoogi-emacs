@@ -7,15 +7,16 @@ const ProtocolVersion = "org-preview/v1"
 type Kind string
 
 const (
-	KindHeading   Kind = "heading"
-	KindParagraph Kind = "paragraph"
-	KindList      Kind = "list"
-	KindListItem  Kind = "list_item"
-	KindCodeBlock Kind = "code_block"
-	KindTable     Kind = "table"
-	KindImage     Kind = "image"
-	KindFileLink  Kind = "file_link"
-	KindText      Kind = "text"
+	KindHeading    Kind = "heading"
+	KindParagraph  Kind = "paragraph"
+	KindList       Kind = "list"
+	KindListItem   Kind = "list_item"
+	KindCodeBlock  Kind = "code_block"
+	KindTable      Kind = "table"
+	KindImage      Kind = "image"
+	KindFileLink   Kind = "file_link"
+	KindProperties Kind = "property_drawer"
+	KindText       Kind = "text"
 )
 
 type SourceRange struct {

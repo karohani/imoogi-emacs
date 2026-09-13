@@ -31,6 +31,7 @@ var (
 	headingRE  = regexp.MustCompile(`^(\*+)\s+(.*)$`)
 	listItemRE = regexp.MustCompile(`^(\s*)([-+*]|\d+[.)])\s+(.*)$`)
 	linkRE     = regexp.MustCompile(`\[\[file:([^\]\n]+)\](?:\[([^\]\n]*)\])?\]`)
+	propertyRE = regexp.MustCompile(`^:([[:alnum:]_@#%+.-]+):[[:space:]]*(.*)$`)
 )
 
 func (p FallbackParser) Parse(text string) (Document, error) {
@@ -59,6 +60,13 @@ func (p FallbackParser) Parse(text string) (Document, error) {
 			nodes = append(nodes, node)
 			i++
 			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(trim), ":PROPERTIES:") {
+			if drawer, next, ok := parsePropertyDrawer(lines, i, ids); ok {
+				nodes = append(nodes, drawer)
+				i = next
+				continue
+			}
 		}
 		lower := strings.ToLower(strings.TrimSpace(trim))
 		if strings.HasPrefix(lower, "#+begin_src") || strings.HasPrefix(lower, "#+begin_example") {
@@ -173,6 +181,35 @@ func (p FallbackParser) Parse(text string) (Document, error) {
 		nodes = append(nodes, node)
 	}
 	return NewDocument(p.Name(), text, nodes), nil
+}
+
+func parsePropertyDrawer(lines []lineSpan, start int, ids map[string]int) (Node, int, bool) {
+	properties := []Node{}
+	for i := start + 1; i < len(lines); i++ {
+		text := strings.TrimSpace(strings.TrimRight(lines[i].Text, "\r\n"))
+		if strings.EqualFold(text, ":END:") {
+			return Node{
+				Kind:     "block",
+				Type:     "property_drawer",
+				ID:       nextID(ids, "property_drawer", fmt.Sprintf("%d:%d", lines[start].Start, lines[i].End)),
+				Range:    SourceRange{Start: lines[start].Start, End: lines[i].End},
+				Children: properties,
+			}, i + 1, true
+		}
+		match := propertyRE.FindStringSubmatch(text)
+		if match == nil {
+			return Node{}, start, false
+		}
+		properties = append(properties, Node{
+			Kind:  "span",
+			Type:  "property",
+			ID:    nextID(ids, "property", normalizeIDText(match[1])+":"+normalizeIDText(match[2])),
+			Range: SourceRange{Start: lines[i].Start, End: lines[i].End},
+			Attrs: map[string]string{"key": match[1], "value": match[2]},
+			Text:  match[2],
+		})
+	}
+	return Node{}, start, false
 }
 
 type lineSpan struct {

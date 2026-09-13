@@ -55,6 +55,17 @@ func (r Renderer) renderNode(b *strings.Builder, n Node) {
 		r.openMapped(b, "p", n)
 		r.renderChildrenOrText(b, n)
 		b.WriteString("</p>")
+	case "property_drawer":
+		r.openMappedAttrs(b, "table", n, map[string]string{"class": "org-properties", "aria-label": "Properties"})
+		b.WriteString("<tbody>")
+		for _, property := range n.Children {
+			b.WriteString("<tr><th scope=\"row\">")
+			b.WriteString(escapeText(property.Attrs["key"]))
+			b.WriteString("</th><td>")
+			b.WriteString(escapeText(property.Attrs["value"]))
+			b.WriteString("</td></tr>")
+		}
+		b.WriteString("</tbody></table>")
 	case "list":
 		r.openMapped(b, "ul", n)
 		for _, child := range n.Children {
@@ -155,7 +166,7 @@ func (r Renderer) renderLink(b *strings.Builder, n Node) {
 		b.WriteString("</a>")
 		return
 	}
-	r.openMappedAttrs(b, "a", n, map[string]string{"href": r.assetURL(resolved)})
+	r.openMappedAttrs(b, "a", n, map[string]string{"href": r.previewURL(resolved)})
 	b.WriteString(escapeText(label))
 	b.WriteString("</a>")
 }
@@ -246,4 +257,18 @@ func (r Renderer) assetURL(path string) string {
 		values.Set("buffer", r.AssetBufferID)
 	}
 	return "/asset?" + values.Encode()
+}
+
+func (r Renderer) previewURL(path string) string {
+	values := url.Values{"file_path": []string{path}}
+	if r.AssetToken != "" {
+		values.Set("token", r.AssetToken)
+	}
+	if r.AssetSessionID != "" {
+		values.Set("session_id", r.AssetSessionID)
+	}
+	if r.AssetBufferID != "" {
+		values.Set("buffer_id", r.AssetBufferID)
+	}
+	return "/preview?" + values.Encode()
 }

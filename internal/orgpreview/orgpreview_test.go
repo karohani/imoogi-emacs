@@ -59,6 +59,42 @@ func TestFallbackParserV1Constructs(t *testing.T) {
 	checkIDs(doc.Nodes)
 }
 
+func TestPropertyDrawerRendersAsEscapedInformationTable(t *testing.T) {
+	source := "* Task\n:PROPERTIES:\n:ID: abc-123\n:OWNER: <jay>\n:END:\nBody\n"
+	doc, err := FallbackParser{}.Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(flattenTypes(doc.Nodes), "property_drawer") {
+		t.Fatalf("property drawer missing from %#v", flattenTypes(doc.Nodes))
+	}
+	out := Renderer{}.Render(doc)
+	for _, want := range []string{`class="org-properties"`, `<th scope="row">ID</th><td>abc-123</td>`, `<th scope="row">OWNER</th><td>&lt;jay&gt;</td>`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("property table missing %q:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{":PROPERTIES:", ":END:", "<jay>"} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("property table leaked %q:\n%s", unwanted, out)
+		}
+	}
+}
+
+func TestMalformedPropertyDrawerRemainsPlainText(t *testing.T) {
+	source := "* Task\n:PROPERTIES:\nnot-a-property\n:END:\n"
+	doc, err := FallbackParser{}.Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contains(flattenTypes(doc.Nodes), "property_drawer") {
+		t.Fatal("malformed drawer was accepted")
+	}
+	if !strings.Contains(Renderer{}.Render(doc), ":PROPERTIES:") {
+		t.Fatal("malformed drawer content disappeared")
+	}
+}
+
 func TestMarkdownParserConstructsAndHeadingPalette(t *testing.T) {
 	source := "# Red\n## Blue\n### Green\n#### Yellow\n\nParagraph with [doc](doc.txt) and ![image](image.png).\n\n- first\n- second\n\n```go\nfmt.Println(\"ok\")\n```\n"
 	doc, err := MarkdownParser{}.Parse(source)
@@ -113,6 +149,11 @@ func TestRendererEscapesHTMLAndMapsElements(t *testing.T) {
 	for _, want := range []string{"token=test-token", "session=s1", "buffer=b1"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("asset URL missing %q:\n%s", want, out)
+		}
+	}
+	for _, want := range []string{"/preview?", "file_path=", "session_id=s1", "buffer_id=b1"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("document preview URL missing %q:\n%s", want, out)
 		}
 	}
 	if strings.Contains(out, "<escaped>") {
@@ -367,6 +408,157 @@ func TestServerAssetRequiresTokenAndMatchingSessionBufferRoot(t *testing.T) {
 	if rec.Code != http.StatusOK || rec.Body.String() != "png" {
 		t.Fatalf("authorized asset status/body = %d/%q", rec.Code, rec.Body.String())
 	}
+	if disposition := rec.Header().Get("Content-Disposition"); disposition != "" {
+		t.Fatalf("asset unexpectedly forces a download: %q", disposition)
+	}
+}
+
+func TestServerFilePreviewRendersSavedOrgAndReusesActiveRevision(t *testing.T) {
+	root := t.TempDir()
+	linked := filepath.Join(root, "linked.org")
+	if err := os.WriteFile(linked, []byte("* Saved heading\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(ServerConfig{Token: "test-token", Parser: FallbackParser{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	postRevision(t, server.Handler(), "test-token", RevisionRequest{
+		Envelope: NewEnvelope("s1", "origin", 1, OriginEmacs, "origin-1"),
+		Text:     "[[file:linked.org][linked]]", Path: filepath.Join(root, "origin.org"), AllowedRoots: []string{root},
+	})
+
+	preview := getFilePreview(t, server.Handler(), "/api/file-preview?path="+linked+"&session=s1&buffer=origin&token=test-token")
+	if !strings.Contains(preview.HTML, "Saved heading") {
+		t.Fatalf("saved Org was not rendered: %s", preview.HTML)
+	}
+
+	postRevision(t, server.Handler(), "test-token", RevisionRequest{
+		Envelope: NewEnvelope("s1", "linked-buffer", 2, OriginEmacs, "linked-2"),
+		Text:     "* Unsaved live heading\n", Path: linked, AllowedRoots: []string{root},
+	})
+	preview = getFilePreview(t, server.Handler(), "/api/file-preview?path="+linked+"&session=s1&buffer=origin&token=test-token")
+	if !strings.Contains(preview.HTML, "Unsaved live heading") || strings.Contains(preview.HTML, "Saved heading") {
+		t.Fatalf("active revision was not preferred: %s", preview.HTML)
+	}
+}
+
+func TestServerFilePreviewRendersSavedMarkdownAndText(t *testing.T) {
+	root := t.TempDir()
+	markdown := filepath.Join(root, "linked.md")
+	textFile := filepath.Join(root, "notes.txt")
+	if err := os.WriteFile(markdown, []byte("# Markdown heading\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(textFile, []byte("<plain text>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(ServerConfig{Token: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	postRevision(t, server.Handler(), "test-token", RevisionRequest{
+		Envelope: NewEnvelope("s1", "b1", 1, OriginEmacs, "e1"),
+		Text:     "* Origin\n", Path: filepath.Join(root, "origin.org"), AllowedRoots: []string{root},
+	})
+	preview := getFilePreview(t, server.Handler(), "/api/file-preview?path="+markdown+"&session=s1&buffer=b1&token=test-token")
+	if !strings.Contains(preview.HTML, "Markdown heading") || !strings.Contains(preview.HTML, "palette-red") {
+		t.Fatalf("saved Markdown was not rendered: %s", preview.HTML)
+	}
+	preview = getFilePreview(t, server.Handler(), "/api/file-preview?path="+textFile+"&session=s1&buffer=b1&token=test-token")
+	if !strings.Contains(preview.HTML, "&lt;plain text&gt;") || strings.Contains(preview.HTML, "<plain text>") {
+		t.Fatalf("plain text was not safely rendered: %s", preview.HTML)
+	}
+}
+
+func TestServerFilePreviewEmbedsPDFWithoutForcingDownload(t *testing.T) {
+	root := t.TempDir()
+	pdf := filepath.Join(root, "reference.pdf")
+	if err := os.WriteFile(pdf, []byte("%PDF-1.4 test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(ServerConfig{Token: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	postRevision(t, server.Handler(), "test-token", RevisionRequest{
+		Envelope: NewEnvelope("s1", "b1", 1, OriginEmacs, "e1"),
+		Text:     "* Origin\n", Path: filepath.Join(root, "origin.org"), AllowedRoots: []string{root},
+	})
+	preview := getFilePreview(t, server.Handler(), "/api/file-preview?path="+pdf+"&session=s1&buffer=b1&token=test-token")
+	if !strings.Contains(preview.HTML, `<iframe class="linked-media"`) || !strings.Contains(preview.HTML, "/asset?") {
+		t.Fatalf("PDF was not embedded in the preview: %s", preview.HTML)
+	}
+	if strings.Contains(preview.HTML, "%PDF-1.4") {
+		t.Fatalf("PDF body leaked into preview HTML: %s", preview.HTML)
+	}
+}
+
+func TestServerFilePreviewRequiresAuthentication(t *testing.T) {
+	server, err := NewServer(ServerConfig{Token: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/file-preview?path=/tmp/file", nil)
+	recorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated file preview status = %d", recorder.Code)
+	}
+}
+
+func TestServerFilePreviewBlocksUnsupportedAndOutsideFiles(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	archive := filepath.Join(root, "archive.zip")
+	executable := filepath.Join(root, "script.sh")
+	secret := filepath.Join(outside, "secret.txt")
+	if err := os.WriteFile(archive, []byte("PK binary payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(secret, []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\necho secret\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(ServerConfig{Token: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	postRevision(t, server.Handler(), "test-token", RevisionRequest{
+		Envelope: NewEnvelope("s1", "b1", 1, OriginEmacs, "e1"),
+		Text:     "* Origin\n", Path: filepath.Join(root, "origin.org"), AllowedRoots: []string{root},
+	})
+	preview := getFilePreview(t, server.Handler(), "/api/file-preview?path="+archive+"&session=s1&buffer=b1&token=test-token")
+	if !strings.Contains(preview.HTML, "미리보기 미지원") || strings.Contains(preview.HTML, "PK binary payload") {
+		t.Fatalf("unsupported file response = %s", preview.HTML)
+	}
+	preview = getFilePreview(t, server.Handler(), "/api/file-preview?path="+executable+"&session=s1&buffer=b1&token=test-token")
+	if !strings.Contains(preview.HTML, "미리보기 미지원") || strings.Contains(preview.HTML, "echo secret") {
+		t.Fatalf("executable file response = %s", preview.HTML)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/file-preview?path="+secret+"&session=s1&buffer=b1&token=test-token", nil)
+	recorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusForbidden || strings.Contains(recorder.Body.String(), "secret") {
+		t.Fatalf("outside preview status/body = %d/%q", recorder.Code, recorder.Body.String())
+	}
+}
+
+func getFilePreview(t *testing.T, handler http.Handler, target string) filePreviewResponse {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodGet, target, nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("file preview status/body = %d/%q", recorder.Code, recorder.Body.String())
+	}
+	var response filePreviewResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	return response
 }
 
 func TestServerServesPreviewShellAndBrowserWebSocketQueryContract(t *testing.T) {
@@ -401,6 +593,9 @@ func TestServerServesPreviewShellAndBrowserWebSocketQueryContract(t *testing.T) 
 		`<script src="/static/mermaid.min.js"></script>`,
 		"mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'dark'})",
 		"await mermaid.run({nodes:nodes,suppressErrors:true})",
+		"/api/file-preview",
+		"if (linkedFilePath) loadLinkedFile(); else connect();",
+		".org-properties",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("preview shell missing %q:\n%s", want, body)

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"mime"
@@ -130,6 +131,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/emacs/events", s.handleEvents)
 	s.mux.HandleFunc("/api/emacs/navigation", s.handleEmacsNavigation)
 	s.mux.HandleFunc("/api/sessions/", s.handleSessionRender)
+	s.mux.HandleFunc("/api/file-preview", s.handleFilePreview)
 	s.mux.HandleFunc("/ws/browser", s.handleBrowserWebSocket)
 	s.mux.HandleFunc("/asset", s.handleAsset)
 	s.mux.HandleFunc("/static/mermaid.min.js", s.handleMermaidJS)
@@ -451,6 +453,159 @@ func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", contentType)
 	}
 	_, _ = io.Copy(w, f)
+}
+
+type filePreviewResponse struct {
+	HTML  string `json:"html"`
+	Title string `json:"title"`
+}
+
+func (s *Server) handleFilePreview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.authorized(r) {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	requestedPath := r.URL.Query().Get("path")
+	if requestedPath == "" {
+		writeError(w, http.StatusBadRequest, "preview path is required")
+		return
+	}
+	clean, err := canonical(requestedPath)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid preview path")
+		return
+	}
+	sessionID := r.URL.Query().Get("session")
+	bufferID := r.URL.Query().Get("buffer")
+	if !s.assetAllowed(sessionID, bufferID, clean) {
+		writeError(w, http.StatusForbidden, "file is outside the preview roots")
+		return
+	}
+	info, err := os.Stat(clean)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "linked file was not found")
+		return
+	}
+	if !info.Mode().IsRegular() {
+		writeJSON(w, http.StatusOK, unsupportedFilePreview(filepath.Base(clean)))
+		return
+	}
+	if info.Mode().Perm()&0o111 != 0 {
+		writeJSON(w, http.StatusOK, unsupportedFilePreview(filepath.Base(clean)))
+		return
+	}
+	if info.Size() > 16<<20 {
+		writeJSON(w, http.StatusOK, unsupportedFilePreview(filepath.Base(clean)))
+		return
+	}
+
+	origin := s.bufferSnapshot(sessionID, bufferID)
+	if origin == nil {
+		writeError(w, http.StatusForbidden, "preview buffer is unavailable")
+		return
+	}
+	if active := s.activeBufferByPath(sessionID, clean); active != nil {
+		writeJSON(w, http.StatusOK, filePreviewResponse{HTML: active.html, Title: filepath.Base(clean)})
+		return
+	}
+	ext := strings.ToLower(filepath.Ext(clean))
+	if ext == ".org" || ext == ".md" || ext == ".markdown" {
+		body, err := os.ReadFile(clean)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "linked file could not be read")
+			return
+		}
+		parser := s.parser
+		if ext != ".org" {
+			parser = MarkdownParser{}
+		}
+		doc, err := parser.Parse(string(body))
+		if err != nil {
+			writeError(w, http.StatusUnprocessableEntity, "linked document could not be parsed")
+			return
+		}
+		resolver, err := NewAssetResolver(origin.roots)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "preview roots are unavailable")
+			return
+		}
+		rendered := Renderer{Assets: resolver, BaseFile: clean, AssetToken: s.token, AssetSessionID: sessionID, AssetBufferID: bufferID}.Render(doc)
+		writeJSON(w, http.StatusOK, filePreviewResponse{HTML: rendered, Title: filepath.Base(clean)})
+		return
+	}
+
+	contentType := mime.TypeByExtension(ext)
+	if contentType == "" {
+		file, err := os.Open(clean)
+		if err == nil {
+			defer file.Close()
+			var header [512]byte
+			n, _ := file.Read(header[:])
+			contentType = http.DetectContentType(header[:n])
+		}
+	}
+	assetURL := (Renderer{AssetToken: s.token, AssetSessionID: sessionID, AssetBufferID: bufferID}).assetURL(clean)
+	switch {
+	case strings.HasPrefix(contentType, "image/"):
+		writeJSON(w, http.StatusOK, filePreviewResponse{HTML: `<main class="org-preview linked-file"><img src="` + html.EscapeString(assetURL) + `" alt="` + html.EscapeString(filepath.Base(clean)) + `"></main>`, Title: filepath.Base(clean)})
+	case contentType == "application/pdf", strings.HasPrefix(contentType, "audio/"), strings.HasPrefix(contentType, "video/"):
+		writeJSON(w, http.StatusOK, filePreviewResponse{HTML: `<main class="org-preview linked-file"><iframe class="linked-media" src="` + html.EscapeString(assetURL) + `" title="` + html.EscapeString(filepath.Base(clean)) + `"></iframe></main>`, Title: filepath.Base(clean)})
+	case strings.HasPrefix(contentType, "text/") || contentType == "application/json":
+		body, err := os.ReadFile(clean)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "linked file could not be read")
+			return
+		}
+		writeJSON(w, http.StatusOK, filePreviewResponse{HTML: `<main class="org-preview linked-file"><pre><code>` + html.EscapeString(string(body)) + `</code></pre></main>`, Title: filepath.Base(clean)})
+	default:
+		writeJSON(w, http.StatusOK, unsupportedFilePreview(filepath.Base(clean)))
+	}
+}
+
+func unsupportedFilePreview(name string) filePreviewResponse {
+	return filePreviewResponse{
+		HTML:  `<main class="org-preview linked-file"><section class="unsupported-preview"><h1>미리보기 미지원</h1><p>이 파일 형식은 브라우저 미리보기를 지원하지 않습니다.</p></section></main>`,
+		Title: name,
+	}
+}
+
+func (s *Server) bufferSnapshot(sessionID, bufferID string) *bufferState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state := s.sessions[sessionID]
+	if state == nil || state.buffers[bufferID] == nil {
+		return nil
+	}
+	copy := *state.buffers[bufferID]
+	copy.roots = append([]string{}, copy.roots...)
+	return &copy
+}
+
+func (s *Server) activeBufferByPath(sessionID, clean string) *bufferState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state := s.sessions[sessionID]
+	if state == nil {
+		return nil
+	}
+	var latest *bufferState
+	for _, buffer := range state.buffers {
+		if buffer.path == "" {
+			continue
+		}
+		path, err := canonical(buffer.path)
+		if err != nil || path != clean || latest != nil && latest.revision >= buffer.revision {
+			continue
+		}
+		copy := *buffer
+		copy.roots = append([]string{}, buffer.roots...)
+		latest = &copy
+	}
+	return latest
 }
 
 func (s *Server) assetAllowed(sessionID, bufferID, clean string) bool {
@@ -806,6 +961,8 @@ body{margin:0;font:16px/1.65 ui-sans-serif,system-ui,-apple-system,BlinkMacSyste
 .org-preview .document-title{font-size:1.4rem;font-weight:650;letter-spacing:-.025em;color:var(--text);margin:0 0 1.5rem}
 .org-preview .org-heading a,.org-preview .org-heading code{color:inherit;background:transparent}
 .org-preview p{margin:1em 0;color:#d5dbe6}.org-preview a{color:var(--active)}.org-preview img{max-width:100%;border-radius:8px;border:1px solid var(--line)}
+.org-properties{font-size:.88rem;background:rgba(17,21,27,.72)}.org-properties th{width:1%;white-space:nowrap;text-align:left;color:var(--muted);font-weight:650}.org-properties th,.org-properties td{border:1px solid var(--line);padding:6px 10px;overflow-wrap:anywhere}.org-properties td{color:var(--text)}
+.linked-file{min-height:12rem}.linked-media{display:block;width:100%;height:min(78vh,900px);border:1px solid var(--line);border-radius:8px;background:#fff}.unsupported-preview{text-align:center;padding:3rem 1rem}.unsupported-preview h1{margin:.2rem 0 1rem!important;background:transparent!important;color:var(--yellow)!important}
 .org-preview ul{padding-left:1.35rem}.org-preview li{margin:.35em 0}
 pre,code{border-radius:6px;background:#11151b}code{padding:2px 5px;color:#cdd6e3}pre{padding:14px 16px;overflow:auto;border:1px solid var(--line)}pre code{padding:0;background:transparent}
 .mermaid{margin:1.25em 0;padding:18px;overflow:auto;border:1px solid var(--line);border-radius:8px;background:#11151b;text-align:center}.mermaid svg{max-width:100%;height:auto}
@@ -836,9 +993,10 @@ const toc = document.getElementById('toc');
 const overview = document.getElementById('overview');
 const sessionID = params.get('session_id') || params.get('session');
 const bufferID = params.get('buffer_id') || params.get('buffer');
+const linkedFilePath = params.get('file_path');
 let revision = -1;
 let activeTarget = null;
-const blockKinds = new Set(['heading','paragraph','list','list_item','code_block','table','image']);
+const blockKinds = new Set(['heading','paragraph','property_drawer','list','list_item','code_block','table','image']);
 const palette = ['red','blue','green','yellow'];
 function wsURL(){const u=new URL('/ws/browser', location.href);u.protocol=location.protocol==='https:'?'wss:':'ws:';u.searchParams.set('session', sessionID || '');u.searchParams.set('buffer', bufferID || '');u.searchParams.set('token', params.get('token') || '');return u;}
 function connect(){
@@ -855,6 +1013,28 @@ function connect(){
     if (!el || !sessionID || !bufferID || ws.readyState !== WebSocket.OPEN) return;
     sendNavigation(ws, el);
   };
+}
+async function loadLinkedFile(){
+  statusEl.textContent = 'saved snapshot';
+  const endpoint = new URL('/api/file-preview', location.href);
+  endpoint.searchParams.set('path', linkedFilePath || '');
+  endpoint.searchParams.set('session', sessionID || '');
+  endpoint.searchParams.set('buffer', bufferID || '');
+  endpoint.searchParams.set('token', params.get('token') || '');
+  try {
+    const response = await fetch(endpoint);
+    if (!response.ok) throw new Error('linked file unavailable');
+    const payload = await response.json();
+    root.innerHTML = payload.html;
+    if (payload.title) document.title = payload.title + ' · Org Preview';
+    decorateDocument();
+    rebuildSidebars();
+    renderMermaid(revision);
+  } catch (_) {
+    root.innerHTML = '<main class="org-preview linked-file"><section class="unsupported-preview"><h1>파일을 열 수 없음</h1><p>링크 대상이 없거나 미리보기 허용 범위 밖에 있습니다.</p></section></main>';
+    rebuildSidebars();
+    statusEl.textContent = 'unavailable';
+  }
 }
 function sendNavigation(ws, el){
   ws.send(JSON.stringify({version:'org-preview/v1',session_id:sessionID,buffer_id:bufferID,revision:revision,event_id:String(Date.now()),origin:'browser',element_id:el.dataset.orgId,range:{start:Number(el.dataset.orgRangeStart||0),end:Number(el.dataset.orgRangeEnd||0)}}));
@@ -991,7 +1171,7 @@ function levelOf(el){return Number(el.dataset.orgLevel) || Number((el.tagName ||
 function colorForLevel(level){return palette[(Math.max(1, level)-1)%palette.length];}
 function colorForElement(el){return el.matches('h1,h2,h3,h4,h5,h6') ? colorForLevel(levelOf(el)) : (el.dataset.sectionColor || 'red');}
 function cleanText(el){return (el.textContent || '').replace(/\s+/g,' ').trim() || labelForKind(el);}
-function labelForKind(el){return ({heading:'제목',paragraph:'문단',list:'목록',list_item:'항목',code_block:'코드',table:'표',image:'이미지'})[el.dataset.orgKind] || '문단';}
+function labelForKind(el){return ({heading:'제목',paragraph:'문단',property_drawer:'정보',list:'목록',list_item:'항목',code_block:'코드',table:'표',image:'이미지'})[el.dataset.orgKind] || '문단';}
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(n => n.classList.toggle('active', n === tab));
@@ -1003,5 +1183,5 @@ function bootEmpty(){
   rebuildSidebars();
 }
 bootEmpty();
-connect();
+if (linkedFilePath) loadLinkedFile(); else connect();
 </script>`
