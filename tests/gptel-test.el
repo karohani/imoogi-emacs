@@ -134,6 +134,29 @@
        (imoogi-gptel--fetch-models "https://gateway.example.test")
        :type 'error))))
 
+(ert-deftest imoogi-gptel-litellm-setup-defers-model-choice-to-gptel-menu ()
+  (let ((imoogi-gptel-default-model 'model-b))
+    (cl-letf (((symbol-function 'completing-read)
+               (lambda (&rest _)
+                 (ert-fail "LiteLLM setup must not prompt for a model"))))
+      (should (eq (imoogi-gptel--setup-default-model
+                   'litellm '(model-a model-b))
+                  'model-b))
+      (should (eq (imoogi-gptel--setup-default-model
+                   'litellm '(model-c model-d))
+                  'model-c)))))
+
+(ert-deftest imoogi-gptel-litellm-discovery-failure-does-not-prompt-manually ()
+  (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) nil))
+            ((symbol-function 'imoogi-gptel--fetch-models)
+             (lambda (&rest _) (error "HTTP 401")))
+            ((symbol-function 'imoogi-gptel--read-models)
+             (lambda (&rest _)
+               (ert-fail "Discovery failure must not open manual model input"))))
+    (should-error
+     (imoogi-gptel--discover-litellm-models "https://gateway.example.test")
+     :type 'user-error)))
+
 (ert-deftest imoogi-gptel-old-config-defaults-to-openai-chat ()
   (let ((file (make-temp-file "imoogi-gptel-old-config" nil ".json"))
         (imoogi-gptel-api-protocol 'anthropic-messages))

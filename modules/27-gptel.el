@@ -278,7 +278,7 @@ The secret is requested and saved by the selected auth-source backend."
 
 (defun imoogi-gptel--discover-litellm-models (gateway)
   "Offer key storage, then discover models from LiteLLM GATEWAY.
-Fall back to manual model input when discovery is unavailable."
+Signal a useful setup error when discovery is unavailable."
   (setq imoogi-gptel-provider 'litellm
         imoogi-gptel-gateway-url gateway)
   (when (y-or-n-p "API key를 auth-source에 등록하거나 확인할까요? ")
@@ -288,9 +288,21 @@ Fall back to manual model input when discovery is unavailable."
         (message "LiteLLM에서 model %d개를 불러왔습니다" (length models))
         models)
     (error
-     (message "모델 자동 조회 실패, 수동 입력으로 전환합니다: %s"
-              (error-message-string err))
-     (imoogi-gptel--read-models imoogi-gptel-models))))
+     (user-error "LiteLLM 모델 조회 실패: %s"
+                 (error-message-string err)))))
+
+(defun imoogi-gptel--setup-default-model (provider models)
+  "Return the setup default for PROVIDER from MODELS.
+LiteLLM defers user selection to gptel's `-m' menu, preserving the current
+model when it is still available and otherwise using the first discovered
+model until the user chooses."
+  (if (eq provider 'litellm)
+      (if (memq imoogi-gptel-default-model models)
+          imoogi-gptel-default-model
+        (car models))
+    (intern
+     (completing-read "Default model: " models nil t nil nil
+                      (symbol-name (car models))))))
 
 (defun imoogi-gptel--read-setup-arguments ()
   "Read provider-specific arguments for `imoogi-gptel-setup'."
@@ -324,9 +336,7 @@ Fall back to manual model input when discovery is unavailable."
          (models (if (eq provider 'litellm)
                      (imoogi-gptel--discover-litellm-models gateway)
                    (imoogi-gptel--read-models defaults)))
-         (default (intern
-                   (completing-read "Default model: " models nil t nil nil
-                                    (symbol-name (car models)))))
+         (default (imoogi-gptel--setup-default-model provider models))
          (api-protocol
           (pcase provider
             ('claude 'anthropic-messages)
@@ -429,8 +439,8 @@ with `auth-source'."
     (princ "gptel 공급자 설정\n\n")
     (princ "1. M-x imoogi-gptel-setup을 실행하고 연결 방식을 선택합니다.\n")
     (princ "2. LiteLLM은 Gateway URL과 key로 /v1/models를 조회합니다.\n")
-    (princ "   조회된 모델 중 기본 모델을 고르고 API 형식을 선택합니다.\n")
-    (princ "   조회 실패 시 model_name을 직접 입력할 수 있습니다.\n")
+    (princ "   API 형식을 고른 뒤 C-c h i m, -m에서 모델을 선택합니다.\n")
+    (princ "   조회 실패 시 Gateway 주소와 auth-source key를 확인합니다.\n")
     (princ "3. Codex는 ChatGPT Plus/Pro OAuth를 사용하며 API key가 필요 없습니다.\n")
     (princ "4. Claude는 Anthropic 모델을 고르고 API key를 auth-source에 저장합니다.\n")
     (princ "5. 기타는 OpenAI 호환 base URL, endpoint, 모델 이름을 입력합니다.\n")

@@ -615,10 +615,12 @@ LiteLLM은 다음 순서로 설정한다.
 1. Gateway URL: 경로 없는 주소, 예: `http://localhost:4000`
 2. API key: `auth-source`에만 저장
 3. Model aliases: `GET /v1/models`로 자동 조회
-4. Default model: 조회된 목록 중 하나 선택
-5. API 형식: 기본값 `자동 / OpenAI Chat`; 필요할 때 `Anthropic Messages` 선택
+4. API 형식: 기본값 `자동 / OpenAI Chat`; 필요할 때 `Anthropic Messages` 선택
+5. `C-c h i m`의 요청 메뉴에서 `-m`을 눌러 실제 사용할 모델 선택
 
-자동 조회에 실패하면 기존처럼 모델 이름을 쉼표로 직접 입력할 수 있다. OpenAI Chat은
+setup은 기존 선택 모델이 조회 목록에 있으면 유지하고, 없으면 첫 모델을 임시
+기본값으로 등록한다. setup 중에는 모델을 묻지 않는다. 모델 조회에 실패하면
+Gateway 주소와 key를 고칠 수 있도록 오류를 그대로 표시한다. OpenAI Chat은
 `/v1/chat/completions`와 `gptel-make-openai`를 사용하고, Anthropic Messages는
 `/v1/messages`와 `gptel-make-anthropic`을 사용한다. 이전 설정 파일에 API 형식이
 없으면 OpenAI Chat으로 읽어 기존 동작을 유지한다.
