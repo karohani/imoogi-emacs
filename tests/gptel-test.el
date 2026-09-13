@@ -115,25 +115,25 @@
 (ert-deftest imoogi-gptel-litellm-reads-exact-base-and-chat-endpoint ()
   (let ((imoogi-gptel-litellm-profiles nil)
         (answers '("company"
-                   "https://llm-gateway.example.test/custom/v1"
-                   "/chat/completions")))
+                   "https://llm-gateway.example.test/custom"
+                   "/v1/chat/completions")))
     (cl-letf (((symbol-function 'read-string)
                (lambda (&rest _) (pop answers)))
               ((symbol-function 'y-or-n-p) (lambda (&rest _) nil))
               ((symbol-function 'imoogi-gptel--fetch-models)
                (lambda (gateway &optional endpoint)
                  (should (equal gateway
-                                "https://llm-gateway.example.test/custom/v1"))
-                 (should (equal endpoint "/chat/completions"))
+                                "https://llm-gateway.example.test/custom"))
+                 (should (equal endpoint "/v1/chat/completions"))
                  '(gateway-model)))
               ((symbol-function 'imoogi-gptel--read-api-protocol)
                (lambda (&optional _) 'openai-chat)))
       (should
        (equal
         (imoogi-gptel--read-litellm-profile-arguments)
-        '("https://llm-gateway.example.test/custom/v1"
+        '("https://llm-gateway.example.test/custom"
           (gateway-model) gateway-model
-          "/chat/completions"
+          "/v1/chat/completions"
           nil litellm openai-chat "company"))))))
 
 (ert-deftest imoogi-gptel-litellm-base-path-is-added-to-backend-endpoint ()
@@ -141,8 +141,8 @@
          (imoogi-gptel-backend nil))
     (unwind-protect
         (progn
-          (imoogi-gptel-setup "https://gateway.example.test/custom/v1"
-                              '(model) 'model "/chat/completions" file
+          (imoogi-gptel-setup "https://gateway.example.test/custom"
+                              '(model) 'model "/v1/chat/completions" file
                               'litellm 'openai-chat "custom")
           (should (equal (gptel-backend-host imoogi-gptel-backend)
                          "gateway.example.test:443"))
@@ -242,8 +242,14 @@
    (equal
     (imoogi-gptel--models-url
      "https://gateway.example.test/api/ai_interface"
+     "/v1/chat/completions")
+    "https://gateway.example.test/api/ai_interface/v1/models"))
+  (should
+   (equal
+    (imoogi-gptel--models-url
+     "https://gateway.example.test/api/ai_interface/v1"
      "/chat/completions")
-    "https://gateway.example.test/api/ai_interface/models"))
+    "https://gateway.example.test/api/ai_interface/v1/models"))
   (should
    (equal (imoogi-gptel--models-url "https://gateway.example.test")
           "https://gateway.example.test/v1/models")))

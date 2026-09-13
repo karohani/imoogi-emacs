@@ -288,13 +288,12 @@ configured auth file exists.  Existing files are never overwritten.  Encrypted
 
 (defun imoogi-gptel--models-url (gateway-url &optional chat-endpoint)
   "Return the models URL for GATEWAY-URL and optional CHAT-ENDPOINT.
-Preserve a custom path prefix by replacing a trailing `/chat/completions'
-with `/models'.  Fall back to the standard `/v1/models' endpoint when the
-chat endpoint does not provide that shape."
+Preserve a custom path prefix and append the standard `/v1/models' path.
+When the base already ends in `/v1', append only `/models'.  CHAT-ENDPOINT
+supports profiles written by the earlier full-chat-URL setup flow."
   (let ((base (string-remove-suffix "/" gateway-url)))
     (cond
-     ;; Exact OpenAI-style base URLs include their prefix, commonly `/v1'.
-     ((not (string-empty-p (imoogi-gptel--base-path gateway-url)))
+     ((string-suffix-p "/v1" base)
       (concat base "/models"))
      ;; Compatibility with profiles created by the earlier full-chat-URL UI.
      ((and chat-endpoint
@@ -531,8 +530,8 @@ model until the user chooses."
          (endpoint (read-string "Chat endpoint: "
                                 (or saved-endpoint
                                     (if (eq protocol 'anthropic-messages)
-                                        "/messages"
-                                      "/chat/completions"))))
+                                        "/v1/messages"
+                                      "/v1/chat/completions"))))
          (models (imoogi-gptel--discover-litellm-models gateway endpoint))
          (default (let ((imoogi-gptel-default-model
                          (alist-get 'default_model saved)))
