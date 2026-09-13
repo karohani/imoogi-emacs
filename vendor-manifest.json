@@ -1,0 +1,49 @@
+{
+  "schema": "imoogi-vendor-index/v1",
+  "boundaries": [
+    "assets",
+    "vendor"
+  ],
+  "roots": [
+    "assets/fonts",
+    "packages.el",
+    "packages.lock",
+    "provenance/sources.json",
+    "toolchains.json",
+    "toolchains.lock.json",
+    "vendor/elpa",
+    "vendor/ghostel-module",
+    "vendor/toolchains",
+    "vendor/tree-sitter"
+  ],
+  "manifests": [
+    "provenance/elpa.json",
+    "provenance/fonts.json",
+    "provenance/ghostel.json",
+    "provenance/metadata.json",
+    "provenance/toolchains.json",
+    "provenance/tree-sitter.json"
+  ],
+  "excludes": [
+    {
+      "path": "vendor/.DS_Store",
+      "reason": "local Finder metadata; not part of an external dependency"
+    },
+    {
+      "path": "vendor/elpa/transient-0.13.4/.moai/state/config-cache.json",
+      "reason": "local agent state; not part of the vendored dependency"
+    },
+    {
+      "path": "vendor/elpa/transient-0.13.4/.moai/state/context-usage.json",
+      "reason": "local agent state; not part of the vendored dependency"
+    },
+    {
+      "path": "vendor/elpa/transient-0.13.4/.moai/state/github/counts.json",
+      "reason": "local agent state; not part of the vendored dependency"
+    },
+    {
+      "path": "vendor/tree-sitter/README.md",
+      "reason": "repository documentation; not an external grammar artifact"
+    }
+  ]
+}

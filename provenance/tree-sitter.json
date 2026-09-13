@@ -1,0 +1,396 @@
+{
+  "schema": "imoogi-vendor-domain/v1",
+  "domain": "tree-sitter",
+  "components": [
+    {
+      "id": "grammar/bash",
+      "kind": "grammar-binary",
+      "version": "v0.25.1",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/tree-sitter/tree-sitter-bash",
+        "commit": "a06c2e4415e9bc0346c6b86d401879ffb44058f7",
+        "ref": "v0.25.1"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "scripts/build-grammars.sh bash",
+      "files": [
+        {
+          "path": "vendor/tree-sitter/libtree-sitter-bash.dylib",
+          "sha256": "2190e5fffdf4b5fcad6ea76a58516d074fd68f62fce07b9d63a54e9b00acfa74",
+          "size": 1411992
+        }
+      ]
+    },
+    {
+      "id": "grammar/clojure",
+      "kind": "grammar-binary",
+      "version": "unstable-20250526",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/sogaiu/tree-sitter-clojure",
+        "commit": "69070d2e4563f8f58c7f57b0c8e093a08d7a5814",
+        "ref": "unstable-20250526"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "scripts/build-grammars.sh clojure",
+      "files": [
+        {
+          "path": "vendor/tree-sitter/libtree-sitter-clojure.dylib",
+          "sha256": "b2f32787cc500591aa1b107e653048190520be366172d33447d961ef15d753c9",
+          "size": 84368
+        }
+      ]
+    },
+    {
+      "id": "grammar/dockerfile",
+      "kind": "grammar-binary",
+      "version": "v0.2.0",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/camdencheek/tree-sitter-dockerfile",
+        "commit": "868e44ce378deb68aac902a9db68ff82d2299dd0",
+        "ref": "v0.2.0"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "scripts/build-grammars.sh dockerfile",
+      "files": [
+        {
+          "path": "vendor/tree-sitter/libtree-sitter-dockerfile.dylib",
+          "sha256": "d7c3df4af609a0a27a0b48f7d36217974ea2db63725aed9080bc30bd4e3c79c1",
+          "size": 68288
+        }
+      ]
+    },
+    {
+      "id": "grammar/go",
+      "kind": "grammar-binary",
+      "version": "v0.23.4",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/tree-sitter/tree-sitter-go",
+        "commit": "3c3775faa968158a8b4ac190a7fda867fd5fb748",
+        "ref": "v0.23.4"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "scripts/build-grammars.sh go",
+      "files": [
+        {
+          "path": "vendor/tree-sitter/libtree-sitter-go.dylib",
+          "sha256": "6c4fac3979e00a149d5fbc00373e6d8aa1f3291ff76fbe7b60e72d5b736eb30b",
+          "size": 249176
+        }
+      ]
+    },
+    {
+      "id": "grammar/html",
+      "kind": "grammar-binary",
+      "version": "v0.23.2",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/tree-sitter/tree-sitter-html",
+        "commit": "5a5ca8551a179998360b4a4ca2c0f366a35acc03",
+        "ref": "v0.23.2"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "scripts/build-grammars.sh html",
+      "files": [
+        {
+          "path": "vendor/tree-sitter/libtree-sitter-html.dylib",
+          "sha256": "da8ef88f26146c212386ee48977a1d9abe29d3e66b9a41710df907eaf46c5c99",
+          "size": 51720
+        }
+      ]
+    },
+    {
+      "id": "grammar/java",
+      "kind": "grammar-binary",
+      "version": "v0.23.5",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/tree-sitter/tree-sitter-java",
+        "commit": "94703d5a6bed02b98e438d7cad1136c01a60ba2c",
+        "ref": "v0.23.5"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "scripts/build-grammars.sh java",
+      "files": [
+        {
+          "path": "vendor/tree-sitter/libtree-sitter-java.dylib",
+          "sha256": "072eed8605dc94fdd794df906819e4de4e9481ee590d70163d4b1b97def2615f",
+          "size": 447304
+        }
+      ]
+    },
+    {
+      "id": "grammar/javascript",
+      "kind": "grammar-binary",
+      "version": "v0.23.1",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/tree-sitter/tree-sitter-javascript",
+        "commit": "3a837b6f3658ca3618f2022f8707e29739c91364",
+        "ref": "v0.23.1"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "scripts/build-grammars.sh javascript",
+      "files": [
+        {
+          "path": "vendor/tree-sitter/libtree-sitter-javascript.dylib",
+          "sha256": "5cbf99be2853e0b485a56f4f62be40bca26f24cc5e4edb66f7f18a42bcfe0e53",
+          "size": 398512
+        }
+      ]
+    },
+    {
+      "id": "grammar/jsdoc",
+      "kind": "grammar-binary",
+      "version": "v0.25.0",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/tree-sitter/tree-sitter-jsdoc",
+        "commit": "658d18dcdddb75c760363faa4963427a7c6b52db",
+        "ref": "v0.25.0"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "scripts/build-grammars.sh jsdoc",
+      "files": [
+        {
+          "path": "vendor/tree-sitter/libtree-sitter-jsdoc.dylib",
+          "sha256": "f238102096fcb5c6d35cbd75d4be91738d32dfd9b259670c14058d69a3c7a4f7",
+          "size": 51160
+        }
+      ]
+    },
+    {
+      "id": "grammar/json",
+      "kind": "grammar-binary",
+      "version": "v0.24.8",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/tree-sitter/tree-sitter-json",
+        "commit": "ee35a6ebefcef0c5c416c0d1ccec7370cfca5a24",
+        "ref": "v0.24.8"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "scripts/build-grammars.sh json",
+      "files": [
+        {
+          "path": "vendor/tree-sitter/libtree-sitter-json.dylib",
+          "sha256": "2ea52fb6a990abbf18b0f3ece9a0191c961ffe4082bc6f8c1b9bfee63ffcb888",
+          "size": 34008
+        }
+      ]
+    },
+    {
+      "id": "grammar/kotlin",
+      "kind": "grammar-binary",
+      "version": "1852ea17",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/fwcd/tree-sitter-kotlin",
+        "commit": "1852ea17b7f60fb3f9d84e0b1555d56b46b39fb1"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "scripts/build-grammars.sh kotlin",
+      "files": [
+        {
+          "path": "vendor/tree-sitter/libtree-sitter-kotlin.dylib",
+          "sha256": "14170f30fe614d31a7a4d2c20d64e98559a8db5a3ac00300ded1dc02a171ad97",
+          "size": 5864776
+        }
+      ]
+    },
+    {
+      "id": "grammar/markdown-inline",
+      "kind": "grammar-binary",
+      "version": "v0.4.1",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/MDeiml/tree-sitter-markdown",
+        "commit": "413285231ce8fa8b11e7074bbe265b48aa7277f9",
+        "ref": "v0.4.1"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "scripts/build-grammars.sh markdown-inline",
+      "files": [
+        {
+          "path": "vendor/tree-sitter/libtree-sitter-markdown-inline.dylib",
+          "sha256": "4859dd83ad4bc7c1ef00163c05d23631673dbbd9558de8e7e07dba3f45cbecaf",
+          "size": 416824
+        }
+      ]
+    },
+    {
+      "id": "grammar/python",
+      "kind": "grammar-binary",
+      "version": "v0.23.6",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/tree-sitter/tree-sitter-python",
+        "commit": "bffb65a8cfe4e46290331dfef0dbf0ef3679de11",
+        "ref": "v0.23.6"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "scripts/build-grammars.sh python",
+      "files": [
+        {
+          "path": "vendor/tree-sitter/libtree-sitter-python.dylib",
+          "sha256": "215356d646f6d3470e5ebc4cc6d7b87885a23f9f8b2320e67950053d58a5241b",
+          "size": 497272
+        }
+      ]
+    },
+    {
+      "id": "grammar/regex",
+      "kind": "grammar-binary",
+      "version": "v0.24.3",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/tree-sitter/tree-sitter-regex",
+        "commit": "4470c59041416e8a2a9fa343595ca28ed91f38b8",
+        "ref": "v0.24.3"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "scripts/build-grammars.sh regex",
+      "files": [
+        {
+          "path": "vendor/tree-sitter/libtree-sitter-regex.dylib",
+          "sha256": "4fad3a606af0efa107f2c50fc4fef9ddb4c449022a2db5c0c03619f9d8add664",
+          "size": 50456
+        }
+      ]
+    },
+    {
+      "id": "grammar/rust",
+      "kind": "grammar-binary",
+      "version": "v0.24.2",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/tree-sitter/tree-sitter-rust",
+        "commit": "77a3747266f4d621d0757825e6b11edcbf991ca5",
+        "ref": "v0.24.2"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "scripts/build-grammars.sh rust",
+      "files": [
+        {
+          "path": "vendor/tree-sitter/libtree-sitter-rust.dylib",
+          "sha256": "a29c40e144ec0af17c567fdd16d125d1b861de7265fde66b9870f935d2217e4a",
+          "size": 1142360
+        }
+      ]
+    },
+    {
+      "id": "grammar/tsx",
+      "kind": "grammar-binary",
+      "version": "v0.23.2",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/tree-sitter/tree-sitter-typescript",
+        "commit": "f975a621f4e7f532fe322e13c4f79495e0a7b2e7",
+        "ref": "v0.23.2"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "scripts/build-grammars.sh tsx",
+      "files": [
+        {
+          "path": "vendor/tree-sitter/libtree-sitter-tsx.dylib",
+          "sha256": "07f217a44177b61bbe874019864ee5e2da582f6b7ac18b54199a50484d5b101f",
+          "size": 1504872
+        }
+      ]
+    },
+    {
+      "id": "grammar/typescript",
+      "kind": "grammar-binary",
+      "version": "v0.23.2",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/tree-sitter/tree-sitter-typescript",
+        "commit": "f975a621f4e7f532fe322e13c4f79495e0a7b2e7",
+        "ref": "v0.23.2"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "scripts/build-grammars.sh typescript",
+      "files": [
+        {
+          "path": "vendor/tree-sitter/libtree-sitter-typescript.dylib",
+          "sha256": "1170aeba5f1e5188456e4bfe40c58909c3b96cb37538d8783b8247570affd8e3",
+          "size": 1455328
+        }
+      ]
+    },
+    {
+      "id": "grammar/yaml",
+      "kind": "grammar-binary",
+      "version": "v0.5.0",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/ikatyang/tree-sitter-yaml",
+        "commit": "6129a83eeec7d6070b1c0567ec7ce3509ead607c",
+        "ref": "v0.5.0"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "scripts/build-grammars.sh yaml",
+      "files": [
+        {
+          "path": "vendor/tree-sitter/libtree-sitter-yaml.dylib",
+          "sha256": "cb0c48fa9986fe728b4bbf3be02fcaef6d82142ef099f47b7f8184de8351d989",
+          "size": 219304
+        }
+      ]
+    }
+  ]
+}

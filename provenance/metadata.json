@@ -1,0 +1,91 @@
+{
+  "schema": "imoogi-vendor-domain/v1",
+  "domain": "metadata",
+  "components": [
+    {
+      "id": "metadata/package-lock",
+      "kind": "repository-metadata",
+      "version": "1",
+      "source": {
+        "type": "repository",
+        "url": "scripts/vendor.el"
+      },
+      "workflow": "emacs --batch -Q -l scripts/vendor.el",
+      "files": [
+        {
+          "path": "packages.lock",
+          "sha256": "d01a21eb899c77ea7c81dc3f2182f2dd4af8fe67f92f1c673a06eb0d312c6277",
+          "size": 4933
+        }
+      ]
+    },
+    {
+      "id": "metadata/package-selection",
+      "kind": "repository-metadata",
+      "version": "1",
+      "source": {
+        "type": "repository",
+        "url": "packages.el"
+      },
+      "workflow": "edit packages.el then run scripts/vendor.el",
+      "files": [
+        {
+          "path": "packages.el",
+          "sha256": "f6988898b027c6764b62f4a1767321a102791d43dc131961a5c1aab4dbd20fa0",
+          "size": 2703
+        }
+      ]
+    },
+    {
+      "id": "metadata/provenance-sources",
+      "kind": "repository-metadata",
+      "version": "imoogi-vendor-sources/v1",
+      "source": {
+        "type": "repository",
+        "url": "provenance/sources.json"
+      },
+      "workflow": "make provenance-generate",
+      "files": [
+        {
+          "path": "provenance/sources.json",
+          "sha256": "26a088bea4c1ab9f49850b08ab49073f5828fd788ce0239edd7fb858feddde20",
+          "size": 13923
+        }
+      ]
+    },
+    {
+      "id": "metadata/toolchain-lock",
+      "kind": "repository-metadata",
+      "version": "imoogi-toolchains-lock/v1",
+      "source": {
+        "type": "repository",
+        "url": "toolchains.lock.json"
+      },
+      "workflow": "go run ./cmd/imoogi-toolchain fetch",
+      "files": [
+        {
+          "path": "toolchains.lock.json",
+          "sha256": "08056b5a147e573bb96c2b69dabd9624f551a753b3354740ee8e27fe009a3ad6",
+          "size": 6696
+        }
+      ]
+    },
+    {
+      "id": "metadata/toolchain-selection",
+      "kind": "repository-metadata",
+      "version": "imoogi-toolchains/v1",
+      "source": {
+        "type": "repository",
+        "url": "toolchains.json"
+      },
+      "workflow": "edit toolchains.json then run imoogi-toolchain fetch",
+      "files": [
+        {
+          "path": "toolchains.json",
+          "sha256": "4a06ca50f63ff092446716d1f701a4f70a2c7310df8befb0c98ac04ffdb1c1c1",
+          "size": 1184
+        }
+      ]
+    }
+  ]
+}

@@ -206,7 +206,9 @@ Emacs 29.3 + 30.x `.elc` 조합에서 모듈 3개 스킵, 둘 다 `exit 0`). 그
 이 설정은 폐쇄망에서 동작하도록 설계됐다. 저장소 하나만 클론해 들고 들어가면 외부 네트워크 없이 작동한다 — 부팅 경로에서 네트워크에 접근하지 않는다.
 
 - 패키지는 `vendor/elpa/` 에 동봉(커밋)되며, 런타임에 `package-refresh-contents` 나 다운로드를 하지 않는다.
-- 커밋된 `vendor/` 디렉터리 자체가 lock 역할(git 커밋 = 버전 동결). `packages.lock` 은 사람이 읽는 버전 감사용.
+- `vendor-manifest.json`과 `provenance/*.json`이 모든 동봉 외부 파일의 upstream,
+  고정 버전/commit, 플랫폼, 크기와 SHA-256을 기록한다. `packages.lock`과
+  `toolchains.lock.json`도 이 기록과 일치해야 한다.
 - 빌드 머신과 타겟의 **Emacs 메이저 버전을 일치**시킬 것(.elc 호환).
 
 ### 패키지 추가/업데이트 (온라인 빌드 머신에서만)
@@ -216,12 +218,22 @@ Emacs 29.3 + 30.x `.elc` 조합에서 모듈 3개 스킵, 둘 다 `exit 0`). 그
 # 2. vendoring 재실행
 emacs --batch -Q -l scripts/vendor.el            # 누락분만 설치
 emacs --batch -Q -l scripts/vendor.el -- upgrade # 전체 최신으로 갱신
-# 3. 변경 커밋
-git add vendor/ packages.lock packages.el && git commit -m "vendor: update packages"
-# 4. 폐쇄망으로 반입 (내부 git 미러 pull 또는 저장소 재반입)
+# 3. 매니페스트와 전체 테스트 검증
+make verify-vendor
+make test
+# 4. 변경 커밋
+git add vendor/ provenance/ vendor-manifest.json packages.lock packages.el
+# 5. 폐쇄망으로 반입 (내부 git 미러 pull 또는 저장소 재반입)
 ```
 
 폐쇄망 안에서는 절대 vendoring 을 돌리지 않는다(네트워크 필요). 업데이트는 항상 온라인 머신 → 반입 순서다.
+
+`scripts/vendor.el`과 `scripts/build-grammars.sh`는 완료 시 provenance manifest를
+자동 재생성한다. 그 밖의 외부 바이너리나 글꼴을 갱신했다면 온라인 머신에서
+`make provenance-generate`를 실행한다. 새 파일이 manifest에 없거나, 파일이
+사라졌거나, 크기/SHA-256/고정 commit/기존 lock이 어긋나면
+`make verify-vendor`와 이를 선행하는 `make test`가 실패한다. 예외는
+`provenance/sources.json`에 wildcard 없이 정확한 경로와 이유를 기록해야 한다.
 
 ### Tree-sitter 문법
 

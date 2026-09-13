@@ -1,0 +1,58 @@
+{
+  "schema": "imoogi-vendor-domain/v1",
+  "domain": "fonts",
+  "components": [
+    {
+      "id": "font/nanum-gothic-coding",
+      "kind": "font-binary",
+      "version": "2.5",
+      "source": {
+        "type": "archive",
+        "url": "https://github.com/naver/nanumfont/releases/download/VER2.5/NanumGothicCoding-2.5.zip"
+      },
+      "platform": {
+        "os": "any",
+        "arch": "any"
+      },
+      "workflow": "extract release archive into assets/fonts",
+      "files": [
+        {
+          "path": "assets/fonts/NanumGothicCoding-Bold.ttf",
+          "sha256": "5d15781e7a53b39130b9d87cb0681d7605ec380374cd0046210f61ce3ec070be",
+          "size": 1800792
+        },
+        {
+          "path": "assets/fonts/NanumGothicCoding.ttf",
+          "sha256": "0ef917c452fbcbd8107c69fcd0fe899b5ca6d09c42e9fdcc725cc0ed2c29aaa4",
+          "size": 2779112
+        },
+        {
+          "path": "assets/fonts/OFL.txt",
+          "sha256": "644d9bf7ce09b77dcc250ecf7ef3b9c20d195d287ac830e8911f40cde2cd24e0",
+          "size": 4740
+        }
+      ]
+    },
+    {
+      "id": "font/nerd-font-symbols",
+      "kind": "font-binary",
+      "version": "sha256:fe471e538392f51910faab985fa8e192a39dd3426125edd15b71b3680df0e749",
+      "source": {
+        "type": "download",
+        "url": "https://raw.githubusercontent.com/rainstormstudio/nerd-icons.el/main/fonts/NFM.ttf"
+      },
+      "platform": {
+        "os": "any",
+        "arch": "any"
+      },
+      "workflow": "scripts/vendor.el",
+      "files": [
+        {
+          "path": "assets/fonts/NFM.ttf",
+          "sha256": "fe471e538392f51910faab985fa8e192a39dd3426125edd15b71b3680df0e749",
+          "size": 2610012
+        }
+      ]
+    }
+  ]
+}

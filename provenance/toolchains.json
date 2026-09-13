@@ -1,0 +1,172 @@
+{
+  "schema": "imoogi-vendor-domain/v1",
+  "domain": "toolchains",
+  "components": [
+    {
+      "id": "toolchain/basedpyright",
+      "kind": "toolchain-archive",
+      "version": "1.39.10",
+      "source": {
+        "type": "archive",
+        "url": "https://registry.npmjs.org/basedpyright/-/basedpyright-1.39.10.tgz"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "go run ./cmd/imoogi-toolchain fetch",
+      "files": [
+        {
+          "path": "vendor/toolchains/licenses/basedpyright-LICENSE",
+          "sha256": "f7c936bc43f132b08497ac952e9376cbc102e5eedb4bf6ec902ea8442bd9c68d",
+          "size": 1150
+        },
+        {
+          "path": "vendor/toolchains/python/basedpyright/1.39.10/darwin-arm64/package.tgz",
+          "sha256": "11891e35fb3afcde55d5f358b147ec99be13ee1eb8ea5db893db430f51eb5b2b",
+          "size": 6156337
+        }
+      ]
+    },
+    {
+      "id": "toolchain/gopls",
+      "kind": "toolchain-binary",
+      "version": "v0.23.0",
+      "source": {
+        "type": "git",
+        "url": "https://go.googlesource.com/tools",
+        "artifact_url": "https://proxy.golang.org/golang.org/x/tools/gopls/@v/v0.23.0.zip",
+        "commit": "014f87ff5c01915bc90f4f11a6bb8aea3e0edbd7"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "go run ./cmd/imoogi-toolchain fetch",
+      "files": [
+        {
+          "path": "vendor/toolchains/go/gopls/v0.23.0/darwin-arm64/gopls",
+          "sha256": "8de8bfd7d4f9e36f2d8fc679061dbd6f982553b1f32e84e7c658f6da4c9c64a8",
+          "size": 40939042
+        },
+        {
+          "path": "vendor/toolchains/licenses/gopls-LICENSE",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "size": 1453
+        }
+      ]
+    },
+    {
+      "id": "toolchain/imoogi-cli",
+      "kind": "toolchain-binary",
+      "version": "1.0.0",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/karohani/imoogi-emacs",
+        "commit": "ec1da354e31d06d10458a5e8e1c50d4101e2df5e"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "go build -trimpath ./cmd/imoogi-toolchain",
+      "files": [
+        {
+          "path": "vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain",
+          "sha256": "491492881ff4a7d733caaafc1f672b7e03d21e8fc1e72e9d45b296f9a6d51f46",
+          "size": 9556130
+        },
+        {
+          "path": "vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain.provenance.json",
+          "sha256": "d02529e6a41af5ee2a969b4aae8dc0eba039e464bf0baf3888b0e73968c9859a",
+          "size": 557
+        }
+      ]
+    },
+    {
+      "id": "toolchain/node",
+      "kind": "toolchain-archive",
+      "version": "v24.19.0",
+      "source": {
+        "type": "archive",
+        "url": "https://nodejs.org/dist/v24.19.0/node-v24.19.0-darwin-arm64.tar.gz"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "go run ./cmd/imoogi-toolchain fetch",
+      "files": [
+        {
+          "path": "vendor/toolchains/licenses/node-v24.19.0-LICENSE",
+          "sha256": "148eacf7863ef4329224a29398623077200a27194aa075569faf4a0a85566ca5",
+          "size": 157606
+        },
+        {
+          "path": "vendor/toolchains/node/v24.19.0/darwin-arm64/node-v24.19.0-darwin-arm64.tar.gz",
+          "sha256": "8294b7aa9b03997481c06babf1e8b270c859358f27da57a11509afe537ac381d",
+          "size": 52234372
+        }
+      ]
+    },
+    {
+      "id": "toolchain/typescript",
+      "kind": "toolchain-archive",
+      "version": "6.0.3",
+      "source": {
+        "type": "archive",
+        "url": "https://registry.npmjs.org/typescript/-/typescript-6.0.3.tgz"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "go run ./cmd/imoogi-toolchain fetch",
+      "files": [
+        {
+          "path": "vendor/toolchains/licenses/typescript-6.0.3-LICENSE.txt",
+          "sha256": "a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47",
+          "size": 9197
+        },
+        {
+          "path": "vendor/toolchains/licenses/typescript-6.0.3-ThirdPartyNoticeText.txt",
+          "sha256": "1af3c68039c57e539422da82a4faada506ce6d0ea6f90e0b699d02dbcdb7a90c",
+          "size": 37824
+        },
+        {
+          "path": "vendor/toolchains/typescript/typescript/6.0.3/darwin-arm64/typescript.tgz",
+          "sha256": "33cd0ee1beaa8c9e9d15a9da836c62ddea4c34a42d7c2d349dbc80d94165d22a",
+          "size": 4515854
+        }
+      ]
+    },
+    {
+      "id": "toolchain/typescript-language-server",
+      "kind": "toolchain-archive",
+      "version": "6.0.0",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/typescript-language-server/typescript-language-server",
+        "artifact_url": "https://registry.npmjs.org/typescript-language-server/-/typescript-language-server-6.0.0.tgz",
+        "commit": "1c0f224eb44c626d96dae07aaf5d78654de0e1f2"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "go run ./cmd/imoogi-toolchain fetch",
+      "files": [
+        {
+          "path": "vendor/toolchains/licenses/typescript-language-server-LICENSE",
+          "sha256": "899d21038f87dd6243dd33b7ee82a078e639d4325a427c01e64d8116315b9680",
+          "size": 13189
+        },
+        {
+          "path": "vendor/toolchains/typescript/typescript-language-server/6.0.0/darwin-arm64/server.tgz",
+          "sha256": "6e23b48efc76af4e70928cdfe62ea6e6cfef67ab4c1e7579c4e82dd284fbdfd2",
+          "size": 515598
+        }
+      ]
+    }
+  ]
+}

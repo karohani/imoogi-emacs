@@ -50,7 +50,10 @@ GRAMMARS=(
   "dockerfile|camdencheek/tree-sitter-dockerfile|v0.2.0|"
   # 아래 둘은 Emacs 에 ts-mode 가 내장돼 있지 않아 패키지(kotlin-ts-mode /
   # clojure-ts-mode)와 짝을 이룬다 — 문법만 넣어도, 패키지만 넣어도 동작하지 않는다.
-  "kotlin|fwcd/tree-sitter-kotlin|0.3.8|"
+  # kotlin-ts-mode 20260512.1409 queries the named interpolation marker nodes
+  # introduced after 0.3.8.  Pin a full grammar commit so its font-lock queries
+  # and the bundled binary cannot silently drift apart.
+  "kotlin|fwcd/tree-sitter-kotlin|1852ea17b7f60fb3f9d84e0b1555d56b46b39fb1|"
   # clojure-ts-mode 0.6.0 의 clojure-ts-grammar-recipes 가 못박은 리비전을 그대로
   # 따른다. 다른 버전을 넣으면 그 패키지가 "outdated" 로 판정해 부팅 중 다시
   # 내려받는다(실측) — 망분리 원칙 위반이라 버전이 정확히 맞아야 한다.
@@ -71,9 +74,14 @@ for entry in "${GRAMMARS[@]}"; do
 
   echo "== $lang ($repo $tag)"
   clone="$WORK_DIR/$lang"
-  git clone -q --depth 1 --branch "$tag" "https://github.com/$repo.git" "$clone"
+  # Fetching the revision explicitly supports both release tags and immutable
+  # commit SHAs without cloning repository history.
+  git init -q "$clone"
+  git -C "$clone" remote add origin "https://github.com/$repo.git"
+  git -C "$clone" fetch -q --depth 1 origin "$tag"
+  git -C "$clone" checkout -q --detach FETCH_HEAD
   src="$clone/${sub}src"
-  [[ -f "$src/parser.c" ]] || { echo "  parser.c 없음 — 건너뜀" >&2; continue; }
+  [[ -f "$src/parser.c" ]] || { echo "  parser.c 없음: $lang" >&2; exit 1; }
 
   # scanner 는 C 또는 C++ 이며, C++ 이면 c++ 로 링크해야 한다(yaml 이 그 경우).
   sources=("$src/parser.c")
@@ -87,10 +95,20 @@ for entry in "${GRAMMARS[@]}"; do
 
   "$compiler" -shared -fPIC -O2 -I "$src" \
     -o "$OUT_DIR/libtree-sitter-$lang.$EXT" "${sources[@]}" 2>/dev/null
+  resolved_commit="$(git -C "$clone" rev-parse HEAD)"
+  (cd "$ROOT_DIR" && go run ./cmd/imoogi-provenance record-git-source \
+    "grammar/$lang" "$resolved_commit" "$tag")
   built=$((built + 1))
 done
 
+if [[ ${#wanted[@]} -gt 0 && $built -ne ${#wanted[@]} ]]; then
+  echo "요청한 문법 중 알 수 없거나 중복된 이름이 있습니다: ${wanted[*]}" >&2
+  exit 1
+fi
+
 echo
 echo "$built 개 문법을 $OUT_DIR 에 설치했습니다."
+echo "== provenance manifest 갱신"
+(cd "$ROOT_DIR" && go run ./cmd/imoogi-provenance generate)
 echo "확인: emacs --batch -l boot.el --eval '(princ (treesit-language-available-p (quote go)))'"
 echo "결과물을 커밋해야 폐쇄망 타겟에서 동작합니다."

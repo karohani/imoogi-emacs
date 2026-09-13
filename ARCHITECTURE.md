@@ -65,9 +65,11 @@ git-ignored 런타임 상태다.
   를 호출하지 않고, `package-user-dir` 을 저장소 안 `vendor/elpa/` 로 지정한다.
 - **vendoring** — 온라인 머신에서 `scripts/vendor.el` 이 `packages.el` 목록 +
   전이 의존성을 `vendor/elpa/` 로 설치하고 바이트컴파일한다.
-- **lock** — 커밋된 `vendor/` 자체가 동결 상태(git 커밋 = 버전 고정).
-  MELPA 는 rolling 아카이브라 원격 재설치로는 버전 재현이 불가능하므로,
-  진실의 원천은 원격이 아니라 git 이다. `packages.lock` 은 사람이 읽는 감사 기록.
+- **provenance lock** — `vendor-manifest.json`이 검증 범위와 domain manifest를
+  지정하고, `provenance/*.json`이 각 외부 component의 upstream URL, full commit
+  또는 고정 버전, 플랫폼과 모든 파일의 SHA-256을 기록한다.
+  `provenance/sources.json`은 온라인 갱신 입력이며 `packages.lock`과
+  `toolchains.lock.json`은 생성된 manifest와 교차 검증되는 호환 기록이다.
 - **업데이트** = 온라인 머신에서 vendor 재실행 → `vendor/` 커밋 → 폐쇄망 반입.
   폐쇄망 내부에서는 업데이트하지 않는다(네트워크 필요).
 - **Tree-sitter 문법** — 온라인 머신에서 빌드한 grammar 라이브러리를

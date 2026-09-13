@@ -1,0 +1,33 @@
+{
+  "schema": "imoogi-vendor-domain/v1",
+  "domain": "ghostel",
+  "components": [
+    {
+      "id": "ghostel/native-module",
+      "kind": "native-binary",
+      "version": "0.34.0",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/dakra/ghostel",
+        "commit": "aa9e7417d3ca8eb640a674bd26eb6c320d1a4ba1"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "ghostel-module-compile then commit vendor/ghostel-module",
+      "files": [
+        {
+          "path": "vendor/ghostel-module/ghostel-module.dylib",
+          "sha256": "cfb9932e069ff9cda15d642b3bc3f5c949e2e98a24e8c4739d70f03d2f23d6a8",
+          "size": 1257176
+        },
+        {
+          "path": "vendor/ghostel-module/ghostel-module.version",
+          "sha256": "a341550457891be148045ef7560e7499da6063d012ce8163bf6e6db2f08d2466",
+          "size": 7
+        }
+      ]
+    }
+  ]
+}

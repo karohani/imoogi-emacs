@@ -30,7 +30,7 @@ DIST_DIR := .cache/dist
 ANKI_PREFIX ?= $(HOME)/.local/bin
 
 .DEFAULT_GOAL := help
-.PHONY: help emacs-install emacs-prewarm emacs-where install toolchain-setup tmux-install tmux-check grammars build build-anki build-org-preview fmt fmt-check lint test test-elisp test-go test-shell ci-local clean-elc clean
+.PHONY: help emacs-install emacs-prewarm emacs-where install toolchain-setup tmux-install tmux-check grammars build build-anki build-org-preview provenance-generate provenance-verify verify-vendor fmt fmt-check lint test test-elisp test-go test-shell ci-local clean-elc clean
 
 help: ## 이 도움말
 	@echo "imoogi-emacs"
@@ -47,6 +47,9 @@ help: ## 이 도움말
 	@echo
 	@echo "개발"
 	@echo "  make test                elisp + go 테스트"
+	@echo "  make provenance-verify   동봉 외부 파일의 출처·SHA-256·누락 여부 검사"
+	@echo "  make verify-vendor       provenance-verify의 CI용 이름"
+	@echo "  make provenance-generate 온라인 갱신 후 provenance manifest 재생성"
 	@echo "  make lint                go vet"
 	@echo "  make fmt                 go fmt"
 	@echo "  make build               imoogi-toolchain CLI 빌드"
@@ -131,7 +134,15 @@ test-go: ## Go 테스트
 test-shell: ## 설치/플랫폼 감지 셸 테스트
 	@bash ./tests/setup-toolchain-test.sh
 
-test: test-elisp test-go test-shell ## 전체 테스트
+provenance-generate: ## 온라인 vendoring/build 후 고정 출처와 파일 SHA-256을 갱신한다
+	@$(GO) run ./cmd/imoogi-provenance generate
+
+provenance-verify: ## 동봉 외부 파일이 provenance manifest와 정확히 일치하는지 검사한다
+	@$(GO) run ./cmd/imoogi-provenance verify
+
+verify-vendor: provenance-verify ## CI/감사용 vendored provenance 검사
+
+test: verify-vendor test-elisp test-go test-shell ## 전체 테스트
 
 ci-local: fmt-check lint test ## pre-push 훅 진입점 — 지우지 말 것 (파일 상단 [HARD] 참고)
 

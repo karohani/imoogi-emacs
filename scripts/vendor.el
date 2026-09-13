@@ -76,7 +76,7 @@
       (insert line "\n")))
   (message "==> lockfile 기록: %s (%d 패키지)" lock (length entries)))
 
-;;; nerd-icons 폰트도 저장소에 동봉(best-effort) — 폐쇄망에서 아이콘 표시용
+;;; nerd-icons 폰트도 저장소에 동봉 — 실패하면 이전 파일을 정상 갱신으로 오인하지 않는다.
 (let ((font-dir (expand-file-name "assets/fonts/" imoogi-vendor--root)))
   (condition-case err
       (progn
@@ -90,9 +90,14 @@
                (dest (expand-file-name "NFM.ttf" font-dir)))
           (url-copy-file url dest t)
           (message "==> 폰트 동봉: %s" dest)))
-    (error (message "!!! 폰트 동봉 건너뜀(수동 처리 필요): %s"
-                    (error-message-string err)))))
+    (error (error "폰트 동봉 실패: %s" (error-message-string err)))))
 
-(message "==> vendoring 완료. `git status`로 vendor/ · packages.lock 확인 후 커밋하세요.")
+(let ((default-directory imoogi-vendor--root))
+  (message "==> provenance manifest 갱신 중...")
+  (unless (zerop (call-process "go" nil "*imoogi-vendor-provenance*" t
+                               "run" "./cmd/imoogi-provenance" "generate"))
+    (error "provenance manifest 갱신 실패; *imoogi-vendor-provenance* 버퍼 확인")))
+
+(message "==> vendoring 완료. `make provenance-verify` 후 변경분을 커밋하세요.")
 
 ;;; vendor.el ends here
