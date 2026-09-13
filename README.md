@@ -598,6 +598,13 @@ Markdown의 `#`부터 `######`까지 글자색과 줄 전체 배경색이 적용
 - **Claude / Anthropic API**: Anthropic API와 `auth-source`의 API key 사용
 - **기타 OpenAI 호환 API**: base URL, endpoint, 모델 이름을 직접 지정
 
+기타 OpenAI 호환 API는 base URL 또는 완성된 Chat endpoint URL을 받을 수 있다. 예를
+들어 `https://gateway.example.com/api/ai_interface/chat/completions`를 입력하면 setup이
+base URL `https://gateway.example.com`과 endpoint
+`/api/ai_interface/chat/completions`로 자동 분리한다. base URL만 입력하면 endpoint를
+별도로 묻는다. `gateway.example.com/api/...`처럼 scheme을 생략하면 `https://`를
+자동으로 적용한다.
+
 LiteLLM을 선택했다면 먼저 Gateway의 `config.yaml`에 사용할 모델 별칭을 등록한다.
 
 ```yaml
@@ -612,11 +619,17 @@ model_list:
 
 LiteLLM은 다음 순서로 설정한다.
 
-1. Gateway URL: 경로 없는 주소, 예: `http://localhost:4000`
-2. API key: `auth-source`에만 저장
-3. Model aliases: `GET /v1/models`로 자동 조회
-4. API 형식: 기본값 `자동 / OpenAI Chat`; 필요할 때 `Anthropic Messages` 선택
-5. `C-c h i m`의 요청 메뉴에서 `-m`을 눌러 실제 사용할 모델 선택
+1. Profile 이름: Gateway를 구분할 이름, 예: `company`, `personal`
+2. Gateway URL: 경로 없는 주소, 예: `http://localhost:4000`
+3. API key: Gateway host별로 `auth-source`에 저장
+4. Model aliases: `GET /v1/models`로 자동 조회
+5. API 형식: 기본값 `자동 / OpenAI Chat`; 필요할 때 `Anthropic Messages` 선택
+6. `C-c h i m`의 요청 메뉴에서 `-m`을 눌러 실제 사용할 모델 선택
+
+`M-x imoogi-gptel-setup`을 다시 실행해 다른 profile 이름과 Gateway를 입력하면 기존
+설정을 덮어쓰지 않고 추가한다. `C-c h i G` 또는
+`M-x imoogi-gptel-switch-litellm-profile`로 활성 Gateway를 바꾼다. 같은 profile 이름을
+사용하면 그 profile만 갱신한다.
 
 setup은 기존 선택 모델이 조회 목록에 있으면 유지하고, 없으면 첫 모델을 임시
 기본값으로 등록한다. setup 중에는 모델을 묻지 않는다. 모델 조회에 실패하면
@@ -628,6 +641,8 @@ Gateway 주소와 key를 고칠 수 있도록 오류를 그대로 표시한다. 
 설정 함수는 공급자, 주소와 모델만 `~/.emacs.d/imoogi-gptel.json`에 저장한다.
 LiteLLM·Claude·기타 API key는 설정 마지막 질문이나 `M-x imoogi-gptel-store-key`로 Emacs
 `auth-source`에 별도로 저장한다. 저장소와 JSON 파일에는 API key가 들어가지 않는다.
+기본 `~/.authinfo`가 아직 없으면 setup이 빈 파일을 만들고 권한을 `0600`으로
+설정한다. 기존 파일은 덮어쓰지 않으며 `.authinfo.gpg`는 EasyPG로 미리 생성해야 한다.
 Codex를 선택하면 `gptel-openai-oauth-login`이 OpenAI 로그인을 진행하고 토큰은 gptel의
 OAuth 토큰 파일에 저장된다.
 암호화 저장을 원하면 `auth-sources`에 `~/.authinfo.gpg`를 우선 등록한 뒤 setup을
@@ -638,6 +653,7 @@ OAuth 토큰 파일에 저장된다.
 | `C-c h i c` | LiteLLM 채팅 버퍼 열기 |
 | `C-c h i s` | 현재 영역 또는 버퍼의 prompt 전송 |
 | `C-c h i m` | gptel 모델·옵션·도구 Transient 열기 |
+| `C-c h i G` | 저장된 LiteLLM Gateway profile 전환 |
 | `C-c h i a` | 현재 영역 또는 버퍼를 추가 문맥으로 등록 |
 | `C-c h i f` | 파일을 추가 문맥으로 등록 |
 | `C-c h i S` | LiteLLM Gateway 설정 |

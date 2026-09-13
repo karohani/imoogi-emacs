@@ -16,6 +16,8 @@
          (imoogi-gptel-endpoint "/v1/chat/completions")
          (imoogi-gptel-models nil)
          (imoogi-gptel-default-model nil)
+         (imoogi-gptel-litellm-profiles nil)
+         (imoogi-gptel-active-profile nil)
          (imoogi-gptel-backend nil))
     (unwind-protect
         (progn
@@ -38,6 +40,49 @@
           (should (eq imoogi-gptel-api-protocol 'openai-chat))
           (should (eq imoogi-gptel-default-model 'claude-sonnet)))
       (delete-directory directory t))))
+
+(ert-deftest imoogi-gptel-persists-and-switches-multiple-litellm-profiles ()
+  (let* ((directory (make-temp-file "imoogi-gptel-profiles" t))
+         (file (expand-file-name "config.json" directory))
+         (imoogi-gptel-config-file file)
+         (imoogi-gptel-litellm-profiles nil)
+         (imoogi-gptel-active-profile nil)
+         (imoogi-gptel-backend nil))
+    (unwind-protect
+        (progn
+          (imoogi-gptel-setup "https://gateway-a.example.test"
+                              '(model-a) 'model-a nil file 'litellm
+                              'openai-chat "company")
+          (imoogi-gptel-setup "https://gateway-b.example.test"
+                              '(model-b) 'model-b nil file 'litellm
+                              'openai-chat "personal")
+          (should (= (length imoogi-gptel-litellm-profiles) 2))
+          (should (equal imoogi-gptel-active-profile "personal"))
+          (setq imoogi-gptel-litellm-profiles nil
+                imoogi-gptel-active-profile nil)
+          (should (imoogi-gptel--read-config file))
+          (should (= (length imoogi-gptel-litellm-profiles) 2))
+          (imoogi-gptel-switch-litellm-profile "company")
+          (should (equal imoogi-gptel-active-profile "company"))
+          (should (equal imoogi-gptel-gateway-url
+                         "https://gateway-a.example.test"))
+          (should (equal imoogi-gptel-models '(model-a))))
+      (delete-directory directory t))))
+
+(ert-deftest imoogi-gptel-updating-profile-does-not-duplicate-it ()
+  (let ((imoogi-gptel-litellm-profiles nil))
+    (imoogi-gptel--upsert-litellm-profile
+     (imoogi-gptel--profile-record "company" "https://old.example.test"
+                                   '(old) 'old 'openai-chat
+                                   "/v1/chat/completions"))
+    (imoogi-gptel--upsert-litellm-profile
+     (imoogi-gptel--profile-record "company" "https://new.example.test"
+                                   '(new) 'new 'openai-chat
+                                   "/v1/chat/completions"))
+    (should (= (length imoogi-gptel-litellm-profiles) 1))
+    (should (equal
+             (alist-get 'gateway_url (car imoogi-gptel-litellm-profiles))
+             "https://new.example.test"))))
 
 (ert-deftest imoogi-gptel-setup-builds-openai-compatible-backend ()
   (let* ((file (make-temp-file "imoogi-gptel-test" nil ".json"))
@@ -188,6 +233,54 @@
            :type 'user-error))
       (delete-file file))))
 
+(ert-deftest imoogi-gptel-splits-complete-openai-compatible-endpoint ()
+  (should
+   (equal
+    (imoogi-gptel--split-api-url
+     "https://sandbox.example.com/api/ai_interface/chat/completions")
+    '("https://sandbox.example.com" .
+      "/api/ai_interface/chat/completions")))
+  (should
+   (equal
+    (imoogi-gptel--split-api-url
+     "sandbox.example.com/api/ai_interface/chat/completions")
+    '("https://sandbox.example.com" .
+      "/api/ai_interface/chat/completions"))))
+
+(ert-deftest imoogi-gptel-splits-base-only-openai-compatible-url ()
+  (should (equal (imoogi-gptel--split-api-url "http://localhost:8000")
+                 '("http://localhost:8000")))
+  (should-error
+   (imoogi-gptel--split-api-url "https://gateway.example.test/path?token=x")
+   :type 'user-error))
+
+(ert-deftest imoogi-gptel-complete-endpoint-skips-separate-endpoint-prompt ()
+  (let ((answers '("sandbox.example.com/api/ai_interface/chat/completions"))
+        (prompt-count 0))
+    (cl-letf (((symbol-function 'read-string)
+               (lambda (&rest _)
+                 (setq prompt-count (1+ prompt-count))
+                 (pop answers))))
+      (should
+       (equal (imoogi-gptel--read-openai-compatible-location)
+              '("https://sandbox.example.com" .
+                "/api/ai_interface/chat/completions")))
+      (should (= prompt-count 1)))))
+
+(ert-deftest imoogi-gptel-base-only-url-prompts-for-endpoint ()
+  (let ((answers '("https://gateway.example.test"
+                   "/custom/chat/completions"))
+        (prompt-count 0))
+    (cl-letf (((symbol-function 'read-string)
+               (lambda (&rest _)
+                 (setq prompt-count (1+ prompt-count))
+                 (pop answers))))
+      (should
+       (equal (imoogi-gptel--read-openai-compatible-location)
+              '("https://gateway.example.test" .
+                "/custom/chat/completions")))
+      (should (= prompt-count 2)))))
+
 (ert-deftest imoogi-gptel-api-key-uses-gateway-auth-source-host ()
   (let ((imoogi-gptel-gateway-url "http://gateway.internal:4000")
         captured)
@@ -201,6 +294,7 @@
 (ert-deftest imoogi-gptel-store-key-persists-without-second-confirmation ()
   (let ((imoogi-gptel-provider 'litellm)
         (imoogi-gptel-gateway-url "http://gateway.internal:4000")
+        (auth-sources nil)
         (search-count 0)
         save-behavior
         cache-cleared)
@@ -225,6 +319,7 @@
 (ert-deftest imoogi-gptel-store-key-rejects-unpersisted-entry ()
   (let ((imoogi-gptel-provider 'litellm)
         (imoogi-gptel-gateway-url "http://gateway.internal:4000")
+        (auth-sources nil)
         (search-count 0))
     (cl-letf (((symbol-function 'auth-source-search)
                (lambda (&rest args)
@@ -239,6 +334,7 @@
 (ert-deftest imoogi-gptel-store-key-supports-backend-without-save-function ()
   (let ((imoogi-gptel-provider 'litellm)
         (imoogi-gptel-gateway-url "http://gateway.internal:4000")
+        (auth-sources nil)
         (search-count 0))
     (cl-letf (((symbol-function 'auth-source-search)
                (lambda (&rest args)
@@ -250,6 +346,41 @@
               ((symbol-function 'auth-source-forget-all-cached) #'ignore))
       (should (imoogi-gptel-store-key))
       (should (= search-count 2)))))
+
+(ert-deftest imoogi-gptel-creates-missing-plain-auth-source-file ()
+  (let* ((directory (make-temp-file "imoogi-gptel-auth-source" t))
+         (file (expand-file-name ".authinfo" directory))
+         (auth-sources (list file)))
+    (unwind-protect
+        (progn
+          (should (equal (imoogi-gptel--ensure-auth-source-file) file))
+          (should (file-exists-p file))
+          (should (= (logand (file-modes file) #o777) #o600)))
+      (delete-directory directory t))))
+
+(ert-deftest imoogi-gptel-never-overwrites-existing-auth-source-file ()
+  (let* ((directory (make-temp-file "imoogi-gptel-auth-source" t))
+         (file (expand-file-name ".authinfo" directory))
+         (auth-sources (list file)))
+    (unwind-protect
+        (progn
+          (with-temp-file file (insert "existing credentials\n"))
+          (should (equal (imoogi-gptel--ensure-auth-source-file) file))
+          (with-temp-buffer
+            (insert-file-contents file)
+            (should (equal (buffer-string) "existing credentials\n"))))
+      (delete-directory directory t))))
+
+(ert-deftest imoogi-gptel-does-not-create-plaintext-gpg-file ()
+  (let* ((directory (make-temp-file "imoogi-gptel-auth-source" t))
+         (file (expand-file-name ".authinfo.gpg" directory))
+         (auth-sources (list file)))
+    (unwind-protect
+        (progn
+          (should-error (imoogi-gptel--ensure-auth-source-file)
+                        :type 'user-error)
+          (should-not (file-exists-p file)))
+      (delete-directory directory t))))
 
 (provide 'gptel-test)
 ;;; gptel-test.el ends here
