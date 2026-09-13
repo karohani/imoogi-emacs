@@ -295,18 +295,65 @@
           "https://gateway.example.test/v1/models")))
 
 (ert-deftest imoogi-gptel-fetch-models-rejects-http-error ()
-  (let ((imoogi-gptel-gateway-url "https://gateway.example.test"))
-    (cl-letf (((symbol-function 'imoogi-gptel--api-key) (lambda () "key"))
-              ((symbol-function 'url-retrieve-synchronously)
-               (lambda (&rest _)
-                 (let ((buffer (generate-new-buffer " *gptel models error*")))
-                   (with-current-buffer buffer
-                     (setq-local url-http-response-status 401)
-                     (insert "HTTP/1.1 401 Unauthorized\r\n\r\n{}"))
-                   buffer))))
-      (should-error
-       (imoogi-gptel--fetch-models "https://gateway.example.test")
-       :type 'error))))
+  (let* ((directory (make-temp-file "imoogi-gptel-http-error" t))
+         (imoogi-gptel-log-file (expand-file-name "gptel.log" directory))
+         (imoogi-gptel-gateway-url "https://gateway.example.test"))
+    (unwind-protect
+        (cl-letf (((symbol-function 'imoogi-gptel--api-key) (lambda () "key"))
+                  ((symbol-function 'url-retrieve-synchronously)
+                   (lambda (&rest _)
+                     (let ((buffer (generate-new-buffer " *gptel models error*")))
+                       (with-current-buffer buffer
+                         (setq-local url-http-response-status 401)
+                         (insert "HTTP/1.1 401 Unauthorized\r\n")
+                         (insert "Content-Type: application/json\r\n\r\n")
+                         (insert "{\"error\":\"invalid virtual key\",")
+                         (insert "\"api_key\":\"must-not-leak\"}"))
+                       buffer))))
+          (should-error
+           (imoogi-gptel--fetch-models "https://gateway.example.test")
+           :type 'error)
+          (with-temp-buffer
+            (insert-file-contents imoogi-gptel-log-file)
+            (should (search-forward "action=model-fetch-response" nil t))
+            (should (search-forward ":status=401" nil t))
+            (should (search-forward ":content-type=\"application/json\"" nil t))
+            (should (search-forward "invalid virtual key" nil t))
+            (should (search-forward "<redacted>" nil t))
+            (should-not (search-forward "must-not-leak" nil t))))
+      (delete-directory directory t))))
+
+(ert-deftest imoogi-gptel-fetch-models-logs-network-failure-details ()
+  (let* ((directory (make-temp-file "imoogi-gptel-network-error" t))
+         (imoogi-gptel-log-file (expand-file-name "gptel.log" directory)))
+    (unwind-protect
+        (cl-letf (((symbol-function 'imoogi-gptel--api-key) (lambda () "key"))
+                  ((symbol-function 'url-retrieve-synchronously)
+                   (lambda (&rest _) (signal 'file-error '("TLS handshake failed")))))
+          (should-error
+           (imoogi-gptel--fetch-models "https://gateway.example.test")
+           :type 'file-error)
+          (with-temp-buffer
+            (insert-file-contents imoogi-gptel-log-file)
+            (should (search-forward "action=model-fetch-network-error" nil t))
+            (should (search-forward ":error-type=file-error" nil t))
+            (should (search-forward "TLS handshake failed" nil t))))
+      (delete-directory directory t))))
+
+(ert-deftest imoogi-gptel-fetch-models-logs-timeout-without-response ()
+  (let* ((directory (make-temp-file "imoogi-gptel-no-response" t))
+         (imoogi-gptel-log-file (expand-file-name "gptel.log" directory)))
+    (unwind-protect
+        (cl-letf (((symbol-function 'imoogi-gptel--api-key) (lambda () "key"))
+                  ((symbol-function 'url-retrieve-synchronously) (lambda (&rest _) nil)))
+          (should-error
+           (imoogi-gptel--fetch-models "https://gateway.example.test")
+           :type 'error)
+          (with-temp-buffer
+            (insert-file-contents imoogi-gptel-log-file)
+            (should (search-forward "action=model-fetch-no-response" nil t))
+            (should (search-forward ":timeout-seconds=10" nil t))))
+      (delete-directory directory t))))
 
 (ert-deftest imoogi-gptel-litellm-setup-defers-model-choice-to-gptel-menu ()
   (let ((imoogi-gptel-default-model 'model-b))

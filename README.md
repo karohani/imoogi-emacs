@@ -697,6 +697,10 @@ OAuth 토큰 파일에 저장된다.
 실행한다. 전체 안내는 `M-x imoogi-gptel-setup-guide`에서 다시 볼 수 있다.
 
 gptel 설정과 등록 과정은 `~/.emacs.d/.cache/imoogi-gptel.log`에 단계별로 기록된다.
+모델 조회가 실패하면 HTTP 상태 코드, Content-Type, 최대 2KB의 응답 본문 요약을
+`model-fetch-response`에 기록한다. DNS/TLS 등의 네트워크 예외와 10초 무응답은 각각
+`model-fetch-network-error`, `model-fetch-no-response`로 구분한다. API key, token,
+secret, password 값은 로그에서 가린다.
 한 실행에 속한 기록은 같은 `action-id`로 묶이며 공급자 선택, profile 추가·수정·전환,
 설정 파일 읽기·쓰기, auth-source 파일 확인과 key 저장·재조회, endpoint와 모델 조회,
 backend 생성을 추적할 수 있다. API key, token, secret, password 값은 항상

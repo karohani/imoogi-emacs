@@ -397,6 +397,49 @@ explicit MODELS-ENDPOINT always takes precedence."
       (concat base (match-string 1 chat-endpoint) "/models"))
      (t (concat base "/v1/models")))))
 
+(defun imoogi-gptel--response-body-preview (&optional limit)
+  "Return a bounded, secret-redacted preview of the current HTTP body.
+LIMIT defaults to 2048 characters.  Point and narrowing are preserved."
+  (save-restriction
+    (widen)
+    (save-excursion
+      (goto-char (point-min))
+      (when (re-search-forward "\r?\n\r?\n" nil t)
+        (let* ((text (buffer-substring-no-properties
+                      (point) (min (point-max) (+ (point) (or limit 2048)))))
+               (redacted
+                (replace-regexp-in-string
+                 "\\(\\\"?\\(?:api[_-]?key\\|access[_-]?token\\|token\\|secret\\|password\\)\\\"?[[:space:]]*[:=][[:space:]]*\\)\\\"?[^\\\",[:space:]}]+\\\"?"
+                 "\\1\"<redacted>\"" text t)))
+          (replace-regexp-in-string
+           "Bearer[[:space:]]+[[:graph:]]+" "Bearer <redacted>" redacted t t))))))
+
+(defun imoogi-gptel--response-header (name)
+  "Return HTTP response header NAME from the current buffer, or nil."
+  (save-restriction
+    (widen)
+    (save-excursion
+      (goto-char (point-min))
+      (let ((case-fold-search t)
+            (header-end (save-excursion
+                          (re-search-forward "\r?\n\r?\n" nil t))))
+        (when (and header-end
+                   (re-search-forward
+                    (concat "^" (regexp-quote name)
+                            ":[[:space:]]*\\([^\r\n]+\\)")
+                    header-end t))
+          (string-trim (match-string-no-properties 1)))))))
+
+(defun imoogi-gptel--log-model-response-diagnostic (url)
+  "Log safe HTTP response diagnostics for URL from the current buffer."
+  (imoogi-gptel--log
+   'model-fetch-response
+   :url url
+   :status (and (boundp 'url-http-response-status)
+                url-http-response-status)
+   :content-type (imoogi-gptel--response-header "Content-Type")
+   :body-preview (imoogi-gptel--response-body-preview)))
+
 (defun imoogi-gptel--fetch-models (gateway-url &optional chat-endpoint
                                                models-endpoint)
   "Fetch model identifiers for GATEWAY-URL and optional endpoints.
@@ -417,14 +460,21 @@ server order, or signal an error that the interactive setup can recover from."
                                         (not (string-empty-p key))))
     (unless (and (stringp key) (not (string-empty-p key)))
       (error "Gateway API key를 auth-source에서 찾을 수 없습니다"))
-    (setq buffer (url-retrieve-synchronously models-url t t 10))
+    (condition-case err
+        (setq buffer (url-retrieve-synchronously models-url t t 10))
+      (error
+       (imoogi-gptel--log 'model-fetch-network-error
+                          :url models-url
+                          :error-type (car-safe err)
+                          :message (error-message-string err))
+       (signal (car err) (cdr err))))
     (unless buffer
+      (imoogi-gptel--log 'model-fetch-no-response :url models-url
+                         :timeout-seconds 10)
       (error "Gateway model endpoint에 연결할 수 없습니다: %s" models-url))
     (unwind-protect
         (with-current-buffer buffer
-          (imoogi-gptel--log 'model-fetch-response :url models-url
-                             :status (and (boundp 'url-http-response-status)
-                                          url-http-response-status))
+          (imoogi-gptel--log-model-response-diagnostic models-url)
           (unless (and (boundp 'url-http-response-status)
                        (= url-http-response-status 200))
             (error "Model endpoint 응답 실패: HTTP %s (%s)"
@@ -663,8 +713,12 @@ Signal a useful setup error when discovery is unavailable."
         models)
     (error
      (imoogi-gptel--log 'model-discovery-failed
+                        :gateway gateway
+                        :models-url (imoogi-gptel--models-url
+                                     gateway chat-endpoint models-endpoint)
+                        :error-type (car-safe err)
                         :message (error-message-string err))
-     (user-error "LiteLLM 모델 조회 실패: %s"
+     (user-error "LiteLLM 모델 조회 실패: %s (상세: C-c h i L)"
                  (error-message-string err)))))
 
 (defun imoogi-gptel--setup-default-model (provider models)
