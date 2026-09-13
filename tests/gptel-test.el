@@ -198,5 +198,43 @@
       (should (equal (imoogi-gptel--api-key) "key"))
       (should (equal captured '("gateway.internal:4000" "apikey"))))))
 
+(ert-deftest imoogi-gptel-store-key-persists-without-second-confirmation ()
+  (let ((imoogi-gptel-provider 'litellm)
+        (imoogi-gptel-gateway-url "http://gateway.internal:4000")
+        (search-count 0)
+        save-behavior
+        cache-cleared)
+    (cl-letf (((symbol-function 'auth-source-search)
+               (lambda (&rest args)
+                 (if (plist-get args :create)
+                     (list
+                      (list :secret (lambda () "new-key")
+                            :save-function
+                            (lambda ()
+                              (setq save-behavior auth-source-save-behavior))))
+                   (setq search-count (1+ search-count))
+                   (when (= search-count 2)
+                     (list (list :secret (lambda () "new-key")))))))
+              ((symbol-function 'auth-source-forget-all-cached)
+               (lambda () (setq cache-cleared t))))
+      (should (imoogi-gptel-store-key))
+      (should (eq save-behavior t))
+      (should cache-cleared)
+      (should (= search-count 2)))))
+
+(ert-deftest imoogi-gptel-store-key-rejects-unpersisted-entry ()
+  (let ((imoogi-gptel-provider 'litellm)
+        (imoogi-gptel-gateway-url "http://gateway.internal:4000")
+        (search-count 0))
+    (cl-letf (((symbol-function 'auth-source-search)
+               (lambda (&rest args)
+                 (if (plist-get args :create)
+                     (list (list :secret (lambda () "new-key")
+                                 :save-function #'ignore))
+                   (setq search-count (1+ search-count))
+                   nil)))
+              ((symbol-function 'auth-source-forget-all-cached) #'ignore))
+      (should-error (imoogi-gptel-store-key) :type 'user-error))))
+
 (provide 'gptel-test)
 ;;; gptel-test.el ends here

@@ -235,27 +235,43 @@ server order, or signal an error that the interactive setup can recover from."
 
 (defun imoogi-gptel-store-key ()
   "Create the LiteLLM virtual-key entry through Emacs auth-source.
-The secret is requested and saved by the selected auth-source backend."
+The secret is requested and saved by the selected auth-source backend.  Since
+the caller already chose to register the key, do not ask a second time whether
+to save it.  Verify the persisted entry before reporting success."
   (interactive)
   (when (eq imoogi-gptel-provider 'codex)
     (user-error "Codex는 API key 대신 M-x gptel-openai-oauth-login으로 인증합니다"))
   (unless imoogi-gptel-gateway-url
     (user-error "먼저 M-x imoogi-gptel-setup을 실행하세요"))
   (let* ((host (imoogi-gptel--auth-host))
-         (existing (car (auth-source-search
+         (search (lambda ()
+                   (car (auth-source-search
                          :host host :user "apikey" :max 1
                          :require '(:secret)))))
+         (existing (funcall search)))
     (if existing
-        (message "API key가 auth-source에 이미 등록되어 있습니다: %s" host)
+        (progn
+          (message "API key가 auth-source에 이미 등록되어 있습니다: %s" host)
+          existing)
       (let* ((entry (car (auth-source-search
                           :host host :user "apikey" :max 1
                           :create '(:secret))))
              (save (and entry (plist-get entry :save-function))))
         (unless entry
           (user-error "사용 가능한 auth-source 저장소가 없습니다"))
-        (when save (funcall save))
+        (unless save
+          (user-error "auth-source가 API key 저장 기능을 제공하지 않습니다"))
+        ;; The user already answered yes to registering the key.  Avoid the
+        ;; backend's redundant save confirmation, where choosing `no' used to
+        ;; discard the key while this function still reported success.
+        (let ((auth-source-save-behavior t))
+          (funcall save))
         (auth-source-forget-all-cached)
-        (message "API key를 auth-source에 등록했습니다: %s" host)))))
+        (let ((saved (funcall search)))
+          (unless saved
+            (user-error "API key가 auth-source에 저장되지 않았습니다: %s" host))
+          (message "API key를 auth-source에 등록했습니다: %s" host)
+          saved)))))
 
 (defun imoogi-gptel--model-symbols (models)
   "Return just the model symbols from gptel MODELS specifications."
