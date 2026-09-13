@@ -112,6 +112,28 @@
       (should (eq (nth 1 (nth 2 captured)) t))
       (should (equal (nth 4 (nth 2 captured)) "personal")))))
 
+(ert-deftest imoogi-gptel-litellm-accepts-complete-chat-endpoint-url ()
+  (let ((imoogi-gptel-litellm-profiles nil)
+        (answers '("company"
+                   "llm-gateway.example.test/custom/chat/completions")))
+    (cl-letf (((symbol-function 'read-string)
+               (lambda (&rest _) (pop answers)))
+              ((symbol-function 'y-or-n-p) (lambda (&rest _) nil))
+              ((symbol-function 'imoogi-gptel--fetch-models)
+               (lambda (gateway)
+                 (should (equal gateway
+                                "https://llm-gateway.example.test"))
+                 '(gateway-model)))
+              ((symbol-function 'imoogi-gptel--read-api-protocol)
+               (lambda (&optional _) 'openai-chat)))
+      (should
+       (equal
+        (imoogi-gptel--read-litellm-profile-arguments)
+        '("https://llm-gateway.example.test"
+          (gateway-model) gateway-model
+          "/custom/chat/completions"
+          nil litellm openai-chat "company"))))))
+
 (ert-deftest imoogi-gptel-setup-builds-openai-compatible-backend ()
   (let* ((file (make-temp-file "imoogi-gptel-test" nil ".json"))
          (imoogi-gptel-backend nil))

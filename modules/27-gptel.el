@@ -488,20 +488,26 @@ model until the user chooses."
                     "수정할 LiteLLM profile: ")
                  (imoogi-gptel--read-new-profile-name)))
          (saved (and edit (imoogi-gptel--find-profile name)))
-         (gateway (read-string
-                   "LiteLLM Gateway URL: "
-                   (or (alist-get 'gateway_url saved)
-                       "http://localhost:4000")))
-         (_ (imoogi-gptel--url-components gateway))
+         (saved-gateway (alist-get 'gateway_url saved))
+         (saved-endpoint (alist-get 'endpoint saved))
+         (input (read-string
+                 "LiteLLM base 또는 Chat endpoint URL: "
+                 (if saved-gateway
+                     (concat saved-gateway (or saved-endpoint ""))
+                   "http://localhost:4000")))
+         (location (imoogi-gptel--split-api-url input))
+         (gateway (car location))
          (models (imoogi-gptel--discover-litellm-models gateway))
          (default (let ((imoogi-gptel-default-model
                          (alist-get 'default_model saved)))
                     (imoogi-gptel--setup-default-model 'litellm models)))
          (protocol (imoogi-gptel--read-api-protocol
                     (alist-get 'api_protocol saved)))
-         (endpoint (if (eq protocol 'anthropic-messages)
-                       "/v1/messages"
-                     "/v1/chat/completions")))
+         (endpoint (or (cdr location)
+                       saved-endpoint
+                       (if (eq protocol 'anthropic-messages)
+                           "/v1/messages"
+                         "/v1/chat/completions"))))
     (list gateway models default endpoint nil 'litellm protocol name)))
 
 (defun imoogi-gptel--read-setup-arguments ()

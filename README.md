@@ -620,7 +620,7 @@ model_list:
 LiteLLM은 다음 순서로 설정한다.
 
 1. `새 profile 등록`: Gateway를 구분할 새 이름 입력, 예: `company`, `personal`
-2. Gateway URL: 경로 없는 주소, 예: `http://localhost:4000`
+2. Gateway URL: base 주소 또는 완성된 Chat endpoint URL
 3. API key: Gateway host별로 `auth-source`에 저장
 4. Model aliases: `GET /v1/models`로 자동 조회
 5. API 형식: 기본값 `자동 / OpenAI Chat`; 필요할 때 `Anthropic Messages` 선택
@@ -630,6 +630,9 @@ LiteLLM은 다음 순서로 설정한다.
 등록된 이름을 자동완성으로 선택하고 Gateway 설정을 수정한다. `C-c h i G` 또는
 `M-x imoogi-gptel-switch-litellm-profile`은 자동완성 목록에서 활성 Gateway를 바꾼다.
 일반 `M-x imoogi-gptel-setup`에서 LiteLLM을 선택하면 새 profile 등록 흐름으로 들어간다.
+LiteLLM에도 `gateway.example.com/custom/chat/completions`처럼 완성된 주소를 입력할 수
+있다. setup은 `https://gateway.example.com`과 `/custom/chat/completions`로 나누고,
+모델 조회에는 base 주소의 `/v1/models`를 사용한다.
 
 setup은 기존 선택 모델이 조회 목록에 있으면 유지하고, 없으면 첫 모델을 임시
 기본값으로 등록한다. setup 중에는 모델을 묻지 않는다. 모델 조회에 실패하면
