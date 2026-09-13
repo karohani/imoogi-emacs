@@ -31,6 +31,12 @@
   "File containing the non-secret LiteLLM Gateway configuration."
   :type 'file)
 
+(defcustom imoogi-gptel-log-file
+  (expand-file-name "imoogi-gptel.log"
+                    (expand-file-name ".cache" user-emacs-directory))
+  "Private diagnostic log for gptel setup and auth-source actions."
+  :type 'file)
+
 (defvar imoogi-gptel-gateway-url nil
   "Configured API base URL, when the provider needs one.")
 
@@ -60,6 +66,45 @@
 
 (defvar imoogi-gptel-active-profile nil
   "Name of the active LiteLLM Gateway profile, or nil for other providers.")
+
+(defvar imoogi-gptel--action-id nil
+  "Identifier shared by log records from one interactive gptel action.")
+
+(defun imoogi-gptel--new-action-id ()
+  "Return a compact identifier for a new gptel action."
+  (format "%s-%06x" (format-time-string "%Y%m%dT%H%M%S")
+          (random #x1000000)))
+
+(defun imoogi-gptel--log-safe-value (key value)
+  "Return VALUE safe for logging under KEY."
+  (if (string-match-p "key\\|secret\\|token\\|password"
+                      (downcase (format "%s" key)))
+      "<redacted>"
+    value))
+
+(defun imoogi-gptel--log (action &rest data)
+  "Append ACTION and plist DATA to `imoogi-gptel-log-file'.
+Logging must never break the action being diagnosed, and secret-like fields
+are always redacted."
+  (condition-case nil
+      (let ((directory (or (file-name-directory imoogi-gptel-log-file)
+                           default-directory)))
+        (make-directory directory t)
+        (with-temp-buffer
+          (insert (format-time-string "%Y-%m-%dT%H:%M:%S%z"))
+          (insert " action=" (format "%s" action))
+          (when imoogi-gptel--action-id
+            (insert " action-id=" imoogi-gptel--action-id))
+          (while data
+            (let ((key (pop data))
+                  (value (pop data)))
+              (insert (format " %s=%S" key
+                              (imoogi-gptel--log-safe-value key value)))))
+          (insert "\n")
+          (write-region (point-min) (point-max) imoogi-gptel-log-file t
+                        'silent))
+        (set-file-modes imoogi-gptel-log-file #o600))
+    (error nil)))
 
 (defun imoogi-gptel--url-components (gateway-url)
   "Validate GATEWAY-URL and return its protocol and host.
@@ -171,6 +216,9 @@ rejected because gptel endpoints are stable paths, not individual requests."
 
 (defun imoogi-gptel--write-config (file)
   "Atomically write the current non-secret configuration to FILE."
+  (imoogi-gptel--log 'config-write-start :file file
+                     :provider imoogi-gptel-provider
+                     :profile imoogi-gptel-active-profile)
   (make-directory (file-name-directory file) t)
   (let ((temporary (make-temp-file
                     (expand-file-name ".imoogi-gptel-" (file-name-directory file))
@@ -182,13 +230,17 @@ rejected because gptel endpoints are stable paths, not individual requests."
                                     :null-object nil :false-object :json-false))
             (insert "\n"))
           (set-file-modes temporary #o600)
-          (rename-file temporary file t))
+          (rename-file temporary file t)
+          (imoogi-gptel--log 'config-write-success :file file
+                             :mode "0600"))
       (when (file-exists-p temporary)
         (delete-file temporary)))))
 
 (defun imoogi-gptel--read-config (&optional file)
   "Read non-secret gptel settings from FILE and return non-nil on success."
   (let ((target (or file imoogi-gptel-config-file)))
+    (imoogi-gptel--log 'config-read-start :file target
+                       :readable (file-readable-p target))
     (when (file-readable-p target)
       (with-temp-buffer
         (insert-file-contents target)
@@ -274,6 +326,9 @@ rejected because gptel endpoints are stable paths, not individual requests."
                     imoogi-gptel-endpoint (alist-get 'endpoint active)
                     imoogi-gptel-models-endpoint
                     (alist-get 'models_endpoint active))))
+          (imoogi-gptel--log 'config-read-success :file target
+                             :provider provider :profile imoogi-gptel-active-profile
+                             :model-count (length models))
           t)))))
 
 (defun imoogi-gptel--auth-host ()
@@ -296,6 +351,9 @@ configured auth file exists.  Existing files are never overwritten.  Encrypted
 `.gpg' files are left to EasyPG so setup does not create invalid plaintext."
   (let* ((files (imoogi-gptel--auth-source-files))
          (existing (seq-find #'file-exists-p files)))
+    (imoogi-gptel--log 'auth-file-check
+                       :files files :existing existing
+                       :writable (and existing (file-writable-p existing)))
     (cond
      (existing
       (unless (file-writable-p existing)
@@ -312,6 +370,7 @@ configured auth file exists.  Existing files are never overwritten.  Encrypted
         ;; file appears between the existence check and creation.
         (write-region "" nil target nil 'silent nil 'excl)
         (set-file-modes target #o600)
+        (imoogi-gptel--log 'auth-file-created :file target :mode "0600")
         (message "auth-source 파일을 생성했습니다: %s" target)
         target))
      (files
@@ -353,6 +412,9 @@ server order, or signal an error that the interactive setup can recover from."
             ("Authorization" . ,(and (stringp key)
                                       (concat "Bearer " key)))))
          buffer)
+    (imoogi-gptel--log 'model-fetch-start :url models-url
+                       :auth-found (and (stringp key)
+                                        (not (string-empty-p key))))
     (unless (and (stringp key) (not (string-empty-p key)))
       (error "Gateway API key를 auth-source에서 찾을 수 없습니다"))
     (setq buffer (url-retrieve-synchronously models-url t t 10))
@@ -360,6 +422,9 @@ server order, or signal an error that the interactive setup can recover from."
       (error "Gateway model endpoint에 연결할 수 없습니다: %s" models-url))
     (unwind-protect
         (with-current-buffer buffer
+          (imoogi-gptel--log 'model-fetch-response :url models-url
+                             :status (and (boundp 'url-http-response-status)
+                                          url-http-response-status))
           (unless (and (boundp 'url-http-response-status)
                        (= url-http-response-status 200))
             (error "Model endpoint 응답 실패: HTTP %s (%s)"
@@ -376,11 +441,19 @@ server order, or signal an error that the interactive setup can recover from."
                  (models
                   (mapcar (lambda (item) (alist-get 'id item))
                           (alist-get 'data payload))))
-            (imoogi-gptel--normalize-models models)))
+            (let ((normalized (imoogi-gptel--normalize-models models)))
+              (imoogi-gptel--log 'model-fetch-success :url models-url
+                                 :model-count (length normalized))
+              normalized)))
       (kill-buffer buffer))))
 
 (defun imoogi-gptel--configure-backend ()
   "Create and select the gptel backend from the loaded configuration."
+  (imoogi-gptel--log 'backend-configure-start
+                     :provider imoogi-gptel-provider
+                     :protocol imoogi-gptel-api-protocol
+                     :profile imoogi-gptel-active-profile
+                     :model-count (length imoogi-gptel-models))
   (when (and imoogi-gptel-models imoogi-gptel-default-model)
     (setq imoogi-gptel-backend
           (pcase imoogi-gptel-provider
@@ -419,7 +492,10 @@ server order, or signal an error that the interactive setup can recover from."
                  :stream t :key #'imoogi-gptel--api-key
                  :models imoogi-gptel-models))))
           gptel-backend imoogi-gptel-backend
-          gptel-model imoogi-gptel-default-model)))
+          gptel-model imoogi-gptel-default-model)
+    (imoogi-gptel--log 'backend-configure-success
+                       :provider imoogi-gptel-provider
+                       :model imoogi-gptel-default-model)))
 
 (defun imoogi-gptel-store-key ()
   "Create the LiteLLM virtual-key entry through Emacs auth-source.
@@ -431,37 +507,109 @@ to save it.  Verify the persisted entry before reporting success."
     (user-error "Codex는 API key 대신 M-x gptel-openai-oauth-login으로 인증합니다"))
   (unless imoogi-gptel-gateway-url
     (user-error "먼저 M-x imoogi-gptel-setup을 실행하세요"))
-  (imoogi-gptel--ensure-auth-source-file)
-  (let* ((host (imoogi-gptel--auth-host))
-         (search (lambda ()
-                   (car (auth-source-search
-                         :host host :user "apikey" :max 1
-                         :require '(:secret)))))
-         (existing (funcall search)))
-    (if existing
+  (let ((imoogi-gptel--action-id (or imoogi-gptel--action-id
+                                     (imoogi-gptel--new-action-id)))
+        (stage 'start)
+        (host (imoogi-gptel--auth-host)))
+    (imoogi-gptel--log 'auth-store-start :provider imoogi-gptel-provider
+                       :profile imoogi-gptel-active-profile :host host)
+    (condition-case err
         (progn
-          (message "API key가 auth-source에 이미 등록되어 있습니다: %s" host)
-          existing)
-      (let* ((entry (car (auth-source-search
-                          :host host :user "apikey" :max 1
-                          :create '(:secret))))
-             (save (and entry (plist-get entry :save-function))))
-        (unless entry
-          (user-error "사용 가능한 auth-source 저장소가 없습니다"))
-        ;; The user already answered yes to registering the key.  Avoid the
-        ;; backend's redundant save confirmation, where choosing `no' used to
-        ;; discard the key while this function still reported success.  Some
-        ;; backends persist during creation and therefore provide no separate
-        ;; `:save-function'; the read-back check below covers both forms.
-        (when save
-          (let ((auth-source-save-behavior t))
-            (funcall save)))
-        (auth-source-forget-all-cached)
-        (let ((saved (funcall search)))
-          (unless saved
-            (user-error "API key가 auth-source에 저장되지 않았습니다: %s" host))
-          (message "API key를 auth-source에 등록했습니다: %s" host)
-          saved)))))
+          (setq stage 'auth-file)
+          (imoogi-gptel--ensure-auth-source-file)
+          (let* ((search (lambda ()
+                           (car (auth-source-search
+                                 :host host :user "apikey" :max 1
+                                 :require '(:secret)))))
+                 (existing (progn
+                             (setq stage 'existing-search)
+                             (funcall search))))
+            (imoogi-gptel--log 'auth-existing-search :host host
+                               :found (and existing t))
+            (if existing
+                (progn
+                  (imoogi-gptel--log 'auth-store-success :host host
+                                     :result 'already-present)
+                  (message "API key가 auth-source에 이미 등록되어 있습니다: %s" host)
+                  existing)
+              (setq stage 'entry-create)
+              (let* ((entry (car (auth-source-search
+                                  :host host :user "apikey" :max 1
+                                  :create '(:secret))))
+                     (save (and entry (plist-get entry :save-function))))
+                (imoogi-gptel--log 'auth-entry-created :host host
+                                   :entry-found (and entry t)
+                                   :save-function (and save t))
+                (unless entry
+                  (user-error "사용 가능한 auth-source 저장소가 없습니다"))
+                (when save
+                  (setq stage 'save-function)
+                  (let ((auth-source-save-behavior t))
+                    (funcall save))
+                  (imoogi-gptel--log 'auth-save-called :host host))
+                (setq stage 'cache-clear)
+                (auth-source-forget-all-cached)
+                (imoogi-gptel--log 'auth-cache-cleared :host host)
+                (setq stage 'verify)
+                (let ((saved (funcall search)))
+                  (imoogi-gptel--log 'auth-verify :host host
+                                     :found (and saved t))
+                  (unless saved
+                    (user-error "API key가 auth-source에 저장되지 않았습니다: %s" host))
+                  (imoogi-gptel--log 'auth-store-success :host host
+                                     :result 'created)
+                  (message "API key를 auth-source에 등록했습니다: %s" host)
+                  saved)))))
+      (error
+       (imoogi-gptel--log 'auth-store-failed :host host :stage stage
+                          :error-type (car err)
+                          :message (error-message-string err))
+       (signal (car err) (cdr err))))))
+
+(defun imoogi-gptel-open-log ()
+  "Open the private gptel diagnostic log."
+  (interactive)
+  (unless (file-exists-p imoogi-gptel-log-file)
+    (imoogi-gptel--log 'log-created :reason 'manual-open))
+  (find-file imoogi-gptel-log-file))
+
+(defun imoogi-gptel-auth-diagnose ()
+  "Show current gptel and auth-source state without revealing secrets."
+  (interactive)
+  (let* ((host (condition-case err
+                   (and imoogi-gptel-gateway-url (imoogi-gptel--auth-host))
+                 (error (format "계산 실패: %s" (error-message-string err)))))
+         (files (imoogi-gptel--auth-source-files))
+         (search-result
+          (condition-case err
+              (and (stringp host)
+                   (auth-source-search :host host :user "apikey" :max 1
+                                       :require '(:secret))
+                   "있음")
+            (error (format "조회 실패: %s" (error-message-string err))))))
+    (imoogi-gptel--log 'auth-diagnose :provider imoogi-gptel-provider
+                       :profile imoogi-gptel-active-profile :host host
+                       :files files :entry search-result)
+    (with-help-window "*imoogi gptel 진단*"
+      (princ "gptel / auth-source 진단 (비밀값은 표시하지 않음)\n\n")
+      (princ (format "로그: %s\n설정: %s\n" imoogi-gptel-log-file
+                     imoogi-gptel-config-file))
+      (princ (format "Provider: %s\nProfile: %s\nGateway: %s\nAuth host: %s\n"
+                     imoogi-gptel-provider imoogi-gptel-active-profile
+                     imoogi-gptel-gateway-url host))
+      (princ (format "Chat endpoint: %s\nModel endpoint: %s\n\n"
+                     imoogi-gptel-endpoint imoogi-gptel-models-endpoint))
+      (princ "auth-source 파일:\n")
+      (if files
+          (dolist (file files)
+            (princ (format "- %s | 존재=%s 읽기=%s 쓰기=%s mode=%s\n"
+                           file (file-exists-p file) (file-readable-p file)
+                           (file-writable-p file)
+                           (and (file-exists-p file)
+                                (format "%o" (logand (file-modes file) #o777))))))
+        (princ "- 파일 기반 auth-source가 설정되지 않음\n"))
+      (princ (format "\n현재 host의 apikey 항목: %s\n" (or search-result "없음")))
+      (princ "\n이미 발생한 메시지: C-h e\n상세 단계 로그: C-c h i L\n"))))
 
 (defun imoogi-gptel--model-symbols (models)
   "Return just the model symbols from gptel MODELS specifications."
@@ -501,14 +649,21 @@ to save it.  Verify the persisted entry before reporting success."
 Signal a useful setup error when discovery is unavailable."
   (setq imoogi-gptel-provider 'litellm
         imoogi-gptel-gateway-url gateway)
-  (when (y-or-n-p "API key를 auth-source에 등록하거나 확인할까요? ")
-    (imoogi-gptel-store-key))
+  (imoogi-gptel--log 'model-discovery-start :gateway gateway
+                     :chat-endpoint chat-endpoint
+                     :models-endpoint models-endpoint)
+  (let ((register-key
+         (y-or-n-p "API key를 auth-source에 등록하거나 확인할까요? ")))
+    (imoogi-gptel--log 'auth-registration-choice :selected register-key)
+    (when register-key (imoogi-gptel-store-key)))
   (condition-case err
       (let ((models (imoogi-gptel--fetch-models
                      gateway chat-endpoint models-endpoint)))
         (message "LiteLLM에서 model %d개를 불러왔습니다" (length models))
         models)
     (error
+     (imoogi-gptel--log 'model-discovery-failed
+                        :message (error-message-string err))
      (user-error "LiteLLM 모델 조회 실패: %s"
                  (error-message-string err)))))
 
@@ -594,6 +749,7 @@ model until the user chooses."
          (provider (alist-get
                     (completing-read "사용할 LLM 연결 방식: " choices nil t)
                     choices nil nil #'string=)))
+    (imoogi-gptel--log 'provider-selected :provider provider)
     (if (eq provider 'litellm)
         (imoogi-gptel--read-litellm-profile-arguments)
       (let* ((openai-location
@@ -644,7 +800,9 @@ CONFIG-FILE contains only non-secret settings; API keys are stored separately
 with `auth-source'."
   (interactive
    (imoogi-gptel--read-setup-arguments))
-  (let* ((provider-value (or provider 'litellm))
+  (let* ((imoogi-gptel--action-id (or imoogi-gptel--action-id
+                                      (imoogi-gptel--new-action-id)))
+         (provider-value (or provider 'litellm))
          (protocol-value
           (or api-protocol
               (if (eq provider-value 'claude)
@@ -661,6 +819,11 @@ with `auth-source'."
                 ('claude "/v1/messages")
                 (_ "/v1/chat/completions"))))
          (target (or config-file imoogi-gptel-config-file)))
+    (imoogi-gptel--log 'setup-start :provider provider-value
+                       :profile profile-name :gateway gateway-url
+                       :protocol protocol-value :endpoint endpoint-value
+                       :models-endpoint models-endpoint
+                       :model-count (length normalized))
     (unless (memq provider-value '(litellm codex claude openai-compatible))
       (user-error "지원하지 않는 provider입니다: %s" provider-value))
     (unless (memq protocol-value '(openai-chat anthropic-messages))
@@ -703,6 +866,9 @@ with `auth-source'."
                (y-or-n-p "지금 OpenAI 계정으로 Codex OAuth 로그인을 할까요? "))
       (gptel-openai-oauth-login imoogi-gptel-backend))
     (message "gptel 설정 완료: %s / %s" provider-value default)
+    (imoogi-gptel--log 'setup-success :provider provider-value
+                       :profile imoogi-gptel-active-profile
+                       :model default :config target)
     target))
 
 (defun imoogi-gptel-add-litellm-profile
@@ -713,8 +879,10 @@ with `auth-source'."
    (let ((args (imoogi-gptel--read-litellm-profile-arguments)))
      (list (nth 0 args) (nth 1 args) (nth 2 args) (nth 3 args)
            (nth 6 args) (nth 7 args) (nth 8 args))))
-  (imoogi-gptel-setup gateway models default-model endpoint nil 'litellm
-                      api-protocol profile-name models-endpoint))
+  (let ((imoogi-gptel--action-id (imoogi-gptel--new-action-id)))
+    (imoogi-gptel--log 'profile-add :profile profile-name :gateway gateway)
+    (imoogi-gptel-setup gateway models default-model endpoint nil 'litellm
+                        api-protocol profile-name models-endpoint)))
 
 (defun imoogi-gptel-edit-litellm-profile
     (gateway models default-model endpoint api-protocol profile-name
@@ -724,14 +892,18 @@ with `auth-source'."
    (let ((args (imoogi-gptel--read-litellm-profile-arguments t)))
      (list (nth 0 args) (nth 1 args) (nth 2 args) (nth 3 args)
            (nth 6 args) (nth 7 args) (nth 8 args))))
-  (imoogi-gptel-setup gateway models default-model endpoint nil 'litellm
-                      api-protocol profile-name models-endpoint))
+  (let ((imoogi-gptel--action-id (imoogi-gptel--new-action-id)))
+    (imoogi-gptel--log 'profile-edit :profile profile-name :gateway gateway)
+    (imoogi-gptel-setup gateway models default-model endpoint nil 'litellm
+                        api-protocol profile-name models-endpoint)))
 
 (defun imoogi-gptel-switch-litellm-profile (name)
   "Activate the saved LiteLLM Gateway profile NAME."
   (interactive
    (list (imoogi-gptel--read-existing-profile-name "전환할 LiteLLM profile: ")))
-  (let ((profile (imoogi-gptel--find-profile name)))
+  (let ((imoogi-gptel--action-id (imoogi-gptel--new-action-id))
+        (profile (imoogi-gptel--find-profile name)))
+    (imoogi-gptel--log 'profile-switch-start :profile name)
     (unless profile
       (user-error "저장된 LiteLLM profile이 없습니다: %s" name))
     (setq imoogi-gptel-provider 'litellm
@@ -745,6 +917,8 @@ with `auth-source'."
           (or (alist-get 'models_endpoint profile) "/v1/models"))
     (imoogi-gptel--configure-backend)
     (imoogi-gptel--write-config imoogi-gptel-config-file)
+    (imoogi-gptel--log 'profile-switch-success :profile name
+                       :gateway imoogi-gptel-gateway-url)
     (message "LiteLLM profile 전환: %s (%s)"
              name imoogi-gptel-gateway-url)))
 
@@ -758,11 +932,14 @@ with `auth-source'."
 (defun imoogi-gptel-reload-config ()
   "Reload the directly edited gptel configuration and activate its backend."
   (interactive)
-  (unless (imoogi-gptel--read-config imoogi-gptel-config-file)
-    (user-error "gptel 설정 파일을 읽을 수 없습니다: %s"
-                imoogi-gptel-config-file))
-  (imoogi-gptel--configure-backend)
-  (message "gptel 설정을 다시 읽었습니다: %s" imoogi-gptel-config-file))
+  (let ((imoogi-gptel--action-id (imoogi-gptel--new-action-id)))
+    (imoogi-gptel--log 'config-reload-start :file imoogi-gptel-config-file)
+    (unless (imoogi-gptel--read-config imoogi-gptel-config-file)
+      (user-error "gptel 설정 파일을 읽을 수 없습니다: %s"
+                  imoogi-gptel-config-file))
+    (imoogi-gptel--configure-backend)
+    (imoogi-gptel--log 'config-reload-success :file imoogi-gptel-config-file)
+    (message "gptel 설정을 다시 읽었습니다: %s" imoogi-gptel-config-file)))
 
 (defun imoogi-gptel--ensure-configured ()
   "Signal a helpful error unless the LiteLLM backend is configured."
@@ -798,6 +975,7 @@ with `auth-source'."
     (princ "   Model list와 Chat endpoint는 profile별로 따로 지정합니다.\n")
     (princ "   API 형식을 고른 뒤 C-c h i m, -m에서 모델을 선택합니다.\n")
     (princ "   조회 실패 시 Gateway 주소와 auth-source key를 확인합니다.\n")
+    (princ "   C-c h i D는 현재 상태를 진단하고, C-c h i L은 전체 설정 로그를 엽니다.\n")
     (princ "3. Codex는 ChatGPT Plus/Pro OAuth를 사용하며 API key가 필요 없습니다.\n")
     (princ "4. Claude는 Anthropic 모델을 고르고 API key를 auth-source에 저장합니다.\n")
     (princ "5. 기타는 OpenAI 호환 base URL, endpoint, 모델 이름을 입력합니다.\n")
@@ -839,6 +1017,8 @@ with `auth-source'."
       ("O" "설정 JSON 열기" imoogi-gptel-open-config)
       ("R" "설정 JSON 다시 읽기" imoogi-gptel-reload-config)
       ("k" "API key 등록" imoogi-gptel-store-key)
+      ("D" "auth 상태 진단" imoogi-gptel-auth-diagnose)
+      ("L" "진단 로그 열기" imoogi-gptel-open-log)
       ("h" "설정 가이드" imoogi-gptel-setup-guide)
       ("q" "종료" transient-quit-one)]])
   (transient-append-suffix 'imoogi-transient-master "g"

@@ -442,19 +442,48 @@
       (should (= search-count 2)))))
 
 (ert-deftest imoogi-gptel-store-key-rejects-unpersisted-entry ()
-  (let ((imoogi-gptel-provider 'litellm)
+  (let* ((directory (make-temp-file "imoogi-gptel-log" t))
+         (imoogi-gptel-log-file (expand-file-name "gptel.log" directory))
+         (imoogi-gptel-provider 'litellm)
         (imoogi-gptel-gateway-url "http://gateway.internal:4000")
         (auth-sources nil)
         (search-count 0))
-    (cl-letf (((symbol-function 'auth-source-search)
-               (lambda (&rest args)
-                 (if (plist-get args :create)
-                     (list (list :secret (lambda () "new-key")
-                                 :save-function #'ignore))
-                   (setq search-count (1+ search-count))
-                   nil)))
-              ((symbol-function 'auth-source-forget-all-cached) #'ignore))
-      (should-error (imoogi-gptel-store-key) :type 'user-error))))
+    (unwind-protect
+        (cl-letf (((symbol-function 'auth-source-search)
+                   (lambda (&rest args)
+                     (if (plist-get args :create)
+                         (list (list :secret (lambda () "new-key")
+                                     :save-function #'ignore))
+                       (setq search-count (1+ search-count))
+                       nil)))
+                  ((symbol-function 'auth-source-forget-all-cached) #'ignore))
+          (should-error (imoogi-gptel-store-key) :type 'user-error)
+          (with-temp-buffer
+            (insert-file-contents imoogi-gptel-log-file)
+            (should (search-forward "action=auth-store-failed" nil t))
+            (should (search-forward "stage=verify" nil t))))
+      (delete-directory directory t))))
+
+(ert-deftest imoogi-gptel-log-redacts-secrets-and-is-private ()
+  (let* ((directory (make-temp-file "imoogi-gptel-log" t))
+         (imoogi-gptel-log-file (expand-file-name "gptel.log" directory))
+         (imoogi-gptel--action-id "test-action"))
+    (unwind-protect
+        (progn
+          (imoogi-gptel--log 'test :host "gateway.example.test"
+                             :api-key "never-write-this"
+                             :access-token "nor-this")
+          (with-temp-buffer
+            (insert-file-contents imoogi-gptel-log-file)
+            (should (search-forward "action-id=test-action" nil t))
+            (should (search-forward "host=\"gateway.example.test\"" nil t))
+            (should-not (search-forward "never-write-this" nil t))
+            (should-not (search-forward "nor-this" nil t))
+            (goto-char (point-min))
+            (should (search-forward "<redacted>" nil t)))
+          (should (= (logand (file-modes imoogi-gptel-log-file) #o777)
+                     #o600)))
+      (delete-directory directory t))))
 
 (ert-deftest imoogi-gptel-store-key-supports-backend-without-save-function ()
   (let ((imoogi-gptel-provider 'litellm)

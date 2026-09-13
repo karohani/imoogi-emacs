@@ -684,6 +684,17 @@ OAuth 토큰 파일에 저장된다.
 암호화 저장을 원하면 `auth-sources`에 `~/.authinfo.gpg`를 우선 등록한 뒤 setup을
 실행한다. 전체 안내는 `M-x imoogi-gptel-setup-guide`에서 다시 볼 수 있다.
 
+gptel 설정과 등록 과정은 `~/.emacs.d/.cache/imoogi-gptel.log`에 단계별로 기록된다.
+한 실행에 속한 기록은 같은 `action-id`로 묶이며 공급자 선택, profile 추가·수정·전환,
+설정 파일 읽기·쓰기, auth-source 파일 확인과 key 저장·재조회, endpoint와 모델 조회,
+backend 생성을 추적할 수 있다. API key, token, secret, password 값은 항상
+`<redacted>`로 기록되고 로그 파일 권한은 `0600`으로 맞춘다.
+
+실패 직후 `C-c h i D`를 실행하면 현재 Gateway에서 계산한 auth host, endpoint,
+`auth-sources` 파일의 존재·읽기·쓰기 권한, 현재 host의 `apikey` 항목 존재 여부를
+확인할 수 있다. `C-c h i L`은 상세 로그를 연다. 이 기능을 설치하기 전에 이미 발생한
+오류 메시지는 `C-h e` (`view-echo-area-messages`)에서 확인한다.
+
 | 키 | 동작 |
 | --- | --- |
 | `C-c h i c` | LiteLLM 채팅 버퍼 열기 |
@@ -698,6 +709,8 @@ OAuth 토큰 파일에 저장된다.
 | `C-c h i f` | 파일을 추가 문맥으로 등록 |
 | `C-c h i S` | LiteLLM Gateway 설정 |
 | `C-c h i k` | virtual key를 auth-source에 등록 |
+| `C-c h i D` | 현재 gptel·auth-source 상태 진단 |
+| `C-c h i L` | 비밀값이 제거된 단계별 진단 로그 열기 |
 | `C-c h i h` | 내장 설정 가이드 보기 |
 
 ### Org/Markdown 브라우저 미리보기 (간단 버전)
