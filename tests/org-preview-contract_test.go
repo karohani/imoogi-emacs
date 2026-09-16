@@ -41,6 +41,37 @@ func TestOrgPreviewFallbackParserReturnsStableSemanticRangesForUnsavedBuffer(t *
 	assertNodeCoveringText(t, doc, orgpreview.KindFileLink, "notes.org")
 }
 
+func TestOrgPreviewFallbackParserPreservesNestedListStructure(t *testing.T) {
+	source := "- root\n  1. child\n    + grandchild\n- tail\n"
+	doc, err := parser.Parse([]byte(source), parser.Options{
+		Adapter:  parser.AdapterFallback,
+		BufferID: "buffer-list",
+	})
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(doc.Nodes) != 1 || doc.Nodes[0].Type != "list" {
+		t.Fatalf("root nodes = %#v", doc.Nodes)
+	}
+	root := doc.Nodes[0]
+	if len(root.Children) != 2 || root.Children[0].Attrs["marker"] != "-" {
+		t.Fatalf("root list = %#v", root)
+	}
+	nested := childNodeOfType(t, root.Children[0], "list")
+	if len(nested.Children) != 1 || nested.Children[0].Attrs["marker"] != "1." {
+		t.Fatalf("nested list = %#v", nested)
+	}
+	deep := childNodeOfType(t, nested.Children[0], "list")
+	if len(deep.Children) != 1 || deep.Children[0].Attrs["marker"] != "+" {
+		t.Fatalf("deep list = %#v", deep)
+	}
+	for _, node := range []orgpreview.Node{root, nested, deep, deep.Children[0]} {
+		if node.ID == "" || !node.Range.ValidFor(len(source)) {
+			t.Fatalf("invalid nested node metadata: %#v", node)
+		}
+	}
+}
+
 func TestOrgPreviewTreeSitterAndFallbackAdaptersEmitEquivalentIRForV1Fixture(t *testing.T) {
 	if !parser.TreeSitterAvailable() {
 		t.Skip("tree-sitter Org adapter is optional until the vendored grammar feasibility gate passes")
@@ -258,6 +289,17 @@ func assertNodeCoveringText(t *testing.T, doc orgpreview.Document, kind orgprevi
 		}
 	}
 	t.Fatalf("no %s node covers %q in normalized IR", kind, needle)
+}
+
+func childNodeOfType(t *testing.T, node orgpreview.Node, typ string) orgpreview.Node {
+	t.Helper()
+	for _, child := range node.Children {
+		if child.Type == typ {
+			return child
+		}
+	}
+	t.Fatalf("node %q has no direct child of type %q: %#v", node.ID, typ, node)
+	return orgpreview.Node{}
 }
 
 func startOrgPreviewServer(t *testing.T) *server.Instance {

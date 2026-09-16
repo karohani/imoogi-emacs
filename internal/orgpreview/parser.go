@@ -28,10 +28,11 @@ type FallbackParser struct{}
 func (FallbackParser) Name() string { return "fallback-org-v1" }
 
 var (
-	headingRE  = regexp.MustCompile(`^(\*+)\s+(.*)$`)
-	listItemRE = regexp.MustCompile(`^(\s*)([-+*]|\d+[.)])\s+(.*)$`)
-	linkRE     = regexp.MustCompile(`\[\[file:([^\]\n]+)\](?:\[([^\]\n]*)\])?\]`)
-	propertyRE = regexp.MustCompile(`^:([[:alnum:]_@#%+.-]+):[[:space:]]*(.*)$`)
+	headingRE     = regexp.MustCompile(`^(\*+)\s+(.*)$`)
+	listItemRE    = regexp.MustCompile(`^(\s*)([-+*]|\d+[.)])\s+(.*)$`)
+	orgCheckboxRE = regexp.MustCompile(`^\[([ Xx-])\](?:[ \t]+|$)(.*)$`)
+	linkRE        = regexp.MustCompile(`\[\[file:([^\]\n]+)\](?:\[([^\]\n]*)\])?\]`)
+	propertyRE    = regexp.MustCompile(`^:([[:alnum:]_@#%+.-]+):[[:space:]]*(.*)$`)
 )
 
 func (p FallbackParser) Parse(text string) (Document, error) {
@@ -119,35 +120,39 @@ func (p FallbackParser) Parse(text string) (Document, error) {
 			continue
 		}
 		if listItemRE.MatchString(trim) && !headingRE.MatchString(trim) {
-			start := line.Start
-			items := []Node{}
+			items := []parsedListItem{}
 			for i < len(lines) {
 				current := strings.TrimRight(lines[i].Text, "\r\n")
-				match := listItemRE.FindStringSubmatch(current)
+				match := listItemRE.FindStringSubmatchIndex(current)
 				if match == nil || headingRE.MatchString(current) {
 					break
 				}
-				contentStart := lines[i].Start + len(match[1]) + len(match[2]) + 1
+				leading := current[match[2]:match[3]]
+				marker := current[match[4]:match[5]]
+				content, checkbox := current[match[6]:match[7]], ""
+				contentStart := lines[i].Start + match[6]
+				if checkboxMatch := orgCheckboxRE.FindStringSubmatchIndex(content); checkboxMatch != nil {
+					checkbox = normalizedCheckboxState(content[checkboxMatch[2]:checkboxMatch[3]])
+					contentStart += checkboxMatch[4]
+					content = content[checkboxMatch[4]:checkboxMatch[5]]
+				}
+				attrs := map[string]string{"marker": marker}
+				if checkbox != "" {
+					attrs["checkbox"] = checkbox
+				}
 				item := Node{
 					Kind:  "block",
 					Type:  "list_item",
-					ID:    nextID(ids, "list_item", normalizeIDText(match[3])),
+					ID:    nextID(ids, "list_item", normalizeIDText(content)),
 					Range: SourceRange{Start: lines[i].Start, End: lines[i].End},
-					Attrs: map[string]string{"marker": match[2]},
-					Text:  match[3],
+					Attrs: attrs,
+					Text:  content,
 				}
-				item.Children = parseInline(match[3], contentStart, ids)
-				items = append(items, item)
+				item.Children = parseInline(content, contentStart, ids)
+				items = append(items, parsedListItem{indent: listIndentWidth(leading), node: item})
 				i++
 			}
-			end := items[len(items)-1].Range.End
-			nodes = append(nodes, Node{
-				Kind:     "block",
-				Type:     "list",
-				ID:       nextID(ids, "list", fmt.Sprintf("%d:%d", len(items), start)),
-				Range:    SourceRange{Start: start, End: end},
-				Children: items,
-			})
+			nodes = append(nodes, buildList(items, ids))
 			continue
 		}
 		start := line.Start

@@ -68,12 +68,12 @@ func FindNodeAt(nodes []Node, offset int) *Node {
 	walk = func(list []Node) {
 		for i := range list {
 			node := &list[i]
-			if offset < node.Range.Start || offset > node.Range.End {
-				continue
-			}
-			if node.Kind == "block" {
+			if offset >= node.Range.Start && offset <= node.Range.End && node.Kind == "block" {
 				best = node
 			}
+			// A list item's source range stays line-local even when it owns a
+			// nested list. Search structural children independently so cursor
+			// navigation can still select a nested item.
 			walk(node.Children)
 		}
 	}

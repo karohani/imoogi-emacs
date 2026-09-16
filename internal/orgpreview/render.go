@@ -69,14 +69,42 @@ func (r Renderer) renderNode(b *strings.Builder, n Node) {
 		}
 		b.WriteString("</tbody></table>")
 	case "list":
-		r.openMapped(b, "ul", n)
+		class := "org-list"
+		if n.Attrs["depth"] != "0" {
+			class += " nested-list"
+		}
+		r.openMappedAttrs(b, "ul", n, map[string]string{"class": class})
 		for _, child := range n.Children {
 			r.renderNode(b, child)
 		}
 		b.WriteString("</ul>")
 	case "list_item":
-		r.openMapped(b, "li", n)
-		r.renderChildrenOrText(b, n)
+		r.openMappedAttrs(b, "li", n, map[string]string{"class": "org-list-item"})
+		inline, nested := splitListItemChildren(n.Children)
+		b.WriteString(`<div class="list-row"><span class="list-marker">`)
+		b.WriteString(escapeText(n.Attrs["marker"]))
+		b.WriteString(`</span>`)
+		if state := n.Attrs["checkbox"]; state != "" {
+			b.WriteString(`<span class="list-checkbox checkbox-`)
+			b.WriteString(html.EscapeString(state))
+			b.WriteString(`" role="img" aria-label="`)
+			b.WriteString(html.EscapeString(checkboxLabel(state)))
+			b.WriteString(`">`)
+			b.WriteString(escapeText(checkboxGlyph(state)))
+			b.WriteString(`</span>`)
+		}
+		b.WriteString(`<span class="list-content">`)
+		if len(inline) == 0 {
+			b.WriteString(escapeText(n.Text))
+		} else {
+			for _, child := range inline {
+				r.renderNode(b, child)
+			}
+		}
+		b.WriteString(`</span></div>`)
+		for _, child := range nested {
+			r.renderNode(b, child)
+		}
 		b.WriteString("</li>")
 	case "code_block":
 		if codeBlockLanguage(n.Attrs["info"]) == "mermaid" {

@@ -52,19 +52,23 @@ func (p MarkdownParser) Parse(text string) (Document, error) {
 			continue
 		}
 		if markdownListRE.MatchString(trim) {
-			start, items := line.Start, []Node{}
+			items := []parsedListItem{}
 			for i < len(lines) {
-				match := markdownListRE.FindStringSubmatch(strings.TrimRight(lines[i].Text, "\r\n"))
+				current := strings.TrimRight(lines[i].Text, "\r\n")
+				match := markdownListRE.FindStringSubmatchIndex(current)
 				if match == nil {
 					break
 				}
-				base := lines[i].Start + len(match[1]) + len(match[2]) + 1
-				item := Node{Kind: "block", Type: "list_item", ID: nextID(ids, "list_item", normalizeIDText(match[3])), Range: SourceRange{Start: lines[i].Start, End: lines[i].End}, Attrs: map[string]string{"marker": match[2]}, Text: match[3]}
-				item.Children = parseMarkdownInline(match[3], base, ids)
-				items = append(items, item)
+				leading := current[match[2]:match[3]]
+				marker := current[match[4]:match[5]]
+				content := current[match[6]:match[7]]
+				base := lines[i].Start + match[6]
+				item := Node{Kind: "block", Type: "list_item", ID: nextID(ids, "list_item", normalizeIDText(content)), Range: SourceRange{Start: lines[i].Start, End: lines[i].End}, Attrs: map[string]string{"marker": marker}, Text: content}
+				item.Children = parseMarkdownInline(content, base, ids)
+				items = append(items, parsedListItem{indent: listIndentWidth(leading), node: item})
 				i++
 			}
-			nodes = append(nodes, Node{Kind: "block", Type: "list", ID: nextID(ids, "list", fmt.Sprintf("%d:%d", len(items), start)), Range: SourceRange{Start: start, End: items[len(items)-1].Range.End}, Children: items})
+			nodes = append(nodes, buildList(items, ids))
 			continue
 		}
 		start, end, paragraph := line.Start, line.End, strings.Builder{}

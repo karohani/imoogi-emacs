@@ -121,6 +121,132 @@ func TestMarkdownParserConstructsAndHeadingPalette(t *testing.T) {
 	}
 }
 
+func TestOrgAndMarkdownListsPreserveNestedMarkers(t *testing.T) {
+	tests := []struct {
+		name   string
+		parser Parser
+	}{
+		{name: "org", parser: FallbackParser{}},
+		{name: "markdown", parser: MarkdownParser{}},
+	}
+	source := "- root\n  1. numbered\n    + deep\n  2) sibling\n- tail\n"
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc, err := tt.parser.Parse(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			list := firstNodeOfType(t, doc.Nodes, "list")
+			if len(list.Children) != 2 {
+				t.Fatalf("root items = %d, want 2: %#v", len(list.Children), list)
+			}
+			root := list.Children[0]
+			nested := directChildOfType(t, root, "list")
+			if len(nested.Children) != 2 {
+				t.Fatalf("nested items = %d, want 2: %#v", len(nested.Children), nested)
+			}
+			deep := directChildOfType(t, nested.Children[0], "list")
+			if got := deep.Children[0].Attrs["marker"]; got != "+" {
+				t.Fatalf("deep marker = %q, want +", got)
+			}
+			if got := nested.Children[0].Attrs["marker"]; got != "1." {
+				t.Fatalf("numbered marker = %q, want 1.", got)
+			}
+			if got := nested.Children[1].Attrs["marker"]; got != "2)" {
+				t.Fatalf("dedented marker = %q, want 2)", got)
+			}
+
+			out := Renderer{}.Render(doc)
+			for _, want := range []string{`class="list-marker">-</span>`, `class="list-marker">1.</span>`, `class="list-marker">+</span>`, `class="list-marker">2)</span>`} {
+				if !strings.Contains(out, want) {
+					t.Fatalf("rendered list missing %q:\n%s", want, out)
+				}
+			}
+			if !strings.Contains(out, `class="org-list nested-list"`) {
+				t.Fatalf("nested list class missing:\n%s", out)
+			}
+		})
+	}
+}
+
+func TestListIndentJumpAndMixedWhitespaceAreDeterministic(t *testing.T) {
+	source := "- root\n\t+ tab child\n            1. jumped child\n  - shallower child\n- tail\n"
+	for _, parser := range []Parser{FallbackParser{}, MarkdownParser{}} {
+		doc, err := parser.Parse(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		root := firstNodeOfType(t, doc.Nodes, "list").Children[0]
+		level2 := directChildOfType(t, root, "list")
+		if len(level2.Children) != 2 || level2.Children[0].Text != "tab child" || level2.Children[1].Text != "shallower child" {
+			t.Fatalf("unexpected recovered second level for %s: %#v", parser.Name(), level2.Children)
+		}
+		level3 := directChildOfType(t, level2.Children[0], "list")
+		if len(level3.Children) != 1 || level3.Children[0].Text != "jumped child" {
+			t.Fatalf("unexpected indent jump for %s: %#v", parser.Name(), level3.Children)
+		}
+	}
+}
+
+func TestOrgCheckboxesAreReadOnlyAndMarkdownCheckboxTextIsLiteral(t *testing.T) {
+	source := "- [ ] 할 일\n- [-] 진행 중\n- [X] 완료\n"
+	doc, err := (FallbackParser{}).Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list := firstNodeOfType(t, doc.Nodes, "list")
+	wants := []struct{ state, text string }{{"unchecked", "할 일"}, {"partial", "진행 중"}, {"checked", "완료"}}
+	for i, want := range wants {
+		item := list.Children[i]
+		if item.Attrs["checkbox"] != want.state || item.Text != want.text {
+			t.Fatalf("item %d = checkbox %q text %q", i, item.Attrs["checkbox"], item.Text)
+		}
+	}
+	out := Renderer{}.Render(doc)
+	for _, want := range []string{`class="list-checkbox checkbox-unchecked"`, `class="list-checkbox checkbox-partial"`, `class="list-checkbox checkbox-checked"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("Org checkbox rendering missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, `<input`) {
+		t.Fatalf("Org checkbox became interactive:\n%s", out)
+	}
+
+	markdown, err := (MarkdownParser{}).Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	markdownItem := firstNodeOfType(t, markdown.Nodes, "list").Children[0]
+	if markdownItem.Text != "[ ] 할 일" || markdownItem.Attrs["checkbox"] != "" {
+		t.Fatalf("Markdown checkbox syntax was interpreted: %#v", markdownItem)
+	}
+}
+
+func TestNestedListRangesKeepInlineNavigation(t *testing.T) {
+	source := "- parent\n  -    [ ] 한글 [[file:child.org][링크]]\n- tail\n"
+	doc, err := (FallbackParser{}).Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list := firstNodeOfType(t, doc.Nodes, "list")
+	nested := directChildOfType(t, list.Children[0], "list")
+	item := nested.Children[0]
+	textOffset := strings.Index(source, "한글")
+	if item.Text != "한글 [[file:child.org][링크]]" {
+		t.Fatalf("nested text = %q", item.Text)
+	}
+	if item.Children[0].Range.Start != textOffset {
+		t.Fatalf("inline range starts at %d, want %d", item.Children[0].Range.Start, textOffset)
+	}
+	found := FindNodeAt(doc.Nodes, textOffset)
+	if found == nil || found.Type != "list_item" || found.ID != item.ID {
+		t.Fatalf("FindNodeAt(%d) = %#v, want nested list item %q", textOffset, found, item.ID)
+	}
+	if !strings.Contains(Renderer{}.Render(doc), `>링크</a>`) {
+		t.Fatal("nested inline link was not rendered")
+	}
+}
+
 func TestRendererEscapesHTMLAndMapsElements(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "doc.txt"), []byte("ok"), 0o644); err != nil {
@@ -759,6 +885,28 @@ func contains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func firstNodeOfType(t *testing.T, nodes []Node, typ string) Node {
+	t.Helper()
+	for _, node := range nodes {
+		if node.Type == typ {
+			return node
+		}
+	}
+	t.Fatalf("node type %q not found in %#v", typ, nodes)
+	return Node{}
+}
+
+func directChildOfType(t *testing.T, node Node, typ string) Node {
+	t.Helper()
+	for _, child := range node.Children {
+		if child.Type == typ {
+			return child
+		}
+	}
+	t.Fatalf("direct child type %q not found in %#v", typ, node)
+	return Node{}
 }
 
 func TestHeadingColorsPreserveOrgDepth(t *testing.T) {
