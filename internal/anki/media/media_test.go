@@ -112,6 +112,65 @@ func TestRewriteRejectsEscapeAboveSyncRoot(t *testing.T) {
 	}
 }
 
+func TestRewriteAllowsStandaloneSiblingAssetsInsideRegisteredDirectory(t *testing.T) {
+	root := t.TempDir()
+	documentDir := filepath.Join(root, "notes")
+	assetsDir := filepath.Join(documentDir, "chapter.assets")
+	content := []byte("STANDALONE-ASSET")
+	asset := writeFile(t, assetsDir, "diagram.png", content)
+
+	_, uploads, err := media.Rewrite(documentDir, documentDir, map[string]string{
+		"Back": imgHTML("chapter.assets/diagram.png"),
+	})
+	if err != nil {
+		t.Fatalf("Rewrite: %v", err)
+	}
+	want, err := filepath.EvalSymlinks(asset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(uploads) != 1 || uploads[0].Path != want {
+		t.Fatalf("uploads = %#v, want standalone sibling asset %q", uploads, want)
+	}
+}
+
+func TestRewriteAllowsProjectAssetsInsideRegisteredProjectRoot(t *testing.T) {
+	root := t.TempDir()
+	documentDir := filepath.Join(root, "concepts")
+	asset := writeFile(t, filepath.Join(root, "assets"), "diagram.png", []byte("PROJECT-ASSET"))
+
+	_, uploads, err := media.Rewrite(documentDir, root, map[string]string{
+		"Back": imgHTML("../assets/diagram.png"),
+	})
+	if err != nil {
+		t.Fatalf("Rewrite: %v", err)
+	}
+	want, err := filepath.EvalSymlinks(asset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(uploads) != 1 || uploads[0].Path != want {
+		t.Fatalf("uploads = %#v, want project asset %q", uploads, want)
+	}
+}
+
+func TestRewriteRejectsProjectAssetOutsideIndividuallyRegisteredDocumentRoot(t *testing.T) {
+	root := t.TempDir()
+	documentDir := filepath.Join(root, "concepts")
+	writeFile(t, filepath.Join(root, "assets"), "diagram.png", []byte("PROJECT-ASSET"))
+
+	_, uploads, err := media.Rewrite(documentDir, documentDir, map[string]string{
+		"Back": imgHTML("../assets/diagram.png"),
+	})
+	var nf *media.NotFoundError
+	if !errors.As(err, &nf) {
+		t.Fatalf("err = %v, want confinement error for asset outside registered document root", err)
+	}
+	if len(uploads) != 0 {
+		t.Fatalf("uploads = %#v, want none", uploads)
+	}
+}
+
 // --- AC-C-011a: content-hash suffix inserted BEFORE the extension ---
 
 func TestRewriteStoredNameCarriesDigestBeforeExtension(t *testing.T) {

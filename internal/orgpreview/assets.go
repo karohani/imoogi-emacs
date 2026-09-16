@@ -11,9 +11,14 @@ import (
 
 type AssetResolver struct {
 	AllowedRoots []string
+	ExactAssets  map[string]string
 }
 
 func NewAssetResolver(roots []string) (AssetResolver, error) {
+	return NewAssetResolverWithMap(roots, nil)
+}
+
+func NewAssetResolverWithMap(roots []string, exact map[string]string) (AssetResolver, error) {
 	resolved := make([]string, 0, len(roots))
 	for _, root := range roots {
 		if root == "" {
@@ -25,12 +30,26 @@ func NewAssetResolver(roots []string) (AssetResolver, error) {
 		}
 		resolved = append(resolved, clean)
 	}
-	return AssetResolver{AllowedRoots: resolved}, nil
+	assets := make(map[string]string, len(exact))
+	for id, path := range exact {
+		if !strings.HasPrefix(id, "imoogi-asset:") {
+			continue
+		}
+		clean, err := canonical(path)
+		if err != nil {
+			return AssetResolver{}, fmt.Errorf("canonical exact asset: %w", err)
+		}
+		assets[id] = clean
+	}
+	return AssetResolver{AllowedRoots: resolved, ExactAssets: assets}, nil
 }
 
 func (r AssetResolver) Resolve(baseFile, target string) (string, error) {
 	if target == "" {
 		return "", errors.New("empty target")
+	}
+	if exact, ok := r.ExactAssets[target]; ok {
+		return exact, nil
 	}
 	decoded, err := url.PathUnescape(target)
 	if err != nil {

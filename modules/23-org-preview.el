@@ -70,6 +70,7 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
 (defvar-local imoogi-org-preview--status 'disconnected)
 (defvar-local imoogi-org-preview--session-id nil)
 (defvar-local imoogi-org-preview--buffer-id nil)
+(defvar-local imoogi-org-preview--browser-view nil)
 (defvar-local imoogi-org-preview--revision 0)
 (defvar-local imoogi-org-preview--update-timer nil)
 (defvar-local imoogi-org-preview--nav-timer nil)
@@ -109,16 +110,17 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
   (unless imoogi-org-preview-mode
     (imoogi-org-preview-mode 1))
   (if-let* ((port (imoogi-org-preview--port))
-            (token (imoogi-org-preview--token))
-            (session imoogi-org-preview--session-id))
+	    (view imoogi-org-preview--browser-view)
+	    (session imoogi-org-preview--session-id))
       (progn
         (setq imoogi-org-preview--open-pending nil)
         (browse-url
-       (format "http://%s:%d/preview?session=%s&buffer=%s&token=%s"
+       (format "http://%s:%d/preview?session=%s&buffer=%s&generation=%d&view=%s"
                imoogi-org-preview-host port
                (url-hexify-string session)
                (url-hexify-string imoogi-org-preview--buffer-id)
-               (url-hexify-string token))))
+	       (imoogi-org-preview--generation)
+	       (url-hexify-string view))))
     (setq imoogi-org-preview--open-pending t)
     (message "Org preview is starting; the browser will open when ready")))
 
@@ -133,10 +135,18 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
   (unless (derived-mode-p 'org-mode 'markdown-mode)
     (setq imoogi-org-preview-mode nil)
     (user-error "Preview is available only in Org and Markdown buffers"))
-  (setq imoogi-org-preview--session-id (or imoogi-org-preview--session-id
-                                           (imoogi-org-preview--make-id "session"))
-        imoogi-org-preview--buffer-id (or imoogi-org-preview--buffer-id
-                                          (imoogi-org-preview--make-buffer-id)))
+  (when (fboundp 'imoogi-clipboard--ensure-identity)
+    (imoogi-clipboard--ensure-identity))
+  (setq imoogi-org-preview--session-id
+        (or (and (boundp 'imoogi-clipboard--session-id)
+                 imoogi-clipboard--session-id)
+            imoogi-org-preview--session-id
+            (imoogi-org-preview--make-id "session"))
+        imoogi-org-preview--buffer-id
+        (or (and (boundp 'imoogi-clipboard--buffer-id)
+                 imoogi-clipboard--buffer-id)
+            imoogi-org-preview--buffer-id
+            (imoogi-org-preview--make-buffer-id)))
   (cl-pushnew (current-buffer) imoogi-org-preview--buffers)
   (add-hook 'after-change-functions #'imoogi-org-preview--after-change nil t)
   (add-hook 'kill-buffer-hook #'imoogi-org-preview--disable nil t)
@@ -381,9 +391,18 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
      (protocol_version . 1)
      (session_id . ,imoogi-org-preview--session-id)
      (buffer_id . ,imoogi-org-preview--buffer-id)
+	 (generation . ,(imoogi-org-preview--generation))
      (revision . ,imoogi-org-preview--revision)
      (origin . "emacs"))
    extra))
+
+(defun imoogi-org-preview--generation ()
+  "Return the clipboard identity generation for this preview buffer."
+  (if (and (boundp 'imoogi-clipboard--generation)
+	   (integerp imoogi-clipboard--generation)
+	   (> imoogi-clipboard--generation 0))
+      imoogi-clipboard--generation
+    1))
 
 (defun imoogi-org-preview--build-update-payload ()
   "Return a JSON-ready payload for the current buffer revision."
@@ -393,6 +412,8 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
      (syntax . ,(if (derived-mode-p 'markdown-mode) "markdown" "org"))
      (buffer_name . ,(buffer-name))
      (allowed_roots . ,(imoogi-org-preview--allowed-roots))
+     (asset_map . ,(when (fboundp 'imoogi-clipboard-preview-asset-map)
+                     (imoogi-clipboard-preview-asset-map)))
      (text . ,(buffer-substring-no-properties (point-min) (point-max)))
      (cursor_byte . ,(imoogi-org-preview--cursor-byte)))))
 
@@ -476,6 +497,14 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
 
 (defun imoogi-org-preview--update-callback (status source-buffer)
   "Handle an update response with URL STATUS for SOURCE-BUFFER."
+  (let ((payload (imoogi-org-preview--response-json)))
+    (when (and (buffer-live-p source-buffer)
+	       (alist-get 'browser_view payload))
+      (with-current-buffer source-buffer
+	(setq imoogi-org-preview--browser-view
+	      (alist-get 'browser_view payload))
+	(when imoogi-org-preview--open-pending
+	  (imoogi-org-preview-open)))))
   (when (buffer-live-p source-buffer)
     (with-current-buffer source-buffer
       (setq imoogi-org-preview--sending nil)
@@ -485,6 +514,16 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
           (when (or imoogi-org-preview-highlight-current imoogi-org-preview-navigation-sync)
             (imoogi-org-preview--schedule-navigation))))))
   (imoogi-org-preview--response-callback status source-buffer))
+
+(defun imoogi-org-preview--response-json ()
+  "Decode the JSON body in the current URL response buffer."
+  (condition-case nil
+      (save-excursion
+	(goto-char (point-min))
+	(when (re-search-forward "\r?\n\r?\n" nil t)
+	  (json-parse-buffer :object-type 'alist :array-type 'list
+			     :null-object nil :false-object nil)))
+    (error nil)))
 
 (defun imoogi-org-preview--navigation-callback (status source-buffer)
   "Handle a navigation response with URL STATUS for SOURCE-BUFFER."

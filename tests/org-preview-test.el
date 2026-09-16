@@ -182,7 +182,8 @@
     (org-mode)
     (setq-local imoogi-org-preview-mode t
                 imoogi-org-preview--session-id "session-a"
-                imoogi-org-preview--buffer-id "buffer-a")
+		imoogi-org-preview--buffer-id "buffer-a"
+		imoogi-org-preview--browser-view "view-a")
     (let ((imoogi-org-preview-port 32123)
           (imoogi-org-preview-token "token-a")
           opened-url)
@@ -193,7 +194,9 @@
       (should (string-match-p "/preview\\?" opened-url))
       (should (string-match-p "session=session-a" opened-url))
       (should (string-match-p "buffer=buffer-a" opened-url))
-      (should (string-match-p "token=token-a" opened-url)))))
+	(should (string-match-p "generation=1" opened-url))
+	(should (string-match-p "view=view-a" opened-url))
+	(should-not (string-match-p "token-a" opened-url)))))
 
 ;;; org-preview-test.el ends here
 

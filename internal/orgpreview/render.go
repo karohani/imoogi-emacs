@@ -13,6 +13,8 @@ type Renderer struct {
 	AssetToken     string
 	AssetSessionID string
 	AssetBufferID  string
+	AssetHref      func(string) string
+	PreviewHref    func(string) string
 }
 
 func (r Renderer) Render(doc Document) string {
@@ -246,6 +248,9 @@ func escapeText(s string) string {
 }
 
 func (r Renderer) assetURL(path string) string {
+	if r.AssetHref != nil {
+		return r.AssetHref(path)
+	}
 	values := url.Values{"path": []string{path}}
 	if r.AssetToken != "" {
 		values.Set("token", r.AssetToken)
@@ -260,6 +265,9 @@ func (r Renderer) assetURL(path string) string {
 }
 
 func (r Renderer) previewURL(path string) string {
+	if r.PreviewHref != nil {
+		return r.PreviewHref(path)
+	}
 	values := url.Values{"file_path": []string{path}}
 	if r.AssetToken != "" {
 		values.Set("token", r.AssetToken)

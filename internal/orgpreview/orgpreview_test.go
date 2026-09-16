@@ -3,11 +3,14 @@ package orgpreview
 import (
 	"bytes"
 	"encoding/json"
+	stdhtml "html"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -245,6 +248,36 @@ func TestProtocolValidation(t *testing.T) {
 	}
 }
 
+func TestAssetResolverAllowsOnlyExactOpaqueAssetMapping(t *testing.T) {
+	root := t.TempDir()
+	asset := filepath.Join(root, "screen.png")
+	other := filepath.Join(root, "other.png")
+	if err := os.WriteFile(asset, []byte("png"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(other, []byte("other"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	resolver, err := NewAssetResolverWithMap(nil, map[string]string{"imoogi-asset:one": asset})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := resolver.Resolve("", "imoogi-asset:one")
+	canonicalAsset, canonicalErr := filepath.EvalSymlinks(asset)
+	if canonicalErr != nil {
+		t.Fatal(canonicalErr)
+	}
+	if err != nil || resolved != canonicalAsset {
+		t.Fatalf("Resolve exact = %q, %v", resolved, err)
+	}
+	if _, err := resolver.Resolve("", "imoogi-asset:other"); err == nil {
+		t.Fatal("unmapped opaque asset accepted")
+	}
+	if _, err := resolver.Resolve("", other); err == nil {
+		t.Fatal("broad staging root was inferred")
+	}
+}
+
 func TestAssetResolverRejectsTraversalAndSymlinkEscape(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
@@ -379,14 +412,16 @@ func TestServerAssetRequiresTokenAndMatchingSessionBufferRoot(t *testing.T) {
 	}
 	req := RevisionRequest{
 		Envelope:     NewEnvelope("s1", "b1", 1, OriginEmacs, "e1"),
+		Generation:   1,
 		Text:         "[[file:image.png][image]]",
 		Path:         filepath.Join(root, "note.org"),
 		AllowedRoots: []string{root},
 	}
 	resp := postRevision(t, server.Handler(), "test-token", req)
-	if !strings.Contains(resp.HTML, "token=test-token") || !strings.Contains(resp.HTML, "session=s1") || !strings.Contains(resp.HTML, "buffer=b1") {
+	if strings.Contains(resp.HTML, "test-token") || strings.Contains(resp.HTML, assetPath) || !strings.Contains(resp.HTML, "session=s1") || !strings.Contains(resp.HTML, "generation=1") {
 		t.Fatalf("rendered asset URL is not session authenticated:\n%s", resp.HTML)
 	}
+	assetURL := firstRenderedURL(t, resp.HTML, "src", "/asset?")
 
 	request := httptest.NewRequest(http.MethodGet, "/asset?path="+assetPath+"&session=s1&buffer=b1", nil)
 	rec := httptest.NewRecorder()
@@ -395,14 +430,14 @@ func TestServerAssetRequiresTokenAndMatchingSessionBufferRoot(t *testing.T) {
 		t.Fatalf("unauthenticated asset status = %d", rec.Code)
 	}
 
-	request = httptest.NewRequest(http.MethodGet, "/asset?path="+assetPath+"&session=s1&buffer=other&token=test-token", nil)
+	request = httptest.NewRequest(http.MethodGet, strings.Replace(assetURL, "buffer=b1", "buffer=other", 1), nil)
 	rec = httptest.NewRecorder()
 	server.Handler().ServeHTTP(rec, request)
-	if rec.Code != http.StatusForbidden {
+	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("wrong buffer asset status = %d", rec.Code)
 	}
 
-	request = httptest.NewRequest(http.MethodGet, "/asset?path="+assetPath+"&session=s1&buffer=b1&token=test-token", nil)
+	request = httptest.NewRequest(http.MethodGet, assetURL, nil)
 	rec = httptest.NewRecorder()
 	server.Handler().ServeHTTP(rec, request)
 	if rec.Code != http.StatusOK || rec.Body.String() != "png" {
@@ -423,21 +458,23 @@ func TestServerFilePreviewRendersSavedOrgAndReusesActiveRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	postRevision(t, server.Handler(), "test-token", RevisionRequest{
-		Envelope: NewEnvelope("s1", "origin", 1, OriginEmacs, "origin-1"),
-		Text:     "[[file:linked.org][linked]]", Path: filepath.Join(root, "origin.org"), AllowedRoots: []string{root},
+	origin := postRevision(t, server.Handler(), "test-token", RevisionRequest{
+		Envelope:   NewEnvelope("s1", "origin", 1, OriginEmacs, "origin-1"),
+		Generation: 1,
+		Text:       "[[file:linked.org][linked]]", Path: filepath.Join(root, "origin.org"), AllowedRoots: []string{root},
 	})
 
-	preview := getFilePreview(t, server.Handler(), "/api/file-preview?path="+linked+"&session=s1&buffer=origin&token=test-token")
+	previewURL := strings.Replace(firstRenderedURL(t, origin.HTML, "href", "/preview?"), "/preview?", "/api/file-preview?", 1)
+	preview := getFilePreview(t, server.Handler(), previewURL)
 	if !strings.Contains(preview.HTML, "Saved heading") {
 		t.Fatalf("saved Org was not rendered: %s", preview.HTML)
 	}
 
 	postRevision(t, server.Handler(), "test-token", RevisionRequest{
-		Envelope: NewEnvelope("s1", "linked-buffer", 2, OriginEmacs, "linked-2"),
-		Text:     "* Unsaved live heading\n", Path: linked, AllowedRoots: []string{root},
+		Envelope: NewEnvelope("s1", "linked-buffer", 2, OriginEmacs, "linked-2"), Generation: 1,
+		Text: "* Unsaved live heading\n", Path: linked, AllowedRoots: []string{root},
 	})
-	preview = getFilePreview(t, server.Handler(), "/api/file-preview?path="+linked+"&session=s1&buffer=origin&token=test-token")
+	preview = getFilePreview(t, server.Handler(), previewURL)
 	if !strings.Contains(preview.HTML, "Unsaved live heading") || strings.Contains(preview.HTML, "Saved heading") {
 		t.Fatalf("active revision was not preferred: %s", preview.HTML)
 	}
@@ -457,15 +494,16 @@ func TestServerFilePreviewRendersSavedMarkdownAndText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	postRevision(t, server.Handler(), "test-token", RevisionRequest{
-		Envelope: NewEnvelope("s1", "b1", 1, OriginEmacs, "e1"),
-		Text:     "* Origin\n", Path: filepath.Join(root, "origin.org"), AllowedRoots: []string{root},
+	origin := postRevision(t, server.Handler(), "test-token", RevisionRequest{
+		Envelope:   NewEnvelope("s1", "b1", 1, OriginEmacs, "e1"),
+		Generation: 1, Text: "[[file:linked.md][md]]\n[[file:notes.txt][text]]\n", Path: filepath.Join(root, "origin.org"), AllowedRoots: []string{root},
 	})
-	preview := getFilePreview(t, server.Handler(), "/api/file-preview?path="+markdown+"&session=s1&buffer=b1&token=test-token")
+	urls := renderedURLs(t, origin.HTML, "href", "/preview?")
+	preview := getFilePreview(t, server.Handler(), strings.Replace(urls[0], "/preview?", "/api/file-preview?", 1))
 	if !strings.Contains(preview.HTML, "Markdown heading") || !strings.Contains(preview.HTML, "palette-red") {
 		t.Fatalf("saved Markdown was not rendered: %s", preview.HTML)
 	}
-	preview = getFilePreview(t, server.Handler(), "/api/file-preview?path="+textFile+"&session=s1&buffer=b1&token=test-token")
+	preview = getFilePreview(t, server.Handler(), strings.Replace(urls[1], "/preview?", "/api/file-preview?", 1))
 	if !strings.Contains(preview.HTML, "&lt;plain text&gt;") || strings.Contains(preview.HTML, "<plain text>") {
 		t.Fatalf("plain text was not safely rendered: %s", preview.HTML)
 	}
@@ -481,13 +519,27 @@ func TestServerFilePreviewEmbedsPDFWithoutForcingDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	postRevision(t, server.Handler(), "test-token", RevisionRequest{
-		Envelope: NewEnvelope("s1", "b1", 1, OriginEmacs, "e1"),
-		Text:     "* Origin\n", Path: filepath.Join(root, "origin.org"), AllowedRoots: []string{root},
+	origin := postRevision(t, server.Handler(), "test-token", RevisionRequest{
+		Envelope:   NewEnvelope("s1", "b1", 1, OriginEmacs, "e1"),
+		Generation: 1, Text: "[[file:reference.pdf][pdf]]\n", Path: filepath.Join(root, "origin.org"), AllowedRoots: []string{root},
 	})
-	preview := getFilePreview(t, server.Handler(), "/api/file-preview?path="+pdf+"&session=s1&buffer=b1&token=test-token")
+	preview := getFilePreview(t, server.Handler(), strings.Replace(firstRenderedURL(t, origin.HTML, "href", "/preview?"), "/preview?", "/api/file-preview?", 1))
 	if !strings.Contains(preview.HTML, `<iframe class="linked-media"`) || !strings.Contains(preview.HTML, "/asset?") {
 		t.Fatalf("PDF was not embedded in the preview: %s", preview.HTML)
+	}
+	assetURL := firstRenderedURL(t, preview.HTML, "src", "/asset?")
+	parsedAssetURL, err := url.Parse(assetURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsedAssetURL.Query().Get("id") == "" || parsedAssetURL.Query().Get("token") != "" || parsedAssetURL.Query().Get("path") != "" || strings.Contains(preview.HTML, pdf) {
+		t.Fatalf("linked PDF URL exposed control credentials or a path: %s", assetURL)
+	}
+	request := httptest.NewRequest(http.MethodGet, assetURL, nil)
+	recorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK || recorder.Body.String() != "%PDF-1.4 test" {
+		t.Fatalf("linked PDF asset fetch = %d/%q", recorder.Code, recorder.Body.String())
 	}
 	if strings.Contains(preview.HTML, "%PDF-1.4") {
 		t.Fatalf("PDF body leaked into preview HTML: %s", preview.HTML)
@@ -525,23 +577,25 @@ func TestServerFilePreviewBlocksUnsupportedAndOutsideFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	postRevision(t, server.Handler(), "test-token", RevisionRequest{
-		Envelope: NewEnvelope("s1", "b1", 1, OriginEmacs, "e1"),
-		Text:     "* Origin\n", Path: filepath.Join(root, "origin.org"), AllowedRoots: []string{root},
+	origin := postRevision(t, server.Handler(), "test-token", RevisionRequest{
+		Envelope:   NewEnvelope("s1", "b1", 1, OriginEmacs, "e1"),
+		Generation: 1, Text: "[[file:archive.zip][archive]]\n[[file:script.sh][script]]\n", Path: filepath.Join(root, "origin.org"), AllowedRoots: []string{root},
 	})
-	preview := getFilePreview(t, server.Handler(), "/api/file-preview?path="+archive+"&session=s1&buffer=b1&token=test-token")
+	urls := renderedURLs(t, origin.HTML, "href", "/preview?")
+	preview := getFilePreview(t, server.Handler(), strings.Replace(urls[0], "/preview?", "/api/file-preview?", 1))
 	if !strings.Contains(preview.HTML, "미리보기 미지원") || strings.Contains(preview.HTML, "PK binary payload") {
 		t.Fatalf("unsupported file response = %s", preview.HTML)
 	}
-	preview = getFilePreview(t, server.Handler(), "/api/file-preview?path="+executable+"&session=s1&buffer=b1&token=test-token")
+	preview = getFilePreview(t, server.Handler(), strings.Replace(urls[1], "/preview?", "/api/file-preview?", 1))
 	if !strings.Contains(preview.HTML, "미리보기 미지원") || strings.Contains(preview.HTML, "echo secret") {
 		t.Fatalf("executable file response = %s", preview.HTML)
 	}
 
-	request := httptest.NewRequest(http.MethodGet, "/api/file-preview?path="+secret+"&session=s1&buffer=b1&token=test-token", nil)
+	request := httptest.NewRequest(http.MethodGet,
+		strings.Replace(strings.Replace(urls[0], "/preview?", "/api/file-preview?", 1), "id=", "id=forged", 1), nil)
 	recorder := httptest.NewRecorder()
 	server.Handler().ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusForbidden || strings.Contains(recorder.Body.String(), "secret") {
+	if recorder.Code != http.StatusBadRequest || strings.Contains(recorder.Body.String(), "secret") {
 		t.Fatalf("outside preview status/body = %d/%q", recorder.Code, recorder.Body.String())
 	}
 }
@@ -594,7 +648,7 @@ func TestServerServesPreviewShellAndBrowserWebSocketQueryContract(t *testing.T) 
 		"mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'dark'})",
 		"await mermaid.run({nodes:nodes,suppressErrors:true})",
 		"/api/file-preview",
-		"if (linkedFilePath) loadLinkedFile(); else connect();",
+		"if (linkedFileID) loadLinkedFile(); else connect();",
 		".org-properties",
 	} {
 		if !strings.Contains(body, want) {
@@ -661,6 +715,28 @@ func postRevision(t *testing.T, handler http.Handler, token string, req Revision
 		t.Fatal(err)
 	}
 	return out
+}
+
+func firstRenderedURL(t *testing.T, body, attribute, prefix string) string {
+	t.Helper()
+	urls := renderedURLs(t, body, attribute, prefix)
+	return urls[0]
+}
+
+func renderedURLs(t *testing.T, body, attribute, prefix string) []string {
+	t.Helper()
+	re := regexp.MustCompile(attribute + `="([^"]+)"`)
+	var urls []string
+	for _, match := range re.FindAllStringSubmatch(body, -1) {
+		value := stdhtml.UnescapeString(match[1])
+		if strings.HasPrefix(value, prefix) {
+			urls = append(urls, value)
+		}
+	}
+	if len(urls) == 0 {
+		t.Fatalf("no rendered %s URL with prefix %q in %s", attribute, prefix, body)
+	}
+	return urls
 }
 
 func flattenTypes(nodes []Node) []string {

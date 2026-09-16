@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha1"
+	"crypto/sha256"
 	_ "embed"
 	"encoding/base64"
 	"encoding/binary"
@@ -17,6 +18,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,11 +51,15 @@ type sessionState struct {
 }
 
 type bufferState struct {
-	revision int64
-	document Document
-	html     string
-	path     string
-	roots    []string
+	revision     int64
+	document     Document
+	html         string
+	path         string
+	roots        []string
+	exactAssets  map[string]string
+	generation   uint64
+	browserView  string
+	assetHandles map[string]string
 }
 
 type browserClient struct {
@@ -220,21 +226,38 @@ func (s *Server) handleRevision(w http.ResponseWriter, r *http.Request) {
 	if req.Path != "" {
 		roots = append(roots, filepath.Dir(req.Path))
 	}
-	resolver, err := NewAssetResolver(roots)
+	resolver, err := NewAssetResolverWithMap(roots, req.AssetMap)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	view, err := GenerateToken()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "create browser view")
+		return
+	}
+	if previous := s.bufferState(req.SessionID, req.BufferID); previous != nil && previous.browserView != "" {
+		view = previous.browserView
+	}
+	handles := map[string]string{}
+	secureURL := func(endpoint, path string) string {
+		handle := opaqueAssetHandle(view, path)
+		handles[handle] = path
+		values := url.Values{
+			"id": {handle}, "session": {req.SessionID}, "buffer": {req.BufferID},
+			"generation": {fmt.Sprint(req.Generation)}, "view": {view},
+		}
+		return endpoint + "?" + values.Encode()
+	}
 	html := Renderer{
-		Assets:         resolver,
-		BaseFile:       req.Path,
-		AssetToken:     s.token,
-		AssetSessionID: req.SessionID,
-		AssetBufferID:  req.BufferID,
+		Assets:      resolver,
+		BaseFile:    req.Path,
+		AssetHref:   func(path string) string { return secureURL("/asset", path) },
+		PreviewHref: func(path string) string { return secureURL("/preview", path) },
 	}.Render(doc)
 	renderEvent := RenderEvent{Envelope: req.Envelope, Document: doc, HTML: html}
-	committed := s.commitRevision(req, doc, html, roots)
-	resp := RevisionResponse{Envelope: req.Envelope, Committed: committed, Stale: !committed, Document: doc, HTML: html}
+	committed := s.commitRevision(req, doc, html, roots, view, handles)
+	resp := RevisionResponse{Envelope: req.Envelope, Committed: committed, Stale: !committed, BrowserView: view, Document: doc, HTML: html}
 	writeJSON(w, http.StatusAccepted, resp)
 	if committed {
 		s.broadcastBrowser(req.SessionID, req.BufferID, renderEvent)
@@ -393,7 +416,7 @@ func (s *Server) mapEmacsNavigation(ev NavigationEvent) (NavigationEvent, bool) 
 }
 
 func (s *Server) handleBrowserWebSocket(w http.ResponseWriter, r *http.Request) {
-	if !s.authorized(r) {
+	if !s.browserAuthorized(r) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -426,18 +449,22 @@ func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !s.authorized(r) {
+	if !s.browserAuthorized(r) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	path := r.URL.Query().Get("path")
+	sessionID := r.URL.Query().Get("session")
+	bufferID := r.URL.Query().Get("buffer")
+	path, ok := s.assetHandlePath(sessionID, bufferID, r.URL.Query().Get("id"))
+	if !ok {
+		http.Error(w, "bad asset", http.StatusBadRequest)
+		return
+	}
 	clean, err := canonical(path)
 	if err != nil {
 		http.Error(w, "bad asset", http.StatusBadRequest)
 		return
 	}
-	sessionID := r.URL.Query().Get("session")
-	bufferID := r.URL.Query().Get("buffer")
 	allowed := s.assetAllowed(sessionID, bufferID, clean)
 	if !allowed {
 		http.Error(w, "forbidden", http.StatusForbidden)
@@ -465,12 +492,14 @@ func (s *Server) handleFilePreview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !s.authorized(r) {
+	if !s.browserAuthorized(r) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	requestedPath := r.URL.Query().Get("path")
-	if requestedPath == "" {
+	sessionID := r.URL.Query().Get("session")
+	bufferID := r.URL.Query().Get("buffer")
+	requestedPath, ok := s.assetHandlePath(sessionID, bufferID, r.URL.Query().Get("id"))
+	if !ok {
 		writeError(w, http.StatusBadRequest, "preview path is required")
 		return
 	}
@@ -479,8 +508,6 @@ func (s *Server) handleFilePreview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid preview path")
 		return
 	}
-	sessionID := r.URL.Query().Get("session")
-	bufferID := r.URL.Query().Get("buffer")
 	if !s.assetAllowed(sessionID, bufferID, clean) {
 		writeError(w, http.StatusForbidden, "file is outside the preview roots")
 		return
@@ -533,7 +560,15 @@ func (s *Server) handleFilePreview(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "preview roots are unavailable")
 			return
 		}
-		rendered := Renderer{Assets: resolver, BaseFile: clean, AssetToken: s.token, AssetSessionID: sessionID, AssetBufferID: bufferID}.Render(doc)
+		rendered := Renderer{
+			Assets: resolver, BaseFile: clean,
+			AssetHref: func(path string) string {
+				return s.registerBrowserPath(sessionID, bufferID, "/asset", path)
+			},
+			PreviewHref: func(path string) string {
+				return s.registerBrowserPath(sessionID, bufferID, "/preview", path)
+			},
+		}.Render(doc)
 		writeJSON(w, http.StatusOK, filePreviewResponse{HTML: rendered, Title: filepath.Base(clean)})
 		return
 	}
@@ -548,7 +583,7 @@ func (s *Server) handleFilePreview(w http.ResponseWriter, r *http.Request) {
 			contentType = http.DetectContentType(header[:n])
 		}
 	}
-	assetURL := (Renderer{AssetToken: s.token, AssetSessionID: sessionID, AssetBufferID: bufferID}).assetURL(clean)
+	assetURL := s.registerBrowserPath(sessionID, bufferID, "/asset", clean)
 	switch {
 	case strings.HasPrefix(contentType, "image/"):
 		writeJSON(w, http.StatusOK, filePreviewResponse{HTML: `<main class="org-preview linked-file"><img src="` + html.EscapeString(assetURL) + `" alt="` + html.EscapeString(filepath.Base(clean)) + `"></main>`, Title: filepath.Base(clean)})
@@ -632,6 +667,12 @@ func bufferAllowsAsset(buffer *bufferState, clean string) bool {
 	if buffer == nil {
 		return false
 	}
+	for _, exact := range buffer.exactAssets {
+		exactClean, err := canonical(exact)
+		if err == nil && exactClean == clean {
+			return true
+		}
+	}
 	for _, root := range buffer.roots {
 		rootClean, err := canonical(root)
 		if err == nil && within(rootClean, clean) {
@@ -649,10 +690,56 @@ func (s *Server) authorized(r *http.Request) bool {
 			token = strings.TrimPrefix(auth, "Bearer ")
 		}
 	}
-	if token == "" {
-		token = r.URL.Query().Get("token")
-	}
 	return token != "" && token == s.token
+}
+
+func (s *Server) browserAuthorized(r *http.Request) bool {
+	query := r.URL.Query()
+	state := s.bufferState(query.Get("session"), query.Get("buffer"))
+	if state == nil || query.Get("view") == "" || query.Get("view") != state.browserView {
+		return false
+	}
+	return query.Get("generation") == fmt.Sprint(state.generation)
+}
+
+func (s *Server) bufferState(sessionID, bufferID string) *bufferState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if state := s.sessions[sessionID]; state != nil {
+		return state.buffers[bufferID]
+	}
+	return nil
+}
+
+func (s *Server) assetHandlePath(sessionID, bufferID, handle string) (string, bool) {
+	state := s.bufferState(sessionID, bufferID)
+	if state == nil {
+		return "", false
+	}
+	path, ok := state.assetHandles[handle]
+	return path, ok
+}
+
+func (s *Server) registerBrowserPath(sessionID, bufferID, endpoint, path string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state := s.sessions[sessionID]
+	if state == nil || state.buffers[bufferID] == nil {
+		return ""
+	}
+	buffer := state.buffers[bufferID]
+	handle := opaqueAssetHandle(buffer.browserView, path)
+	buffer.assetHandles[handle] = path
+	values := url.Values{
+		"id": {handle}, "session": {sessionID}, "buffer": {bufferID},
+		"generation": {fmt.Sprint(buffer.generation)}, "view": {buffer.browserView},
+	}
+	return endpoint + "?" + values.Encode()
+}
+
+func opaqueAssetHandle(view, path string) string {
+	sum := sha256.Sum256([]byte(view + "\x00" + path))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 func (s *Server) state(sessionID string) *sessionState {
@@ -671,7 +758,7 @@ func (s *Server) state(sessionID string) *sessionState {
 	return state
 }
 
-func (s *Server) commitRevision(req RevisionRequest, doc Document, html string, roots []string) bool {
+func (s *Server) commitRevision(req RevisionRequest, doc Document, html string, roots []string, view string, handles map[string]string) bool {
 	state := s.state(req.SessionID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -679,7 +766,11 @@ func (s *Server) commitRevision(req RevisionRequest, doc Document, html string, 
 	if buf != nil && req.Revision < buf.revision {
 		return false
 	}
-	state.buffers[req.BufferID] = &bufferState{revision: req.Revision, document: doc, html: html, path: req.Path, roots: roots}
+	state.buffers[req.BufferID] = &bufferState{
+		revision: req.Revision, document: doc, html: html, path: req.Path,
+		roots: roots, exactAssets: req.AssetMap, generation: req.Generation,
+		browserView: view, assetHandles: handles,
+	}
 	return true
 }
 
@@ -993,12 +1084,14 @@ const toc = document.getElementById('toc');
 const overview = document.getElementById('overview');
 const sessionID = params.get('session_id') || params.get('session');
 const bufferID = params.get('buffer_id') || params.get('buffer');
-const linkedFilePath = params.get('file_path');
+const linkedFileID = params.get('id');
+const generation = params.get('generation') || '';
+const view = params.get('view') || '';
 let revision = -1;
 let activeTarget = null;
 const blockKinds = new Set(['heading','paragraph','property_drawer','list','list_item','code_block','table','image']);
 const palette = ['red','blue','green','yellow'];
-function wsURL(){const u=new URL('/ws/browser', location.href);u.protocol=location.protocol==='https:'?'wss:':'ws:';u.searchParams.set('session', sessionID || '');u.searchParams.set('buffer', bufferID || '');u.searchParams.set('token', params.get('token') || '');return u;}
+function wsURL(){const u=new URL('/ws/browser', location.href);u.protocol=location.protocol==='https:'?'wss:':'ws:';u.searchParams.set('session', sessionID || '');u.searchParams.set('buffer', bufferID || '');u.searchParams.set('generation', generation);u.searchParams.set('view', view);return u;}
 function connect(){
   const ws = new WebSocket(wsURL());
   ws.onopen = () => statusEl.textContent = 'connected';
@@ -1017,10 +1110,11 @@ function connect(){
 async function loadLinkedFile(){
   statusEl.textContent = 'saved snapshot';
   const endpoint = new URL('/api/file-preview', location.href);
-  endpoint.searchParams.set('path', linkedFilePath || '');
+  endpoint.searchParams.set('id', linkedFileID || '');
   endpoint.searchParams.set('session', sessionID || '');
   endpoint.searchParams.set('buffer', bufferID || '');
-  endpoint.searchParams.set('token', params.get('token') || '');
+  endpoint.searchParams.set('generation', generation);
+  endpoint.searchParams.set('view', view);
   try {
     const response = await fetch(endpoint);
     if (!response.ok) throw new Error('linked file unavailable');
@@ -1183,5 +1277,5 @@ function bootEmpty(){
   rebuildSidebars();
 }
 bootEmpty();
-if (linkedFilePath) loadLinkedFile(); else connect();
+if (linkedFileID) loadLinkedFile(); else connect();
 </script>`

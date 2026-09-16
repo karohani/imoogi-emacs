@@ -1,0 +1,13 @@
+{
+  "protocol_version": 1,
+  "operation": "import",
+  "correlation_id": "corr-1",
+  "identity": {"session": "session-1", "buffer": "buffer-1", "generation": 3},
+  "owner": {
+    "kind": "project_notes",
+    "document": "/notes/project/artifacts/a.org",
+    "root": "/notes/project",
+    "registry_key": "project-1"
+  },
+  "paths": ["/tmp/a.png", "/tmp/b.pdf"]
+}

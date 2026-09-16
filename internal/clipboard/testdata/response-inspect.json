@@ -1,0 +1,10 @@
+{
+  "protocol_version": 1,
+  "operation": "inspect",
+  "correlation_id": "corr-2",
+  "status": "ok",
+  "kind": "files",
+  "capability": "native",
+  "clipboard_id": "macos:42",
+  "formats": ["public.file-url", "public.png"]
+}

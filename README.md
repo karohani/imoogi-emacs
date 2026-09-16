@@ -791,6 +791,39 @@ Org와 Markdown 문법 전체 및 정식 내보내기와의 완전한 일치는 
 부팅 시 서버 실행이나 다운로드는 하지 않는다. 폐쇄망에는 대상 OS용으로 빌드한
 `bin/imoogi-org-preview` 실행 파일도 함께 반입한다.
 
+### Org/Markdown 클립보드 자산 붙여넣기
+
+먼저 Go CLI를 빌드한다. 저장소 안에서만 쓰려면 `make build-clipboard`,
+PATH에 설치하려면 `make install-clipboard`를 실행한다. 빌드 버전은
+`make clipboard-version IMOOGI_CLIP_VERSION=버전`으로 확인할 수 있다.
+실행 중 다운로드나 네트워크 연결은 없다.
+
+Org 또는 Markdown 버퍼에서 평소처럼 `C-y`나 macOS의 `Command-v`를 누른다.
+클립보드가 텍스트이면 기존 Emacs yank가 그대로 동작한다. 파일이나 스크린샷이면
+CLI가 먼저 클립보드 세대를 확인하고 자산을 복사한 뒤 문서 형식에 맞는 링크를 넣는다.
+파일을 Emacs 창으로 드래그해 놓는 방식도 같은 자산 규칙을 사용한다. 폴더 붙여넣기와
+폴더 드래그는 재귀 복사의 부작용을 피하기 위해 거부한다.
+
+| 문서 상태 | 자산 위치 |
+| --- | --- |
+| project-notes 안의 문서 | 프로젝트 최상위 `assets/` |
+| 그 밖의 저장된 문서 | 문서 옆 `<파일명>.assets/` |
+| 아직 저장하지 않은 버퍼 | 버퍼·세대별 임시 staging; 첫 저장이 성공하면 최종 위치로 이동 |
+
+저장하지 않은 버퍼를 버리면 staging 자산도 폐기할 수 있다. 저장·이름 변경·Org refile은
+Emacs 안에서 수행한 경우 링크와 자산을 함께 조정한다. Finder나 터미널에서 문서만 따로
+옮기는 경우는 자동 추적하지 않는 알려진 제한이다. 실패 원인과 최근 요청은
+`M-x imoogi-clipboard-show-diagnostics`에서 확인한다.
+
+현재 네이티브 클립보드 어댑터는 macOS AppKit/NSPasteboard를 지원한다. Windows,
+X11, Wayland는 플랫폼별 실제 클립보드 형식과 컴파일 검증을 거친 뒤 활성화하며,
+현재 빌드에서는 명시적인 `unsupported-capability` 응답을 반환한다. 자세한 지원 범위와
+검증 기준은 `docs/clipboard-platform-support.md`에 있다.
+
+Anki 미디어는 기존 동기화 루트 안의 파일만 읽는다. 프로젝트 공용 `assets/`를 카드에서
+참조한다면 개별 Org 파일 대신 프로젝트 폴더를 동기화 대상으로 등록해야 한다.
+독립 문서의 `<파일명>.assets/`는 그 문서가 속한 등록 폴더 안이므로 그대로 동작한다.
+
 ### Anki 동기화 대상 등록
 
 `M-x imoogi-sync`는 `imoogi-anki-setup`에서 지정한 기존 폴더와 이 PC에
@@ -858,6 +891,7 @@ Anki 메뉴(`C-c a a`)의 **동기화 대상**에서도 같은 명령을 실행�
 | `13-system` | exec-path-from-shell · server · buffer-terminator · persist-text-scale | 환경변수 동기화, 서버, 버퍼 정리, 텍스트 배율 유지 |
 | `14-org` | org · org-appear | org-mode |
 | `27-gptel` | gptel · auth-source | LiteLLM Gateway 기반 LLM 채팅·문맥·요청 |
+| `28-clipboard` | Org · Markdown · 외부 `imoogi-clip` CLI | 텍스트 yank 보존, 파일·스크린샷 자산 붙여넣기와 저장 수명주기 |
 | `15-markdown` | markdown-mode · markdown-toc | Markdown + Org-style 구조 편집 키 |
 | `16-elisp` | aggressive-indent · highlight-defined · paredit · page-break-lines · elisp-refs | Elisp 개발 |
 | `17-lsp` | Eglot · Flymake · xref (Emacs 30 내장) | 공통 LSP 설정 + `modules/lsp/*.el` 언어별 자동 로더 |

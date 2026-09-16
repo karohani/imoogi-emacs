@@ -29,22 +29,24 @@ type Envelope struct {
 
 func (r *RevisionRequest) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		Version           string   `json:"version"`
-		SessionID         string   `json:"session_id"`
-		SessionIDCamel    string   `json:"sessionId"`
-		BufferID          string   `json:"buffer_id"`
-		BufferIDCamel     string   `json:"bufferId"`
-		Revision          int64    `json:"revision"`
-		EventID           string   `json:"event_id"`
-		EventIDCamel      string   `json:"eventId"`
-		Origin            Origin   `json:"origin"`
-		Path              string   `json:"path"`
-		Syntax            string   `json:"syntax"`
-		Text              string   `json:"text"`
-		CursorByte        int      `json:"cursor_byte"`
-		CursorByteCamel   int      `json:"cursorByte"`
-		AllowedRoots      []string `json:"allowed_roots"`
-		AllowedRootsCamel []string `json:"allowedRoots"`
+		Version           string            `json:"version"`
+		SessionID         string            `json:"session_id"`
+		SessionIDCamel    string            `json:"sessionId"`
+		BufferID          string            `json:"buffer_id"`
+		BufferIDCamel     string            `json:"bufferId"`
+		Revision          int64             `json:"revision"`
+		EventID           string            `json:"event_id"`
+		EventIDCamel      string            `json:"eventId"`
+		Origin            Origin            `json:"origin"`
+		Generation        uint64            `json:"generation"`
+		Path              string            `json:"path"`
+		Syntax            string            `json:"syntax"`
+		Text              string            `json:"text"`
+		CursorByte        int               `json:"cursor_byte"`
+		CursorByteCamel   int               `json:"cursorByte"`
+		AllowedRoots      []string          `json:"allowed_roots"`
+		AllowedRootsCamel []string          `json:"allowedRoots"`
+		AssetMap          map[string]string `json:"asset_map"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
@@ -58,6 +60,7 @@ func (r *RevisionRequest) UnmarshalJSON(data []byte) error {
 		Origin:    raw.Origin,
 	}
 	r.Path = raw.Path
+	r.Generation = raw.Generation
 	r.Syntax = raw.Syntax
 	r.Text = raw.Text
 	r.CursorByte = raw.CursorByte
@@ -68,6 +71,7 @@ func (r *RevisionRequest) UnmarshalJSON(data []byte) error {
 	if len(raw.AllowedRootsCamel) > 0 {
 		r.AllowedRoots = raw.AllowedRootsCamel
 	}
+	r.AssetMap = raw.AssetMap
 	return nil
 }
 
@@ -110,19 +114,22 @@ func (e *NavigationEvent) UnmarshalJSON(data []byte) error {
 
 type RevisionRequest struct {
 	Envelope
-	Path         string   `json:"path,omitempty"`
-	Syntax       string   `json:"syntax,omitempty"`
-	Text         string   `json:"text"`
-	CursorByte   int      `json:"cursor_byte,omitempty"`
-	AllowedRoots []string `json:"allowed_roots,omitempty"`
+	Generation   uint64            `json:"generation"`
+	Path         string            `json:"path,omitempty"`
+	Syntax       string            `json:"syntax,omitempty"`
+	Text         string            `json:"text"`
+	CursorByte   int               `json:"cursor_byte,omitempty"`
+	AllowedRoots []string          `json:"allowed_roots,omitempty"`
+	AssetMap     map[string]string `json:"asset_map,omitempty"`
 }
 
 type RevisionResponse struct {
 	Envelope
-	Committed bool     `json:"committed"`
-	Stale     bool     `json:"stale,omitempty"`
-	Document  Document `json:"document,omitempty"`
-	HTML      string   `json:"html,omitempty"`
+	Committed   bool     `json:"committed"`
+	Stale       bool     `json:"stale,omitempty"`
+	BrowserView string   `json:"browser_view,omitempty"`
+	Document    Document `json:"document,omitempty"`
+	HTML        string   `json:"html,omitempty"`
 }
 
 type NavigationEvent struct {
