@@ -445,10 +445,11 @@ Perspective의 파일/Dired 버퍼와 창 배치는 정상 종료 시 저장되�
 | 키 | 명령 | 용도 |
 |----|------|------|
 | `s` | `imoogi-project-notes-setup` | 현재 소스 작업 폴더에 별도 문서 폴더 연결·생성 |
+| `S` | `imoogi-project-notes-setup-study` | 소스 폴더 없이 학습 노트와 전용 작업공간 생성 |
 | `o` | `imoogi-project-notes-open` | 프로젝트 개요 |
 | `t` | `imoogi-project-notes-tasks` | 할 일 원본 열기 |
 | `j` | `imoogi-project-notes-journal` | 현재 작업 공간의 재개 지점 |
-| `l` | `imoogi-project-notes-list` | 소스 작업 폴더 기준으로 골라 소스·개요·할 일·기록으로 이동 |
+| `l` | `imoogi-project-notes-list` | 등록된 프로젝트·학습 노트를 골라 작업공간·개요·할 일·기록으로 이동 |
 | `a` | `imoogi-project-notes-agenda-current` | 현재 프로젝트 Focus Agenda |
 | `A` | `imoogi-project-notes-agenda-all` | 등록된 전체 프로젝트 Dashboard |
 | `r` | `imoogi-project-notes-create-artifact` | 현재 TODO의 산출물 파일과 양방향 ID 링크 생성 |
@@ -487,6 +488,62 @@ TODO heading에서 `r`을 누르면 조사·요구사항·설계·문제 분석�
 중앙 관리에서는 `tasks.org`가 중앙 Agenda 문서로 안내한다. 프로젝트별 선택은
 등록 정보에 저장되며, 설정 변경만으로 기존 TODO를 이동하거나 복제하지 않는다.
 프로젝트별 작업 파일은 Org Agenda에 등록하여 개인 일정과 함께 조회한다.
+
+#### 소스 프로젝트가 없는 학습 노트
+
+강의·책·자격시험처럼 소스 코드 폴더가 없는 학습도 project-notes 안에서 관리한다.
+`C-c h p m S` 또는 `M-x imoogi-project-notes-setup-study`를 실행하고 학습 이름을
+입력하면 `~/project-notes/YY.NN-학습명/`을 만든다. 같은 해의 기존 번호를 확인해
+`26.01`, `26.02`처럼 두 자리 순번을 자동으로 증가시킨다.
+
+생성 직후 노트 폴더 자체를 루트로 하는 Perspective와 Treemacs workspace가 열리고
+`study.org`가 표시된다. 별도의 소스 프로젝트를 선택하거나 등록할 필요가 없다.
+`tasks.org`는 기존 프로젝트 작업과 마찬가지로 Org Agenda에 등록한다. 기존 파일은
+덮어쓰지 않는다.
+
+모든 프로젝트 노트 폴더의 최상단에는 `.imoogi-project.json`이 생성된다. 이 파일의
+`type`이 `project`인지 `study`인지에 따라 폴더 규약과 사용할 명령을 판별한다.
+현재 파일에서 상위 폴더를 탐색하므로 중앙 레지스트리가 없어도 학습 노트의 문맥을
+복원할 수 있다. `.cache/project-notes.json`은 전체 목록과 빠른 선택을 위한 인덱스로
+계속 사용한다. 기존 메타데이터는 자동으로 덮어쓰지 않는다.
+
+```json
+{
+  "schema_version": 1,
+  "type": "study",
+  "key": "study:26.01",
+  "name": "Operating Systems",
+  "study_id": "26.01",
+  "created_at": "2026-01-15",
+  "overview": "study.org",
+  "tasks": "tasks.org",
+  "journal": "logs/journal.org",
+  "todo_storage": "project"
+}
+```
+
+```text
+~/project-notes/26.01-operating-systems/
+  .imoogi-project.json       폴더 유형·ID·문서 배치 메타데이터
+  study.org                 학습 목적·범위·현재 진행 상황
+  tasks.org                 읽기·과제·시험 TODO
+  cards.org                 인출 문항과 암기카드 후보
+  questions.org             사전 회상과 미해결 질문
+  materials/
+    books/ handouts/ articles/ slides/ videos/
+  logs/journal.org          학습 과정 기록
+  concepts/                 자기 언어로 정리한 개념
+  assignments/              문제 풀이와 적용 결과
+  assets/                   캡처·그림·첨부 이미지
+```
+
+`study.org`에는 아날로그 노트와 함께 쓸 수 있는 짧은 ID와 정확한 시작일을 기록한다.
+
+```org
+#+TITLE: Operating Systems
+#+STUDY_ID: 26.01
+#+START_DATE: 2026-01-15
+```
 
 ### Git
 | 키 | 동작 |

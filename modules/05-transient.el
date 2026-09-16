@@ -301,13 +301,14 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
     ("o" "개요" imoogi-project-notes-open)
     ("t" "할 일" imoogi-project-notes-tasks)
     ("j" "작업 기록·재개" imoogi-project-notes-journal)
-    ("l" "작업 폴더 목록·이동" imoogi-project-notes-list)]
+    ("l" "프로젝트·학습 목록" imoogi-project-notes-list)]
    ["실행·산출물 ----------"
     ("a" "현재 Focus Agenda" imoogi-project-notes-agenda-current)
     ("A" "전체 Dashboard" imoogi-project-notes-agenda-all)
     ("r" "TODO 산출물 생성" imoogi-project-notes-create-artifact)]
    ["준비 -----------------"
     ("s" "작업 폴더에 문서 연결" imoogi-project-notes-setup)
+    ("S" "학습 노트·작업공간 생성" imoogi-project-notes-setup-study)
     ("d" "개발 문서 추가" imoogi-project-notes-add-document)
     ("n" "영속 Scratch" imoogi-notes-scratch)
     ("h" "폴더 구조 안내" imoogi-project-notes-setup-guide)

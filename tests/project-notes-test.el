@@ -39,13 +39,18 @@
       (setq org-agenda-files (list (expand-file-name "existing.org" sandbox)))
       (let* ((directory (imoogi-project-notes-setup root))
              (tasks (expand-file-name "tasks.org" directory))
-             (overview (expand-file-name "project.org" directory)))
+             (overview (expand-file-name "project.org" directory))
+             (metadata-file (expand-file-name ".imoogi-project.json" directory)))
         (should (equal (file-name-nondirectory (directory-file-name directory))
                        "260918-source"))
         (should (equal (sort (directory-files directory nil "\\.org\\'") #'string<)
                        '("journal.org" "project.org" "tasks.org")))
         (should (file-directory-p (expand-file-name "assets" directory)))
         (should (file-directory-p (expand-file-name "references" directory)))
+        (let ((metadata (imoogi-project-notes--read-metadata-file metadata-file)))
+          (should (equal (alist-get 'type metadata) "project"))
+          (should (equal (alist-get 'source_root metadata) root))
+          (should (equal (alist-get 'overview metadata) "project.org")))
         (should-not (file-exists-p (expand-file-name "development" directory)))
         (should-not (string-match-p "{{" (imoogi-project-notes-test--read overview)))
         (should (member tasks org-agenda-files))
@@ -68,6 +73,94 @@
         (let ((second (imoogi-project-notes-setup other)))
           (should (string-match-p "/260918-source/\\'" first))
           (should (string-match-p "/260918-source-[0-9a-f]\\{10\\}/\\'" second)))))))
+
+(ert-deftest imoogi-project-notes-study-setup-needs-no-source-project ()
+  (imoogi-project-notes-test--isolated
+    (let (perspective-call treemacs-call)
+      (cl-letf (((symbol-function 'imoogi-project-notes--study-year)
+                 (lambda () "26"))
+                ((symbol-function 'persp-switch)
+                 (lambda (name) (setq perspective-call name)))
+                ((symbol-function 'imoogi-project-perspective-name)
+                 (lambda (directory)
+                   (concat "study:" (file-name-nondirectory
+                                     (directory-file-name directory)))))
+                ((symbol-function 'imoogi-treemacs-open-project-workspace)
+                 (lambda (directory name)
+                   (setq treemacs-call (list directory name)))))
+        (let* ((directory (imoogi-project-notes-setup-study
+                           "Operating Systems" nil "26.01" "2026-01-15"))
+               (entry (car (imoogi-project-notes--read-registry)))
+               (study (expand-file-name "study.org" directory))
+               (metadata-file (expand-file-name ".imoogi-project.json" directory)))
+          (should (string-match-p "/26\\.01-operating-systems/\\'" directory))
+          (should (equal (alist-get 'type entry) "study"))
+          (should (equal (alist-get 'study-id entry) "26.01"))
+          (should (equal (alist-get 'source-root entry) directory))
+          (let ((metadata (imoogi-project-notes--read-metadata-file metadata-file)))
+            (should (equal (alist-get 'type metadata) "study"))
+            (should (equal (alist-get 'study_id metadata) "26.01"))
+            (should (equal (alist-get 'overview metadata) "study.org"))
+            (should-not (assq 'source_root metadata)))
+          (should (equal buffer-file-name study))
+          (should (equal perspective-call "study:26.01-operating-systems"))
+          (should (equal treemacs-call
+                         (list directory "study:26.01-operating-systems")))
+          (dolist (file '("study.org" "tasks.org" "cards.org" "questions.org"
+                          "logs/journal.org"))
+            (should (file-exists-p (expand-file-name file directory))))
+          (dolist (subdir '("materials/books" "materials/handouts"
+                            "materials/articles" "materials/slides"
+                            "materials/videos" "logs" "concepts"
+                            "assignments" "assets"))
+            (should (file-directory-p (expand-file-name subdir directory))))
+          (let ((contents (imoogi-project-notes-test--read study)))
+            (should (string-match-p "^#\\+STUDY_ID: 26\\.01$" contents))
+            (should (string-match-p "^#\\+START_DATE: 2026-01-15$" contents)))
+          (should (member (expand-file-name "tasks.org" directory)
+                          org-agenda-files))
+          (with-current-buffer (find-buffer-visiting study)
+            (erase-buffer)
+            (insert "* 기존 학습 기록\n")
+            (save-buffer))
+          (should (equal directory
+                         (imoogi-project-notes-setup-study
+                          "Operating Systems" directory "26.01" "2026-01-16")))
+          (should (equal "* 기존 학습 기록\n"
+                         (imoogi-project-notes-test--read study))))))))
+
+(ert-deftest imoogi-project-notes-folder-metadata-recovers-study-context ()
+  (imoogi-project-notes-test--isolated
+    (let* ((directory (imoogi-project-notes-setup-study
+                       "Operating Systems" nil "26.01" "2026-01-15"))
+           (concept (expand-file-name "concepts/C01-process.org" directory))
+           (registry (imoogi-project-notes--registry-file)))
+      (with-temp-file concept (insert "#+TITLE: Process\n"))
+      (delete-file registry)
+      (with-temp-buffer
+        (setq buffer-file-name concept)
+        (let ((entry (imoogi-project-notes--current-entry)))
+          (should (equal (alist-get 'type entry) "study"))
+          (should (equal (alist-get 'study-id entry) "26.01"))
+          (should (equal (alist-get 'project-file entry)
+                         (expand-file-name "study.org" directory))))))))
+
+(ert-deftest imoogi-project-notes-folder-metadata-keeps-document-paths-inside-root ()
+  (imoogi-project-notes-test--isolated
+    (let* ((directory (imoogi-project-notes-setup-study
+                       "Operating Systems" nil "26.01" "2026-01-15"))
+           (file (expand-file-name ".imoogi-project.json" directory))
+           (metadata (imoogi-project-notes--read-metadata-file file)))
+      (setf (alist-get 'tasks metadata) "../outside.org")
+      (should-error (imoogi-project-notes--metadata-entry file metadata)
+                    :type 'user-error))))
+
+(ert-deftest imoogi-project-notes-study-id-increments-by-existing-folders ()
+  (imoogi-project-notes-test--isolated
+    (make-directory (expand-file-name "26.01-first/" imoogi-project-notes-directory) t)
+    (make-directory (expand-file-name "26.07-seventh/" imoogi-project-notes-directory) t)
+    (make-directory (expand-file-name "25.99-old/" imoogi-project-notes-directory) t)
+    (should (equal (imoogi-project-notes--next-study-id "26") "26.08"))))
 
 (ert-deftest imoogi-project-notes-rejects-a-notes-directory-as-source-root ()
   (imoogi-project-notes-test--isolated
@@ -176,7 +269,7 @@
 (ert-deftest imoogi-project-notes-transient-commands-available ()
   (should (eq (plist-get (cdr (transient-get-suffix 'imoogi-transient-project "m")) :command)
               'imoogi-project-notes-transient))
-  (dolist (key '("s" "o" "t" "j" "l" "a" "A" "r" "d" "n" "h"))
+  (dolist (key '("s" "S" "o" "t" "j" "l" "a" "A" "r" "d" "n" "h"))
     (should (commandp (plist-get (cdr (transient-get-suffix 'imoogi-project-notes-transient key))
                                  :command)))))
 

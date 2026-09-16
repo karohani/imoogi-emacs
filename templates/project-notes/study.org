@@ -1,0 +1,31 @@
+#+TITLE: {{PROJECT_NAME}}
+#+STUDY_ID: {{STUDY_ID}}
+#+START_DATE: {{START_DATE}}
+
+* 학습 목적
+이 학습을 통해 설명하거나 수행할 수 있어야 하는 것:
+
+* 범위와 자료
+포함할 주제:
+이번에는 다루지 않을 것:
+
+* 현재 진행 상황
+현재 단계:
+다음 학습 행동:
+어려운 점:
+
+* 학습 흐름
+원본 자료를 확인하기 전에 질문하고 회상한 뒤, 개념 정리·적용·인출 연습으로 이어갑니다.
+
+1. [[file:questions.org][질문·사전 회상]]
+2. [[file:concepts/][개념 정리]]
+3. [[file:assignments/][문제 풀이·적용]]
+4. [[file:cards.org][인출 문항·암기카드]]
+5. [[file:logs/journal.org][학습 기록]]
+
+* 자료
+- [[file:materials/][원본 학습 자료]]
+- [[file:assets/][이미지·첨부 자료]]
+
+* 할 일
+- [[file:tasks.org][학습 TODO]]

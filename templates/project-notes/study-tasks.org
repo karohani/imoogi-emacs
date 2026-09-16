@@ -1,0 +1,15 @@
+#+TITLE: {{PROJECT_NAME}} — 학습 할 일
+#+CATEGORY: {{STUDY_ID}} {{PROJECT_NAME}}
+#+TODO: TODO NEXT DOING WAIT | DONE CANCELLED
+
+* 수집함
+읽을 자료, 과제, 시험 준비와 확인할 질문을 적습니다.
+
+* 학습 작업
+** NEXT 다음 학습 행동
+완료 조건:
+
+* 바로가기
+- [[file:study.org][학습 개요]]
+- [[file:questions.org][질문]]
+- [[file:cards.org][암기카드]]

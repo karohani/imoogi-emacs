@@ -1,0 +1,15 @@
+#+TITLE: {{PROJECT_NAME}} — 학습 기록
+#+STUDY_ID: {{STUDY_ID}}
+
+* 학습 로그
+** {{START_DATE}}
+학습한 내용:
+자료를 보기 전에 회상한 것:
+새로 이해한 개념:
+적용하거나 풀어본 것:
+틀렸거나 막힌 부분:
+다음 행동:
+
+* 바로가기
+- [[file:../study.org][학습 개요]]
+- [[file:../tasks.org][학습 TODO]]

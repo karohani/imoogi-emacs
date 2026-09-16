@@ -37,6 +37,9 @@ a navigation file.  Changing this option does not migrate existing projects."
 (defvar-local imoogi-project-notes-directory-local nil
   "Project notes directory associated with the current buffer.")
 
+(defconst imoogi-project-notes--metadata-file-name ".imoogi-project.json"
+  "File that identifies the kind and layout of a project-notes directory.")
+
 (defconst imoogi-project-notes--documents
   '((domain . ("domain.org" . "도메인 모델"))
     (architecture . ("architecture.org" . "아키텍처"))
@@ -65,6 +68,10 @@ a navigation file.  Changing this option does not migrate existing projects."
 (defun imoogi-project-notes--registry-file ()
   "Return the project notes registry path."
   (locate-user-emacs-file ".cache/project-notes.json"))
+
+(defun imoogi-project-notes--metadata-file (directory)
+  "Return the metadata file below project-notes DIRECTORY."
+  (expand-file-name imoogi-project-notes--metadata-file-name directory))
 
 (defun imoogi-project-notes--template-file (name)
   "Return template NAME's absolute path."
@@ -137,6 +144,97 @@ Git worktrees share the same key by using Git's common directory."
        (imoogi-project-notes--alist-string 'tasks-file entry)
        (imoogi-project-notes--alist-string 'journal-file entry)))
 
+(defun imoogi-project-notes--valid-metadata-p (metadata)
+  "Return non-nil when METADATA describes a supported notes directory."
+  (and (listp metadata)
+       (equal (alist-get 'schema_version metadata) 1)
+       (member (imoogi-project-notes--alist-string 'type metadata)
+               '("project" "study"))
+       (imoogi-project-notes--alist-string 'key metadata)
+       (imoogi-project-notes--alist-string 'name metadata)
+       (imoogi-project-notes--alist-string 'overview metadata)
+       (imoogi-project-notes--alist-string 'tasks metadata)
+       (imoogi-project-notes--alist-string 'journal metadata)
+       (let ((storage (imoogi-project-notes--alist-string
+                       'todo_storage metadata)))
+         (or (null storage) (member storage '("project" "central"))))
+       (if (string= (imoogi-project-notes--alist-string 'type metadata) "study")
+           (imoogi-project-notes--alist-string 'study_id metadata)
+         t)))
+
+(defun imoogi-project-notes--read-metadata-file (file &optional noerror)
+  "Read and validate project-notes metadata FILE.
+When NOERROR is non-nil, return nil and warn instead of signaling."
+  (condition-case err
+      (let ((json-object-type 'alist)
+            (json-array-type 'list)
+            (json-key-type 'symbol)
+            (metadata (json-read-file file)))
+        (unless (imoogi-project-notes--valid-metadata-p metadata)
+          (error "unsupported or incomplete metadata"))
+        metadata)
+    (error
+     (if noerror
+         (progn
+           (display-warning
+            'imoogi
+            (format "프로젝트 노트 메타데이터를 읽지 못해 건너뜀: %s (%s)"
+                    file (error-message-string err))
+            :warning)
+           nil)
+       (user-error "프로젝트 노트 메타데이터가 잘못되었습니다: %s (%s)"
+                   file (error-message-string err))))))
+
+(defun imoogi-project-notes--find-metadata-file (&optional path)
+  "Find project-notes metadata above PATH or the current buffer."
+  (let* ((path (or path buffer-file-name default-directory))
+         (directory (if (and path (not (file-directory-p path)))
+                        (file-name-directory path)
+                      path)))
+    (when (and directory (not (file-remote-p directory)))
+      (when-let* ((root (locate-dominating-file
+                         directory imoogi-project-notes--metadata-file-name)))
+        (imoogi-project-notes--metadata-file root)))))
+
+(defun imoogi-project-notes--metadata-entry (file metadata)
+  "Build a registry-compatible entry from METADATA stored in FILE."
+  (let* ((root (file-name-directory file))
+         (type (imoogi-project-notes--alist-string 'type metadata))
+         (resolve
+          (lambda (key)
+            (let* ((relative (imoogi-project-notes--alist-string key metadata))
+                   (target (expand-file-name relative root)))
+              (when (or (file-name-absolute-p relative)
+                        (not (file-in-directory-p target root)))
+                (user-error "메타데이터의 %s 경로가 노트 폴더 밖을 가리킵니다: %s"
+                            key relative))
+              target)))
+         (source-root (if (string= type "study")
+                          root
+                        (or (imoogi-project-notes--alist-string
+                             'source_root metadata)
+                            root))))
+    `((key . ,(imoogi-project-notes--alist-string 'key metadata))
+      (type . ,type)
+      (name . ,(imoogi-project-notes--alist-string 'name metadata))
+      ,@(when-let* ((study-id (imoogi-project-notes--alist-string
+                               'study_id metadata)))
+          `((study-id . ,study-id)))
+      (source-root . ,(imoogi-project-notes--directory-file-name source-root))
+      (notes-dir . ,(imoogi-project-notes--directory-file-name root))
+      (project-file . ,(funcall resolve 'overview))
+      (tasks-file . ,(funcall resolve 'tasks))
+      (journal-file . ,(funcall resolve 'journal))
+      (todo-storage . ,(or (imoogi-project-notes--alist-string
+                            'todo_storage metadata)
+                           "project")))))
+
+(defun imoogi-project-notes--current-metadata-entry ()
+  "Return an entry derived from the nearest folder metadata, if any."
+  (when-let* ((file (imoogi-project-notes--find-metadata-file))
+              (metadata (imoogi-project-notes--read-metadata-file file 'noerror)))
+    (imoogi-project-notes--metadata-entry file metadata)))
+
 (defun imoogi-project-notes--read-registry (&optional noerror)
   "Read and validate the project notes registry.
 Missing registries are empty.  Invalid registries signal `user-error' unless
@@ -208,6 +306,11 @@ NOERROR is non-nil."
               entries))
         (and buffer-file-name
              (imoogi-project-notes--find-entry-by-notes-file buffer-file-name entries))
+        (when-let* ((metadata-entry
+                     (imoogi-project-notes--current-metadata-entry)))
+          (or (imoogi-project-notes--find-entry-by-key
+               (imoogi-project-notes--alist-string 'key metadata-entry) entries)
+              metadata-entry))
         (when-let* ((project (project-current nil)))
           (imoogi-project-notes--find-entry-by-key
            (imoogi-project-notes--identity-key (project-root project))
@@ -260,6 +363,23 @@ even though the project notes registry key is shared across worktrees."
 (defun imoogi-project-notes--start-date ()
   "Return the date prefix used for a newly created project notes directory."
   (format-time-string "%y%m%d"))
+
+(defun imoogi-project-notes--study-year ()
+  "Return the two-digit year used in a new study identifier."
+  (format-time-string "%y"))
+
+(defun imoogi-project-notes--next-study-id (&optional year)
+  "Return the next YEAR.NN study identifier below the notes root."
+  (let* ((year (or year (imoogi-project-notes--study-year)))
+         (regexp (format "\\`%s\\.\\([0-9][0-9]\\)-" (regexp-quote year)))
+         (maximum 0))
+    (when (file-directory-p imoogi-project-notes-directory)
+      (dolist (name (directory-files imoogi-project-notes-directory nil regexp))
+        (when (string-match regexp name)
+          (setq maximum (max maximum (string-to-number (match-string 1 name)))))))
+    (when (>= maximum 99)
+      (user-error "%s년 학습 노트가 99개를 초과했습니다" year))
+    (format "%s.%02d" year (1+ maximum))))
 
 (defun imoogi-project-notes--default-notes-directory (root key entries)
   "Return the default notes directory for ROOT and KEY."
@@ -328,6 +448,44 @@ even though the project notes registry key is shared across worktrees."
     (make-directory (file-name-directory file) t)
     (write-region content nil file nil 'silent nil 'excl)))
 
+(defun imoogi-project-notes--metadata-data (entry created-at)
+  "Return folder metadata for ENTRY created at CREATED-AT."
+  (let* ((type (imoogi-project-notes--entry-type entry))
+         (root (imoogi-project-notes--alist-string 'notes-dir entry))
+         (relative (lambda (key)
+                     (file-relative-name
+                      (imoogi-project-notes--alist-string key entry) root))))
+    `((schema_version . 1)
+      (type . ,(symbol-name type))
+      (key . ,(imoogi-project-notes--alist-string 'key entry))
+      (name . ,(imoogi-project-notes--entry-name entry))
+      ,@(when (eq type 'study)
+          `((study_id . ,(imoogi-project-notes--alist-string 'study-id entry))))
+      ,@(when (eq type 'project)
+          `((source_root . ,(imoogi-project-notes--alist-string
+                             'source-root entry))))
+      (created_at . ,created-at)
+      (overview . ,(funcall relative 'project-file))
+      (tasks . ,(funcall relative 'tasks-file))
+      (journal . ,(funcall relative 'journal-file))
+      (todo_storage . ,(imoogi-project-notes--alist-string
+                         'todo-storage entry)))))
+
+(defun imoogi-project-notes--ensure-metadata (entry created-at)
+  "Create ENTRY's folder metadata with CREATED-AT, preserving existing data."
+  (let* ((directory (imoogi-project-notes--alist-string 'notes-dir entry))
+         (file (imoogi-project-notes--metadata-file directory))
+         (expected (imoogi-project-notes--metadata-data entry created-at)))
+    (if (file-exists-p file)
+        (let ((actual (imoogi-project-notes--read-metadata-file file)))
+          (unless (and (equal (alist-get 'key actual) (alist-get 'key expected))
+                       (equal (alist-get 'type actual) (alist-get 'type expected)))
+            (user-error "노트 폴더의 기존 메타데이터가 다른 항목을 가리킵니다: %s"
+                        file)))
+      (let ((json-encoding-pretty-print t))
+        (imoogi-project-notes--write-new-file
+         file (concat (json-encode expected) "\n"))))))
+
 (defun imoogi-project-notes--ensure-directories (directory)
   "Create non-document directories under project notes DIRECTORY."
   (make-directory directory t)
@@ -370,26 +528,50 @@ This startup path intentionally avoids writing string-backed agenda storage."
           (setq org-agenda-files targets)))
     (imoogi-project-notes--register-agenda-file-list-only file)))
 
-(defun imoogi-project-notes--values (project-name source-root task-file notes-dir)
+(defun imoogi-project-notes--values (project-name source-root task-file notes-dir
+                                                  &optional study-id start-date)
   "Return template values for PROJECT-NAME, SOURCE-ROOT, TASK-FILE and NOTES-DIR."
   `(("PROJECT_NAME" . ,project-name)
     ("PROJECT_ROOT" . ,source-root)
-    ("TASKS_LINK" . ,(concat "file:" (file-relative-name task-file notes-dir)))))
+    ("TASKS_LINK" . ,(concat "file:" (file-relative-name task-file notes-dir)))
+    ("STUDY_ID" . ,(or study-id ""))
+    ("START_DATE" . ,(or start-date (format-time-string "%Y-%m-%d")))))
 
-(defun imoogi-project-notes--entry (key source-root notes-dir todo-storage)
+(defun imoogi-project-notes--entry (key source-root notes-dir todo-storage
+                                        &optional type name study-id)
   "Build a registry entry."
-  (let* ((project-file (expand-file-name "project.org" notes-dir))
+  (let* ((study-p (eq type 'study))
+         (project-file (expand-file-name (if study-p "study.org" "project.org")
+                                         notes-dir))
          (tasks-file (if (eq todo-storage 'central)
                          (imoogi-project-notes--safe-ensure-central-agenda)
                        (expand-file-name "tasks.org" notes-dir)))
-         (journal-file (expand-file-name "journal.org" notes-dir)))
+         (journal-file (expand-file-name (if study-p "logs/journal.org" "journal.org")
+                                         notes-dir)))
     `((key . ,key)
+      (type . ,(symbol-name (or type 'project)))
+      (name . ,(or name
+                   (file-name-nondirectory (directory-file-name source-root))))
+      ,@(when study-id `((study-id . ,study-id)))
       (source-root . ,(imoogi-project-notes--directory-file-name source-root))
       (notes-dir . ,(imoogi-project-notes--directory-file-name notes-dir))
       (project-file . ,project-file)
       (tasks-file . ,tasks-file)
       (journal-file . ,journal-file)
       (todo-storage . ,(symbol-name todo-storage)))))
+
+(defun imoogi-project-notes--entry-type (entry)
+  "Return ENTRY's persisted type, defaulting legacy entries to project."
+  (if (string= (imoogi-project-notes--alist-string 'type entry) "study")
+      'study
+    'project))
+
+(defun imoogi-project-notes--entry-name (entry)
+  "Return the human-readable name stored for ENTRY."
+  (or (imoogi-project-notes--alist-string 'name entry)
+      (file-name-nondirectory
+       (directory-file-name
+        (imoogi-project-notes--alist-string 'source-root entry)))))
 
 (defun imoogi-project-notes--entry-todo-storage (entry)
   "Return ENTRY's persisted TODO storage choice."
@@ -416,6 +598,30 @@ This startup path intentionally avoids writing string-backed agenda storage."
     (imoogi-project-notes--write-new-file
      local-tasks-file (imoogi-project-notes--project-tasks-template
                        entry values))))
+
+(defun imoogi-project-notes--ensure-study-directories (directory)
+  "Create the standard learning directories below DIRECTORY."
+  (dolist (relative '("materials/books/" "materials/handouts/"
+                      "materials/articles/" "materials/slides/"
+                      "materials/videos/" "logs/" "concepts/"
+                      "assignments/" "assets/"))
+    (make-directory (expand-file-name relative directory) t)))
+
+(defun imoogi-project-notes--setup-study-files (entry study-name start-date)
+  "Create missing study files for ENTRY named STUDY-NAME."
+  (let* ((notes-dir (imoogi-project-notes--alist-string 'notes-dir entry))
+         (study-id (imoogi-project-notes--alist-string 'study-id entry))
+         (tasks-file (imoogi-project-notes--alist-string 'tasks-file entry))
+         (values (imoogi-project-notes--values
+                  study-name notes-dir tasks-file notes-dir study-id start-date)))
+    (imoogi-project-notes--ensure-study-directories notes-dir)
+    (dolist (spec `((,(imoogi-project-notes--alist-string 'project-file entry) . "study")
+                    (,(expand-file-name "tasks.org" notes-dir) . "study-tasks")
+                    (,(expand-file-name "cards.org" notes-dir) . "cards")
+                    (,(expand-file-name "questions.org" notes-dir) . "questions")
+                    (,(imoogi-project-notes--alist-string 'journal-file entry) . "study-journal")))
+      (imoogi-project-notes--write-new-file
+       (car spec) (imoogi-project-notes--template (cdr spec) values)))))
 
 (defun imoogi-project-notes--save-entry (entry)
   "Persist ENTRY in the registry."
@@ -490,13 +696,69 @@ never overwritten."
                     (if (member imoogi-project-notes-todo-storage '(project central))
                         imoogi-project-notes-todo-storage
                       'project)))
-         (entry (imoogi-project-notes--entry key root notes-dir storage))
+         (entry (imoogi-project-notes--entry key root notes-dir storage 'project))
          (project-name (file-name-nondirectory (directory-file-name root))))
     (imoogi-project-notes--setup-files entry project-name)
+    (imoogi-project-notes--ensure-metadata entry (format-time-string "%Y-%m-%d"))
     (imoogi-project-notes--save-entry entry)
     (imoogi-project-notes--register-agenda-target
      (imoogi-project-notes--alist-string 'tasks-file entry))
     (message "imoogi: 작업 폴더 %s → 문서 폴더 %s" root notes-dir)
+    notes-dir))
+
+(defun imoogi-project-notes--open-study-workspace (entry)
+  "Open the Perspective and Treemacs workspace represented by study ENTRY."
+  (let* ((root (imoogi-project-notes--alist-string 'notes-dir entry))
+         (name (if (fboundp 'imoogi-project-perspective-name)
+                   (imoogi-project-perspective-name root)
+                 (file-name-nondirectory (directory-file-name root)))))
+    (when (fboundp 'persp-switch)
+      (persp-switch name))
+    (imoogi-project-notes--find-file
+     entry (imoogi-project-notes--alist-string 'project-file entry) root)
+    (when (fboundp 'imoogi-treemacs-open-project-workspace)
+      (imoogi-treemacs-open-project-workspace root name))))
+
+;;;###autoload
+(defun imoogi-project-notes-setup-study (study-name &optional directory study-id start-date)
+  "Create a source-free study note workspace named STUDY-NAME.
+The default folder is `YY.NN-STUDY-NAME' below
+`imoogi-project-notes-directory'.  DIRECTORY, STUDY-ID and START-DATE are
+optional programmatic overrides.  Existing files are never overwritten."
+  (interactive
+   (let* ((name (read-string "학습 이름: "))
+          (id (imoogi-project-notes--next-study-id))
+          (default (expand-file-name
+                    (format "%s-%s/" id (imoogi-project-notes--slug name))
+                    imoogi-project-notes-directory))
+          (directory (when current-prefix-arg
+                       (read-directory-name "학습 노트 폴더: " default nil nil))))
+     (list name directory id (format-time-string "%Y-%m-%d"))))
+  (when (string-empty-p (string-trim study-name))
+    (user-error "학습 이름을 입력하세요"))
+  (let* ((study-id (or study-id (imoogi-project-notes--next-study-id)))
+         (start-date (or start-date (format-time-string "%Y-%m-%d")))
+         (key (concat "study:" study-id))
+         (entries (imoogi-project-notes--read-registry))
+         (existing (imoogi-project-notes--find-entry-by-key key entries))
+         (notes-dir
+          (imoogi-project-notes--validate-notes-directory
+           (or directory
+               (imoogi-project-notes--alist-string 'notes-dir existing)
+               (expand-file-name
+                (format "%s-%s/" study-id
+                        (imoogi-project-notes--slug study-name))
+                imoogi-project-notes-directory))
+           key entries))
+         (entry (imoogi-project-notes--entry
+                 key notes-dir notes-dir 'project 'study study-name study-id)))
+    (imoogi-project-notes--setup-study-files entry study-name start-date)
+    (imoogi-project-notes--ensure-metadata entry start-date)
+    (imoogi-project-notes--save-entry entry)
+    (imoogi-project-notes--register-agenda-target
+     (imoogi-project-notes--alist-string 'tasks-file entry))
+    (imoogi-project-notes--open-study-workspace entry)
+    (message "imoogi: 학습 %s (%s) → %s" study-name study-id notes-dir)
     notes-dir))
 
 ;;;###autoload
@@ -552,7 +814,8 @@ never overwritten."
          (source-root (imoogi-project-notes--current-source-root entry)))
     (imoogi-project-notes--find-file
      entry (imoogi-project-notes--alist-string 'journal-file entry) source-root)
-    (imoogi-project-notes--ensure-worktree-journal-section entry source-root)
+    (unless (eq (imoogi-project-notes--entry-type entry) 'study)
+      (imoogi-project-notes--ensure-worktree-journal-section entry source-root))
     (current-buffer)))
 
 ;;;###autoload
@@ -572,8 +835,7 @@ never overwritten."
       (user-error "알 수 없는 프로젝트 문서: %s" document))
     (let* ((notes-dir (imoogi-project-notes--alist-string 'notes-dir entry))
            (source-root (imoogi-project-notes--alist-string 'source-root entry))
-           (project-name (file-name-nondirectory
-                          (directory-file-name source-root)))
+           (project-name (imoogi-project-notes--entry-name entry))
            (task-file (imoogi-project-notes--alist-string 'tasks-file entry))
            (file (expand-file-name (car spec)
                                    (expand-file-name "development/" notes-dir)))
@@ -585,20 +847,23 @@ never overwritten."
 (defun imoogi-project-notes--entry-label (entry)
   "Return a readable completion label for project notes ENTRY."
   (let* ((root (imoogi-project-notes--alist-string 'source-root entry))
-         (name (file-name-nondirectory (directory-file-name root))))
-    (format "%-24s %s" name (abbreviate-file-name root))))
+         (type (imoogi-project-notes--entry-type entry))
+         (name (imoogi-project-notes--entry-name entry)))
+    (format "[%s] %-20s %s"
+            (if (eq type 'study) "학습" "작업")
+            name (abbreviate-file-name root))))
 
 (defun imoogi-project-notes--select-entry (&optional prompt)
   "Prompt for and return a registered project-notes entry.
-Entries are identified by their source work directory; Org files live in the
-separate notes directory recorded by each entry."
+Project entries are identified by their source work directory.  Study entries
+use their standalone notes directory as the workspace root."
   (let* ((entries (imoogi-project-notes--read-registry))
          (candidates (mapcar (lambda (entry)
                                (cons (imoogi-project-notes--entry-label entry) entry))
                              entries)))
     (unless candidates
       (user-error "등록된 프로젝트 노트가 없습니다"))
-    (cdr (assoc (completing-read (or prompt "소스 작업 폴더의 프로젝트: ")
+    (cdr (assoc (completing-read (or prompt "프로젝트 또는 학습 노트: ")
                                  candidates nil t)
                 candidates))))
 
@@ -615,7 +880,10 @@ separate notes directory recorded by each entry."
     (princ "예: ~/project-notes/260918-imoogi-emacs/project.org\n\n")
     (princ "C-c h p m s  현재 소스 작업 폴더에 문서 폴더를 연결·생성\n")
     (princ "C-u C-c h p m s  문서가 저장될 폴더를 직접 지정\n")
-    (princ "C-c h p m l  소스 작업 폴더 기준으로 등록 프로젝트를 선택·이동\n\n")
+    (princ "C-c h p m S  소스 폴더 없이 학습 노트와 작업공간 생성\n")
+    (princ "C-c h p m l  등록된 프로젝트 또는 학습 노트를 선택·이동\n\n")
+    (princ "학습 노트는 ~/project-notes/YY.NN-학습명/ 아래에 생성되며\n")
+    (princ "노트 폴더 자체가 Perspective와 Treemacs의 작업공간이 됩니다.\n\n")
     (princ "같은 Git 저장소의 worktree는 한 문서 폴더를 공유하지만 journal의\n")
     (princ "재개 지점은 실제 작업 폴더별로 나뉩니다. 기존 문서는 덮어쓰지 않습니다.\n")))
 
@@ -630,18 +898,21 @@ separate notes directory recorded by each entry."
   "Choose a registered project and open its source or principal note."
   (interactive)
   (let* ((entry (imoogi-project-notes--select-entry))
-         (destinations '(("프로젝트 개요" . project-file)
+         (study-p (eq (imoogi-project-notes--entry-type entry) 'study))
+         (destinations `((,(if study-p "학습 개요" "프로젝트 개요") . project-file)
                          ("할 일" . tasks-file)
-                         ("작업 기록·재개" . journal-file)
-                         ("소스 프로젝트" . source)))
+                         (,(if study-p "학습 기록" "작업 기록·재개") . journal-file)
+                         (,(if study-p "학습 작업공간" "소스 프로젝트") . source)))
          (destination (cdr (assoc
                             (completing-read "열기: " destinations nil t)
                             destinations))))
     (if (eq destination 'source)
-        (let ((project-prompter
-               (lambda () (imoogi-project-notes--alist-string
-                           'source-root entry))))
-          (imoogi-project-switch-perspective nil))
+        (if (eq (imoogi-project-notes--entry-type entry) 'study)
+            (imoogi-project-notes--open-study-workspace entry)
+          (let ((project-prompter
+                 (lambda () (imoogi-project-notes--alist-string
+                             'source-root entry))))
+            (imoogi-project-switch-perspective nil)))
       (imoogi-project-notes--open-entry-file entry destination))))
 
 (defun imoogi-project-notes--agenda-files ()
@@ -687,10 +958,7 @@ When CATEGORY is non-nil, apply it as a global category filter."
       (imoogi-project-notes--run-agenda
        "프로젝트 Focus"
        (list (imoogi-project-notes--alist-string 'tasks-file entry))
-       (and central
-            (file-name-nondirectory
-             (directory-file-name
-              (imoogi-project-notes--alist-string 'source-root entry))))))))
+       (and central (imoogi-project-notes--entry-name entry))))))
 
 ;;;###autoload
 (defun imoogi-project-notes-agenda-all ()
@@ -762,9 +1030,7 @@ opens the new file below the project's artifacts directory."
          (artifact-dir (expand-file-name "artifacts/" notes-dir))
          (file (imoogi-project-notes--unique-artifact-file
                 artifact-dir (nth 2 spec) title))
-         (project-name (file-name-nondirectory
-                        (directory-file-name
-                         (imoogi-project-notes--alist-string 'source-root entry))))
+         (project-name (imoogi-project-notes--entry-name entry))
          (content (imoogi-project-notes--template
                    "artifact"
                    `(("ARTIFACT_TITLE" . ,title)
