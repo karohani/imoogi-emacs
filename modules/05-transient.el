@@ -296,7 +296,7 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
 
 (transient-define-prefix imoogi-project-notes-transient ()
   "프로젝트 기록과 영속 Scratch 메뉴."
-  :column-widths '(23 23 23)
+  :column-widths '(23 23 23 25)
   [["프로젝트 기록 --------"
     ("o" "개요" imoogi-project-notes-open)
     ("t" "할 일" imoogi-project-notes-tasks)
@@ -312,7 +312,18 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
     ("d" "개발 문서 추가" imoogi-project-notes-add-document)
     ("n" "영속 Scratch" imoogi-notes-scratch)
     ("h" "폴더 구조 안내" imoogi-project-notes-setup-guide)
-    ("q" "종료" transient-quit-one)]])
+    ("q" "종료" transient-quit-one)]
+   ["외장 노트 ------------"
+    ("+" "루트 등록" imoogi-project-notes-mounted-root-add)
+    ("L" "루트·노트 목록" imoogi-project-notes-mounted-root-list)
+    ("E" "루트 설정 편집" imoogi-project-notes-mounted-root-edit)
+    ("R" "다시 검색" imoogi-project-notes-mounted-root-refresh)
+    ("D" "루트 등록 제거" imoogi-project-notes-mounted-root-remove)
+    ("x" "노트 세션 분리" imoogi-project-notes-detach)
+    ("u" "장치 안전 unmount" imoogi-project-notes-unmount-device)
+    ("c" "소스 재연결" imoogi-project-notes-reconnect-source)
+    ("C" "소스 연결 해제" imoogi-project-notes-clear-source-override)
+    ("e" "현재 버퍼 강제 편집" imoogi-project-notes-force-edit-session)]])
 
 ;; 텍스트 확대/축소
 (defun imoogi-transient-zoom-reset ()

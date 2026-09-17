@@ -456,6 +456,13 @@ Perspective의 파일/Dired 버퍼와 창 배치는 정상 종료 시 저장되�
 | `d` | `imoogi-project-notes-add-document` | 도메인·구조·결정 문서 추가 |
 | `n` | `imoogi-notes-scratch` | `~/notes/scratch.org` 열기 |
 | `h` | `imoogi-project-notes-setup-guide` | 작업 폴더와 문서 폴더의 차이 안내 |
+| `+` | `imoogi-project-notes-mounted-root-add` | SD 카드·SSD의 imoogi 노트 상위 폴더 등록 |
+| `L` | `imoogi-project-notes-mounted-root-list` | 등록한 외장 루트와 발견된 노트 목록 표시 |
+| `E` / `R` / `D` | 루트 편집 / 다시 검색 / 등록 제거 | 호스트의 외장 루트 설정 관리 |
+| `x` | `imoogi-project-notes-detach` | 선택한 외장 노트를 현재 세션 목록에서만 분리 |
+| `u` | `imoogi-project-notes-unmount-device` | 변경 버퍼를 확인·저장한 뒤 장치 unmount |
+| `c` / `C` | 소스 재연결 / 연결 해제 | 외장 project note의 호스트별 소스 경로 관리 |
+| `e` | `imoogi-project-notes-force-edit-session` | 비활성 노트의 현재 버퍼만 이번 세션에 편집 |
 
 영속 Scratch는 메인 메뉴에서 **`C-c h n`**으로 바로 열 수도 있다.
 Scratch와 작업 기록은 일반 파일 버퍼이므로 `C-x C-s`로 저장한다.
@@ -488,6 +495,34 @@ TODO heading에서 `r`을 누르면 조사·요구사항·설계·문제 분석�
 중앙 관리에서는 `tasks.org`가 중앙 Agenda 문서로 안내한다. 프로젝트별 선택은
 등록 정보에 저장되며, 설정 변경만으로 기존 TODO를 이동하거나 복제하지 않는다.
 프로젝트별 작업 파일은 Org Agenda에 등록하여 개인 일정과 함께 조회한다.
+
+#### SD 카드·SSD의 프로젝트·학습 노트
+
+`C-c h p m +`로 외장 저장장치 안의 노트 상위 폴더를 등록한다. 등록 정보와
+호스트별 소스 경로 연결은 Emacs 사용자 디렉터리의
+`.cache/project-notes-mounted-roots.json`에만 저장된다. 외장 장치의 각 노트는
+자신의 `.imoogi-project.json`으로 발견되며 기존 `.cache/project-notes.json`에
+복사하거나 import하지 않는다. 따라서 같은 장치를 다른 PC에 연결해도 노트 폴더
+자체의 metadata를 기준으로 목록을 다시 만들 수 있다.
+
+목록에는 장치 표시 이름이 함께 나오며 study note는 노트 폴더 자체를 작업공간으로
+열 수 있다. project note의 원래 소스 폴더가 현재 PC에 없으면 `[비활성]`으로
+표시되고 문서는 읽기 전용으로 열린다. `c`로 이 PC의 소스 폴더를 재연결할 수 있고,
+`C`로 그 연결을 지울 수 있다. 연결은 외장 파일이 아니라 호스트 설정에 저장된다.
+`e`는 현재 버퍼만 이번 Emacs 세션 동안 편집하게 하며 다른 문서·산출물 생성은
+계속 차단한다.
+
+`x`는 노트 하나를 현재 세션 목록에서 숨기는 논리적 분리다. 장치를 운영체제에서
+내리지는 않는다. `u`는 등록 루트가 들어 있는 실제 mount point를 먼저 확인한 뒤,
+그 장치 아래의 변경 버퍼 목록을 보여준다. 사용자가 진행을 승인하고 모든 저장이
+성공한 경우에만 해당 버퍼를 닫고 unmount 명령을 실행한다. mount 식별 실패,
+지원되지 않는 플랫폼, 저장 실패 또는 사용자 취소에서는 버퍼와 등록 상태를
+변경하지 않는다. macOS는 `diskutil`, Linux는 block device와 `udisksctl`을 확인한
+경우만 물리 unmount를 지원한다. 그 밖의 환경에서는 `x`로 논리적 분리를 사용한다.
+
+외장 루트는 로컬 경로여야 하며 canonical path가 같거나 서로 상위·하위로 겹치는
+루트는 중복 등록할 수 없다. 백그라운드 mount 감시는 하지 않으므로 장치를 다시
+연결한 뒤에는 `R`로 검색을 갱신한다.
 
 #### 소스 프로젝트가 없는 학습 노트
 

@@ -32,6 +32,419 @@
 (defun imoogi-project-notes-test--read (file)
   (with-temp-buffer (insert-file-contents file) (buffer-string)))
 
+(defun imoogi-project-notes-test--write-metadata
+    (directory key type &optional source-root study-id)
+  "Write minimal project-note metadata in DIRECTORY for tests."
+  (make-directory directory t)
+  (with-temp-file (expand-file-name ".imoogi-project.json" directory)
+    (let ((json-encoding-pretty-print t))
+      (insert
+       (json-encode
+        `((schema_version . 1)
+          (type . ,type)
+          (key . ,key)
+          (name . ,key)
+          ,@(when study-id `((study_id . ,study-id)))
+          ,@(when source-root `((source_root . ,source-root)))
+          (overview . ,(if (string= type "study") "study.org" "project.org"))
+          (tasks . "tasks.org")
+          (journal . "journal.org")
+          (todo_storage . "project"))))
+      (insert "\n"))))
+
+(ert-deftest imoogi-project-notes-mounted-state-round-trip ()
+  (imoogi-project-notes-test--isolated
+    (let* ((external (file-name-as-directory
+                      (expand-file-name "external/" sandbox)))
+           (_ (make-directory external t))
+           (canonical (imoogi-project-notes--canonical-directory external))
+           (root-entry `((id . ,(imoogi-project-notes--mounted-root-id canonical))
+                         (path . ,canonical)
+                         (label . "Portable")
+                         (enabled . t)))
+           (state `((version . 1)
+                    (roots . (,root-entry))
+                    (source-overrides . nil))))
+      (imoogi-project-notes--write-mounted-state state)
+      (should (equal state (imoogi-project-notes--read-mounted-state)))
+      (should-not
+       (equal (imoogi-project-notes--mounted-roots-file)
+              (imoogi-project-notes--registry-file))))))
+
+(ert-deftest imoogi-project-notes-mounted-state-rejects-remote-paths ()
+  (imoogi-project-notes-test--isolated
+    (dolist (state
+             '(((version . 1)
+                (roots . (((id . "remote") (path . "/ssh:host:/notes/")
+                           (label . "Remote") (enabled . t))))
+                (source-overrides . nil))
+               ((version . 1)
+                (roots . nil)
+                (source-overrides
+                 . (((instance-id . "mounted:one")
+                     (source-root . "/ssh:host:/source/")))))))
+      (should-error (imoogi-project-notes--write-mounted-state state)
+                    :type 'user-error))))
+
+(ert-deftest imoogi-project-notes-mounted-root-rejects-overlap-and-symlink ()
+  (imoogi-project-notes-test--isolated
+    (let* ((external (file-name-as-directory
+                      (expand-file-name "external/" sandbox)))
+           (child (file-name-as-directory (expand-file-name "child/" external)))
+           (alias (expand-file-name "external-link" sandbox)))
+      (make-directory child t)
+      (make-symbolic-link external alias)
+      (let* ((canonical (imoogi-project-notes--canonical-directory external))
+             (roots `(((id . ,(imoogi-project-notes--mounted-root-id canonical))
+                       (path . ,canonical)
+                       (label . "Portable")
+                       (enabled . t)))))
+        (should-error (imoogi-project-notes--validate-mounted-root external roots)
+                      :type 'user-error)
+        (should-error (imoogi-project-notes--validate-mounted-root child roots)
+                      :type 'user-error)
+        (should-error (imoogi-project-notes--validate-mounted-root alias roots)
+                      :type 'user-error)))))
+
+(ert-deftest imoogi-project-notes-mounted-discovery-preserves-colliding-keys ()
+  (imoogi-project-notes-test--isolated
+    (let* ((external-a (file-name-as-directory
+                        (expand-file-name "drive-a/" sandbox)))
+           (external-b (file-name-as-directory
+                        (expand-file-name "drive-b/" sandbox)))
+           (study-a (expand-file-name "26.01-os/" external-a))
+           (study-b (expand-file-name "26.01-os-copy/" external-b)))
+      (imoogi-project-notes-test--write-metadata
+       study-a "study:26.01" "study" nil "26.01")
+      (imoogi-project-notes-test--write-metadata
+       study-b "study:26.01" "study" nil "26.01")
+      (let* ((canonical-a (imoogi-project-notes--canonical-directory external-a))
+             (canonical-b (imoogi-project-notes--canonical-directory external-b))
+             (state
+              `((version . 1)
+                (roots . (((id . ,(imoogi-project-notes--mounted-root-id canonical-a))
+                           (path . ,canonical-a) (label . "A") (enabled . t))
+                          ((id . ,(imoogi-project-notes--mounted-root-id canonical-b))
+                           (path . ,canonical-b) (label . "B") (enabled . t))))
+                (source-overrides . nil))))
+        (imoogi-project-notes--write-mounted-state state)
+        (let ((entries (imoogi-project-notes--all-entries)))
+          (should (= (length entries) 2))
+          (should (equal (mapcar (lambda (entry) (alist-get 'logical-key entry))
+                                 entries)
+                         '("study:26.01" "study:26.01")))
+          (should (= (length (delete-dups
+                              (mapcar (lambda (entry)
+                                        (alist-get 'instance-id entry))
+                                      entries)))
+                     2)))))))
+
+(ert-deftest imoogi-project-notes-mounted-discovery-skips-invalid-metadata ()
+  (imoogi-project-notes-test--isolated
+    (let* ((external (file-name-as-directory
+                      (expand-file-name "external/" sandbox)))
+           (valid (expand-file-name "valid/" external))
+           (invalid (expand-file-name "invalid/" external)))
+      (imoogi-project-notes-test--write-metadata
+       valid "study:26.02" "study" nil "26.02")
+      (make-directory invalid t)
+      (with-temp-file (expand-file-name ".imoogi-project.json" invalid)
+        (insert "{broken"))
+      (let* ((canonical (imoogi-project-notes--canonical-directory external))
+             (state `((version . 1)
+                      (roots . (((id . ,(imoogi-project-notes--mounted-root-id
+                                         canonical))
+                                 (path . ,canonical)
+                                 (label . "Portable")
+                                 (enabled . t))))
+                      (source-overrides . nil))))
+        (imoogi-project-notes--write-mounted-state state)
+        (let ((warning-minimum-level :emergency))
+          (should (= (length (imoogi-project-notes--all-entries)) 1)))))))
+
+(ert-deftest imoogi-project-notes-mounted-discovery-skips-unreadable-root ()
+  (imoogi-project-notes-test--isolated
+    (let ((root '((id . "root") (path . "/unreadable/")
+                  (label . "USB") (enabled . t))))
+      (cl-letf (((symbol-function 'file-directory-p) (lambda (_path) t))
+                ((symbol-function 'directory-files-recursively)
+                 (lambda (&rest _args)
+                   (signal 'file-error '("Permission denied")))))
+        (let ((warning-minimum-level :emergency))
+          (should-not (imoogi-project-notes--scan-mounted-root root)))))))
+
+(ert-deftest imoogi-project-notes-mounted-inactive-buffer-is-read-only ()
+  (imoogi-project-notes-test--isolated
+    (let* ((external (file-name-as-directory
+                      (expand-file-name "external/" sandbox)))
+           (notes (expand-file-name "project-note/" external))
+           (missing (expand-file-name "missing-source/" sandbox)))
+      (imoogi-project-notes-test--write-metadata
+       notes "dir:portable" "project" missing)
+      (dolist (name '("project.org" "tasks.org" "journal.org"))
+        (with-temp-file (expand-file-name name notes) (insert "* Note\n")))
+      (let* ((canonical (imoogi-project-notes--canonical-directory external))
+             (state `((version . 1)
+                      (roots . (((id . ,(imoogi-project-notes--mounted-root-id
+                                         canonical))
+                                 (path . ,canonical) (label . "USB") (enabled . t))))
+                      (source-overrides . nil))))
+        (imoogi-project-notes--write-mounted-state state)
+        (let* ((entry (car (imoogi-project-notes--all-entries)))
+               (buffer (imoogi-project-notes--find-file
+                        entry (alist-get 'project-file entry))))
+          (should (imoogi-project-notes--inactive-mounted-entry-p entry))
+          (should buffer-read-only)
+          (should header-line-format)
+          (let* ((header (imoogi-project-notes--inactive-header-line))
+                 (reconnect (string-match "reconnect" header)))
+            (should reconnect)
+            (should (eq (lookup-key (get-text-property reconnect 'local-map header)
+                                    [header-line mouse-1])
+                        'imoogi-project-notes-reconnect-source)))
+          (imoogi-project-notes-force-edit-session)
+          (should-not buffer-read-only)
+          (should imoogi-project-notes-force-edit-session-p)
+          (should-error
+           (imoogi-project-notes--find-existing-or-create
+            entry (expand-file-name "development/domain.org" notes)
+            "project" nil)
+           :type 'user-error)
+          (kill-buffer buffer))))))
+
+(ert-deftest imoogi-project-notes-remote-metadata-source-stays-inactive ()
+  (imoogi-project-notes-test--isolated
+    (let ((entry '((type . "project")
+                   (origin . mounted)
+                   (instance-id . "mounted:remote")
+                   (source-declared-p . t)
+                   (source-root . "/ssh:host:/source/")
+                   (notes-dir . "/local/notes/"))))
+      (cl-letf (((symbol-function 'file-directory-p)
+                 (lambda (path)
+                   (when (file-remote-p path)
+                     (ert-fail "remote source was probed"))
+                   nil)))
+        (let ((decorated
+               (imoogi-project-notes--decorate-mounted-status
+                entry (imoogi-project-notes--empty-mounted-state))))
+          (should-not (alist-get 'active-p decorated))
+          (should (eq (alist-get 'source-origin decorated) 'missing)))))))
+
+(ert-deftest imoogi-project-notes-mounted-reconnect-is-instance-scoped ()
+  (imoogi-project-notes-test--isolated
+    (let* ((external-a (file-name-as-directory
+                        (expand-file-name "drive-a/" sandbox)))
+           (external-b (file-name-as-directory
+                        (expand-file-name "drive-b/" sandbox)))
+           (notes-a (expand-file-name "same/" external-a))
+           (notes-b (expand-file-name "same/" external-b))
+           (missing (expand-file-name "missing/" sandbox))
+           (new-source (expand-file-name "reconnected/" sandbox)))
+      (make-directory new-source t)
+      (imoogi-project-notes-test--write-metadata
+       notes-a "dir:same" "project" missing)
+      (imoogi-project-notes-test--write-metadata
+       notes-b "dir:same" "project" missing)
+      (let* ((canonical-a (imoogi-project-notes--canonical-directory external-a))
+             (canonical-b (imoogi-project-notes--canonical-directory external-b))
+             (state
+              `((version . 1)
+                (roots . (((id . ,(imoogi-project-notes--mounted-root-id canonical-a))
+                           (path . ,canonical-a) (label . "A") (enabled . t))
+                          ((id . ,(imoogi-project-notes--mounted-root-id canonical-b))
+                           (path . ,canonical-b) (label . "B") (enabled . t))))
+                (source-overrides . nil))))
+        (imoogi-project-notes--write-mounted-state state)
+        (let* ((entries (imoogi-project-notes--all-entries))
+               (first (car entries))
+               (second (cadr entries)))
+          (imoogi-project-notes-reconnect-source first new-source)
+          (setq entries (imoogi-project-notes--all-entries)
+                first (cl-find (alist-get 'instance-id first) entries
+                               :key (lambda (entry) (alist-get 'instance-id entry))
+                               :test #'string=)
+                second (cl-find (alist-get 'instance-id second) entries
+                                :key (lambda (entry) (alist-get 'instance-id entry))
+                                :test #'string=))
+          (should (alist-get 'active-p first))
+          (should (equal (file-truename new-source)
+                         (file-truename (alist-get 'effective-source-root first))))
+          (should-not (alist-get 'active-p second))
+          (imoogi-project-notes-clear-source-override first)
+          (should-not
+           (alist-get 'active-p
+                      (cl-find (alist-get 'instance-id first)
+                               (imoogi-project-notes--all-entries)
+                               :key (lambda (entry) (alist-get 'instance-id entry))
+                               :test #'string=))))))))
+
+(ert-deftest imoogi-project-notes-agenda-includes-mounted-tasks-once ()
+  (imoogi-project-notes-test--isolated
+    (let* ((external (file-name-as-directory
+                      (expand-file-name "external/" sandbox)))
+           (notes (expand-file-name "study/" external)))
+      (imoogi-project-notes-test--write-metadata
+       notes "study:26.03" "study" nil "26.03")
+      (with-temp-file (expand-file-name "tasks.org" notes) (insert "* TODO Read\n"))
+      (let* ((canonical (imoogi-project-notes--canonical-directory external))
+             (state `((version . 1)
+                      (roots . (((id . ,(imoogi-project-notes--mounted-root-id
+                                         canonical))
+                                 (path . ,canonical) (label . "USB") (enabled . t))))
+                      (source-overrides . nil))))
+        (imoogi-project-notes--write-mounted-state state)
+        (should (equal (imoogi-project-notes--agenda-files)
+                       (list (expand-file-name "tasks.org" notes))))))))
+
+(ert-deftest imoogi-project-notes-mounted-root-lifecycle-preserves-files ()
+  (imoogi-project-notes-test--isolated
+    (let* ((external (expand-file-name "external/" sandbox))
+           (marker (expand-file-name "keep.txt" external)))
+      (make-directory external t)
+      (with-temp-file marker (insert "keep"))
+      (let ((root-entry
+             (imoogi-project-notes-mounted-root-add external "Portable")))
+        (should-error
+         (imoogi-project-notes-mounted-root-add external "Duplicate")
+         :type 'user-error)
+        (imoogi-project-notes-mounted-root-edit root-entry "Renamed")
+        (should (eq (alist-get 'enabled
+                               (car (alist-get
+                                     'roots
+                                     (imoogi-project-notes--read-mounted-state))))
+                    t))
+        (imoogi-project-notes-mounted-root-edit root-entry "Renamed" nil)
+        (should (eq (alist-get 'enabled
+                               (car (alist-get
+                                     'roots
+                                     (imoogi-project-notes--read-mounted-state))))
+                    :json-false))
+        (imoogi-project-notes-mounted-root-remove root-entry)
+        (should-not (alist-get 'roots
+                               (imoogi-project-notes--read-mounted-state)))
+        (should (file-exists-p marker))))))
+
+(ert-deftest imoogi-project-notes-detach-is-session-only ()
+  (imoogi-project-notes-test--isolated
+    (let* ((external (file-name-as-directory
+                      (expand-file-name "external/" sandbox)))
+           (notes (expand-file-name "study/" external)))
+      (imoogi-project-notes-test--write-metadata
+       notes "study:26.04" "study" nil "26.04")
+      (let* ((canonical (imoogi-project-notes--canonical-directory external))
+             (state `((version . 1)
+                      (roots . (((id . ,(imoogi-project-notes--mounted-root-id
+                                         canonical))
+                                 (path . ,canonical) (label . "USB") (enabled . t))))
+                      (source-overrides . nil))))
+        (imoogi-project-notes--write-mounted-state state)
+        (let* ((imoogi-project-notes--detached-instance-ids nil)
+               (entry (car (imoogi-project-notes--all-entries))))
+          (imoogi-project-notes-detach entry)
+          (should-not (imoogi-project-notes--all-entries))
+          (should (alist-get 'roots
+                             (imoogi-project-notes--read-mounted-state))))))))
+
+(ert-deftest imoogi-project-notes-unmount-preflight-failure-has-zero-mutation ()
+  (imoogi-project-notes-test--isolated
+    (let* ((external (file-name-as-directory
+                      (expand-file-name "external/" sandbox)))
+           (file (expand-file-name "note.org" external))
+           (root-entry '((id . "root") (path . "unused")
+                         (label . "USB") (enabled . t)))
+           (saved nil) (cleaned nil) (executed nil))
+      (make-directory external t)
+      (with-temp-file file (insert "original"))
+      (let ((buffer (find-file-noselect file)))
+        (with-current-buffer buffer
+          (goto-char (point-max))
+          (insert " changed"))
+        (cl-letf (((symbol-function 'imoogi-project-notes--save-buffers-or-error)
+                   (lambda (_buffers) (setq saved t)))
+                  ((symbol-function 'imoogi-project-notes--cleanup-unmount-buffers)
+                   (lambda (_buffers) (setq cleaned t)))
+                  (imoogi-project-notes-unmount-preflight-function
+                   (lambda (_root) (user-error "unsupported")))
+                  (imoogi-project-notes-unmount-executor-function
+                   (lambda (_descriptor) (setq executed t))))
+          (should-error (imoogi-project-notes-unmount-device root-entry)
+                        :type 'user-error)
+          (should-not saved)
+          (should-not cleaned)
+          (should-not executed)
+          (should (buffer-live-p buffer)))))))
+
+(ert-deftest imoogi-project-notes-unmount-saves-kills-then-executes ()
+  (imoogi-project-notes-test--isolated
+    (let* ((external (file-name-as-directory
+                      (expand-file-name "external/" sandbox)))
+           (inside-file (expand-file-name "note.org" external))
+           (outside-file (expand-file-name "outside.org" sandbox))
+           (root-entry `((id . "root") (path . ,external)
+                         (label . "USB") (enabled . t)))
+           events)
+      (make-directory external t)
+      (with-temp-file inside-file (insert "inside"))
+      (with-temp-file outside-file (insert "outside"))
+      (let ((inside (find-file-noselect inside-file))
+            (outside (find-file-noselect outside-file)))
+        (with-current-buffer inside
+          (goto-char (point-max))
+          (insert " changed"))
+        (cl-letf ((imoogi-project-notes-unmount-preflight-function
+                   (lambda (_root)
+                     (push 'preflight events)
+                     (list :supported t :mount-point external
+                           :device "/dev/test" :command '("false"))))
+                  (imoogi-project-notes-unmount-executor-function
+                   (lambda (_descriptor)
+                     (push 'execute events)
+                     t))
+                  ((symbol-function 'y-or-n-p) (lambda (_prompt) t))
+                  ((symbol-function 'imoogi-project-notes--show-dirty-buffers)
+                   (lambda (_buffers) (push 'shown events)))
+                  ((symbol-function 'imoogi-project-notes--save-buffers-or-error)
+                   (lambda (buffers)
+                     (push 'save events)
+                     (dolist (buffer buffers)
+                       (with-current-buffer buffer
+                         (set-buffer-modified-p nil)))))
+                  ((symbol-function 'imoogi-project-notes--cleanup-unmount-buffers)
+                   (lambda (buffers)
+                     (push 'cleanup events)
+                     (dolist (buffer buffers) (kill-buffer buffer)))))
+          (should (imoogi-project-notes-unmount-device root-entry))
+          (should (equal (nreverse events)
+                         '(preflight shown save cleanup execute)))
+          (should-not (buffer-live-p inside))
+          (should (buffer-live-p outside)))))))
+
+(ert-deftest imoogi-project-notes-unmount-save-failure-stops-cleanup ()
+  (imoogi-project-notes-test--isolated
+    (let ((root-entry '((id . "root") (path . "/tmp/")
+                        (label . "USB") (enabled . t)))
+          cleaned executed)
+      (cl-letf ((imoogi-project-notes-unmount-preflight-function
+                 (lambda (_root)
+                   (list :supported t :mount-point sandbox
+                         :device "/dev/test" :command '("false"))))
+                ((symbol-function 'imoogi-project-notes--buffers-under-directory)
+                 (lambda (_directory) (list (current-buffer))))
+                ((symbol-function 'buffer-modified-p) (lambda (&optional _buffer) t))
+                ((symbol-function 'y-or-n-p) (lambda (_prompt) t))
+                ((symbol-function 'imoogi-project-notes--show-dirty-buffers)
+                 #'ignore)
+                ((symbol-function 'imoogi-project-notes--save-buffers-or-error)
+                 (lambda (_buffers) (error "save failed")))
+                ((symbol-function 'imoogi-project-notes--cleanup-unmount-buffers)
+                 (lambda (_buffers) (setq cleaned t)))
+                (imoogi-project-notes-unmount-executor-function
+                 (lambda (_descriptor) (setq executed t))))
+        (should-error (imoogi-project-notes-unmount-device root-entry))
+        (should-not cleaned)
+        (should-not executed)))))
+
 (ert-deftest imoogi-project-notes-setup-preserves-and-registers ()
   (imoogi-project-notes-test--isolated
     (cl-letf (((symbol-function 'imoogi-project-notes--start-date)
@@ -269,7 +682,8 @@
 (ert-deftest imoogi-project-notes-transient-commands-available ()
   (should (eq (plist-get (cdr (transient-get-suffix 'imoogi-transient-project "m")) :command)
               'imoogi-project-notes-transient))
-  (dolist (key '("s" "S" "o" "t" "j" "l" "a" "A" "r" "d" "n" "h"))
+  (dolist (key '("s" "S" "o" "t" "j" "l" "a" "A" "r" "d" "n" "h"
+                 "+" "L" "E" "R" "D" "x" "u" "c" "C" "e"))
     (should (commandp (plist-get (cdr (transient-get-suffix 'imoogi-project-notes-transient key))
                                  :command)))))
 

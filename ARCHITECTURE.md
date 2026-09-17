@@ -115,6 +115,11 @@ boot.el의 `dolist`에서 정의된 순서대로 로딩된다. 의존성이 있�
 26. **26-project-notes** — 소스 밖 프로젝트별 Org 기록과 영속 Scratch.
     `templates/project-notes/`에서 문서를 새로 생성하고 기존 파일은 보존한다.
     `.cache/project-notes.json`은 소스와 기록 폴더의 연결 및 TODO 저장 방식을 보관한다.
+    `.cache/project-notes-mounted-roots.json`은 호스트별 외장 노트 루트와 source
+    override만 보관하고, 실제 외장 노트 목록은 각 폴더의 `.imoogi-project.json`에서
+    동적으로 복원한다. 외장 instance identity와 논리 key를 분리하며 source가 없는
+    project note는 읽기 전용 inactive 상태로 유지한다. 물리 unmount는 mount/device
+    preflight와 저장 성공 뒤에만 플랫폼 adapter를 호출한다.
     Git common directory로 worktree의 기록을 공유하고 재개 지점은 경로별로 나눈다.
 
 언어별 LSP 설정은 `modules/lsp/` 아래의 이름 기반 파일로 분리한다. `17-lsp`가
