@@ -3,6 +3,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'cl-lib)
 (require 'imoogi-process)
 
 (ert-deftest imoogi-process-test-serialize-request-shape ()
@@ -89,6 +90,18 @@
                          :registry-path "r" :sync-root "s"
                          :exclude-patterns nil :scan-complete t)
                    nil nil)))))
+
+(ert-deftest imoogi-process-test-call-binary-passes-persistent-log-path ()
+  (let ((imoogi-anki-log-file "/tmp/imoogi-anki-test.jsonl")
+        observed)
+    (cl-letf (((symbol-function 'call-process-region)
+               (lambda (&rest _args)
+                 (setq observed (getenv "IMOOGI_ANKI_LOG"))
+                 (erase-buffer)
+                 (insert "{\"protocol_version\":1,\"ok\":true,\"results\":[],\"errors\":[]}")
+                 0)))
+      (imoogi-process--call-binary "fake-imoogi-anki" "{}"))
+    (should (equal observed imoogi-anki-log-file))))
 
 (provide 'imoogi-process-test)
 ;;; imoogi-process-test.el ends here

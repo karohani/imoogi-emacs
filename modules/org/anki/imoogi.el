@@ -66,6 +66,14 @@ present but empty at some level)."
   :type 'file
   :group 'imoogi)
 
+(defcustom imoogi-anki-log-file
+  (expand-file-name "imoogi-anki.log"
+                    (expand-file-name ".cache/" user-emacs-directory))
+  "Persistent JSONL diagnostic log written by the imoogi-anki Go process.
+Card titles and bodies are never included.  Set this to nil to disable logging."
+  :type '(choice (const :tag "Disabled" nil) file)
+  :group 'imoogi)
+
 (defcustom imoogi-user-stylesheet-file
   (expand-file-name "imoogi-anki.css"
                     (file-name-directory imoogi-config-file))
@@ -109,6 +117,18 @@ dropped key."
 (require 'imoogi-process)
 (require 'imoogi-config)
 (require 'imoogi-error)
+
+;;;###autoload
+(defun imoogi-anki-open-log ()
+  "Open the persistent Anki synchronization diagnostic log."
+  (interactive)
+  (unless imoogi-anki-log-file
+    (user-error "imoogi Anki logging is disabled"))
+  (make-directory (file-name-directory imoogi-anki-log-file) t)
+  (unless (file-exists-p imoogi-anki-log-file)
+    (write-region "" nil imoogi-anki-log-file nil 'silent))
+  (set-file-modes imoogi-anki-log-file #o600)
+  (find-file imoogi-anki-log-file))
 
 ;; `imoogi-setup' is deliberately NOT required here: `imoogi-anki-setup'
 ;; is autoloaded, and a first-time user's very first invocation reaches

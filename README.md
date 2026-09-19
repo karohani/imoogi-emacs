@@ -934,6 +934,7 @@ Emacs 사용자 설정 디렉터리의 `imoogi-targets.json`(기본 `~/.emacs.d/
 | `imoogi-anki-register-file` | `C-c a F` | `.org` 파일 하나 등록: 같은 폴더의 다른 파일은 제외 |
 | `imoogi-anki-list-targets` | `C-c a l` | 등록 목록과 경로 상태 확인 |
 | `imoogi-anki-list-files` | `C-c a L` | 기본 폴더·등록 폴더 안의 `.org`와 개별 등록 파일을 중복 없이 펼쳐 보기 |
+| `imoogi-anki-open-log` | `C-c a g` | 영속 Anki 동기화 진단 로그 열기 |
 | `imoogi-anki-unregister-target` | `C-c a u` | 추가 등록 해제: 원본 파일과 Anki 카드는 유지 |
 | `imoogi-sync` | `C-c a s` | 기존 폴더와 추가 등록 대상을 모두 동기화 |
 
@@ -965,6 +966,27 @@ Anki 메뉴(`C-c a a`)의 **동기화 대상**에서도 같은 명령을 실행�
 서로 다른 제목이 같은 `ANKI_NOTE_ID`를 사용하면 해당 카드들의 갱신을 막고
 충돌을 보고하며, 그 실행에서는 자동 삭제도 억제한다.
 이미지는 등록 폴더 안에서 참조하며, 개별 파일은 그 파일이 있는 폴더를 기준으로 한다.
+
+### Anki 동기화 진단 로그
+
+`imoogi-sync`, note type 설치, migration 실행은 기본적으로
+`~/.emacs.d/.cache/imoogi-anki.log`에 JSON Lines 형식의 진단 기록을 남긴다.
+`M-x imoogi-anki-open-log`, Org 버퍼의 `C-c a g`, 또는 Anki transient의
+**진단 로그**로 열 수 있다. 저장 위치는 `imoogi-anki-log-file`로 바꾸며 nil이면
+로깅을 끈다.
+
+각 실행은 command 시작, 스캔된 카드의 key·source path·note type·note ID,
+AnkiConnect handshake, registry load/save, add/update/skip 결과와 오류 코드·원문을
+기록한다. 카드 제목과 본문, 렌더링된 필드 내용은 기록하지 않는다. 로그 파일은
+권한 `0600`으로 만들고 5 MiB에 도달하면 기존 파일을 `.1`로 한 번 회전한다.
+Go 로깅이 포함된 바이너리는 `make build-anki`로 다시 설치한다.
+
+`imoogi-Basic` 항목이 보이지 않을 때에는 로그에서 `event`가 `sync_entry`인 줄의
+`note_type`을 먼저 확인한다. 해당 줄이 없다면 저장된 Org 파일이 스캔되지 않은
+것이고, `sync_error`가 있다면 같은 줄의 `code`와 `message`에서 AnkiConnect 또는
+note type 오류 원문을 확인할 수 있다. `imoogi-sync`는 기존 note type을 사용하지만
+새 note type을 설치하지는 않는다. Anki의 **Note Types** 목록에 `imoogi-Basic`과
+`imoogi-Cloze`가 없다면 `M-x imoogi-anki-setup`을 실행해 두 타입을 먼저 설치한다.
 
 ## 패키지 관리
 

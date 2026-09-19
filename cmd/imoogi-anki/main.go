@@ -50,22 +50,27 @@ func main() {
 // surrounding branch already returns. Discarding is stated rather than
 // implied so the omission reads as a decision, not an oversight.
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	logger := openPersistentLogger()
+	defer logger.Close()
 	if len(args) == 0 {
+		logger.Event("command_rejected", map[string]any{"reason": "missing_command"})
 		_, _ = fmt.Fprint(stderr, usage)
 		return 2
 	}
+	logger.Event("command_start", map[string]any{"command": args[0]})
 
 	switch args[0] {
 	case "--version", "-version", "version":
 		_, _ = fmt.Fprintln(stdout, version)
 		return 0
 	case "sync":
-		return runSync(stdin, stdout, stderr)
+		return runSync(stdin, stdout, stderr, logger)
 	case "install-models":
-		return runInstall(stdin, stdout, stderr)
+		return runInstall(stdin, stdout, stderr, logger)
 	case "migrate":
-		return runMigrate(args[1:], stdin, stdout, stderr)
+		return runMigrate(args[1:], stdin, stdout, stderr, logger)
 	default:
+		logger.Event("command_rejected", map[string]any{"reason": "unknown_command", "command": args[0]})
 		_, _ = fmt.Fprintf(stderr, "imoogi: unknown command %q\n\n%s", args[0], usage)
 		return 2
 	}
@@ -73,8 +78,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 // runSync is the `sync` subcommand: the full per-entry decision pass plus
 // census reconciliation and orphan deletion.
-func runSync(stdin io.Reader, stdout, stderr io.Writer) int {
-	return runOverSyncRequest(stdin, stdout, stderr, true, planner.Run)
+func runSync(stdin io.Reader, stdout, stderr io.Writer, logger *persistentLogger) int {
+	return runOverSyncRequest(stdin, stdout, stderr, true, "sync", logger, planner.Run)
 }
 
 // runMigrate is the `migrate` subcommand (design.md §7.1). It reads the SAME
@@ -86,7 +91,7 @@ func runSync(stdin io.Reader, stdout, stderr io.Writer) int {
 // error rather than a silently ignored argument: a mistyped flag that fell
 // through to the writing path would migrate a collection the user meant to
 // inspect, and that is not a mistake this command can afford to absorb.
-func runMigrate(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+func runMigrate(args []string, stdin io.Reader, stdout, stderr io.Writer, logger *persistentLogger) int {
 	dryRun := false
 	for _, arg := range args {
 		if arg != "--dry-run" {
@@ -100,7 +105,7 @@ func runMigrate(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// leave it byte-unchanged (AC-C-018c) — it decided nothing, so it has
 	// nothing to record, and rewriting the same content would still churn
 	// the file's mtime for a command that promised to write nothing.
-	return runOverSyncRequest(stdin, stdout, stderr, !dryRun,
+	return runOverSyncRequest(stdin, stdout, stderr, !dryRun, "migrate", logger,
 		func(ctx context.Context, req protocol.Request, reg *registry.Registry, client ankiconnect.AnkiConnector) ([]protocol.Result, []protocol.Error) {
 			return planner.Migrate(ctx, req, reg, client, dryRun)
 		})
@@ -121,9 +126,10 @@ type planPass func(context.Context, protocol.Request, *registry.Registry, ankico
 // exactly — the same two handshake codes, the same state_unreadable path,
 // the same best-effort save diagnosis, the same response shape. Two copies
 // are how those silently drift apart.
-func runOverSyncRequest(stdin io.Reader, stdout, stderr io.Writer, persist bool, pass planPass) int {
+func runOverSyncRequest(stdin io.Reader, stdout, stderr io.Writer, persist bool, command string, logger *persistentLogger, pass planPass) int {
 	raw, err := io.ReadAll(stdin)
 	if err != nil {
+		logger.Event("request_read_failed", map[string]any{"command": command, "error": err.Error()})
 		_, _ = fmt.Fprintf(stderr, "imoogi: request could not be read: %v\n", err)
 		return 1
 	}
@@ -134,11 +140,22 @@ func runOverSyncRequest(stdin io.Reader, stdout, stderr io.Writer, persist bool,
 
 	var req protocol.Request
 	if err := json.Unmarshal(raw, &req); err != nil {
+		logger.Event("request_decode_failed", map[string]any{"command": command, "error": err.Error()})
 		_, _ = fmt.Fprintf(stderr, "imoogi: request could not be decoded: %v\n", err)
 		return 1
 	}
 
 	ctx := context.Background()
+	logger.Event("sync_request", map[string]any{
+		"command": command, "entries": len(req.Entries), "census": len(req.Census),
+		"sync_root": req.Config.SyncRoot, "registry_path": req.Config.RegistryPath,
+	})
+	for _, entry := range req.Entries {
+		logger.Event("sync_entry", map[string]any{
+			"command": command, "key": entry.Key, "source_path": entry.SourcePath,
+			"note_type": entry.NoteType, "note_id": entry.NoteID,
+		})
+	}
 
 	// design.md §3 step 7's protocol check is above; the handshake is the
 	// FIRST AnkiConnect interaction of the run, before any entry is
@@ -149,25 +166,48 @@ func runOverSyncRequest(stdin io.Reader, stdout, stderr io.Writer, persist bool,
 	// for each case (plan.md D-5).
 	client := ankiconnect.NewClient(req.Config.AnkiConnectURL, nil)
 	if err := client.Handshake(ctx); err != nil {
+		logger.Event("handshake_failed", map[string]any{"command": command, "error": err.Error()})
 		return failRun(stdout, stderr, handshakeErrorCode(err), err.Error())
 	}
+	logger.Event("handshake_succeeded", map[string]any{"command": command})
 
 	reg, err := registry.Load(req.Config.RegistryPath)
 	if err != nil {
+		logger.Event("registry_load_failed", map[string]any{"command": command, "error": err.Error()})
 		return failRun(stdout, stderr, protocol.CodeStateUnreadable, err.Error())
 	}
+	logger.Event("registry_loaded", map[string]any{"command": command, "entries": len(reg.All())})
 
 	results, errs := pass(ctx, req, reg, client)
+	for _, result := range results {
+		fields := map[string]any{"command": command, "action": result.Action, "note_id": result.NoteID}
+		if result.Key != nil {
+			fields["key"] = *result.Key
+		}
+		logger.Event("sync_result", fields)
+	}
+	for _, syncErr := range errs {
+		fields := map[string]any{"command": command, "code": syncErr.Code, "message": syncErr.Message}
+		if syncErr.Key != nil {
+			fields["key"] = *syncErr.Key
+		}
+		logger.Event("sync_error", fields)
+	}
 
 	if persist {
-		if err := reg.Save(); err != nil {
+		saveErr := reg.Save()
+		if saveErr != nil {
+			logger.Event("registry_save_failed", map[string]any{"command": command, "error": saveErr.Error()})
 			// The registry write is best-effort diagnosed on stderr only: no
 			// plan.md D-5 code is reserved for a SAVE failure specifically (only
 			// state_unreadable, which names a READ failure), and inventing one
 			// here would leave it absent from the front end's own code table —
 			// exactly the defect D-5's own rationale warns against. The results
 			// already computed this run are still reported.
-			_, _ = fmt.Fprintf(stderr, "imoogi: registry could not be saved: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "imoogi: registry could not be saved: %v\n", saveErr)
+		}
+		if saveErr == nil {
+			logger.Event("registry_saved", map[string]any{"command": command})
 		}
 	}
 
@@ -175,9 +215,11 @@ func runOverSyncRequest(stdin io.Reader, stdout, stderr io.Writer, persist bool,
 	resp.Results = append(resp.Results, results...)
 	resp.Errors = append(resp.Errors, errs...)
 	if err := writeResponse(stdout, resp); err != nil {
+		logger.Event("response_write_failed", map[string]any{"command": command, "error": err.Error()})
 		_, _ = fmt.Fprintf(stderr, "imoogi: response could not be written: %v\n", err)
 		return 1
 	}
+	logger.Event("command_complete", map[string]any{"command": command, "results": len(results), "errors": len(errs), "ok": true})
 	return 0
 }
 
@@ -226,7 +268,7 @@ func probeProtocolVersion(raw []byte, stdout, stderr io.Writer) (int, bool) {
 // The ownership announcement (REQ-C-002.3) goes to STDERR, because stdout
 // carries the response document and nothing else — the same invariant every
 // diagnostic in this file observes.
-func runInstall(stdin io.Reader, stdout, stderr io.Writer) int {
+func runInstall(stdin io.Reader, stdout, stderr io.Writer, logger *persistentLogger) int {
 	raw, err := io.ReadAll(stdin)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "imoogi: request could not be read: %v\n", err)
@@ -239,6 +281,7 @@ func runInstall(stdin io.Reader, stdout, stderr io.Writer) int {
 
 	var req protocol.InstallRequest
 	if err := json.Unmarshal(raw, &req); err != nil {
+		logger.Event("request_decode_failed", map[string]any{"command": "install-models", "error": err.Error()})
 		_, _ = fmt.Fprintf(stderr, "imoogi: request could not be decoded: %v\n", err)
 		return 1
 	}
@@ -252,10 +295,17 @@ func runInstall(stdin io.Reader, stdout, stderr io.Writer) int {
 	// unreachability taxonomy gets invented.
 	client := ankiconnect.NewClient(req.AnkiConnectURL, nil)
 	if err := client.Handshake(ctx); err != nil {
+		logger.Event("handshake_failed", map[string]any{"command": "install-models", "error": err.Error()})
 		return failRun(stdout, stderr, handshakeErrorCode(err), err.Error())
 	}
 
 	results, errs := model.Install(ctx, client, req.UserCSS, stderr)
+	for _, result := range results {
+		logger.Event("install_result", map[string]any{"action": result.Action, "key": result.Key})
+	}
+	for _, installErr := range errs {
+		logger.Event("install_error", map[string]any{"code": installErr.Code, "message": installErr.Message, "key": installErr.Key})
+	}
 
 	// ok is false only when NOTHING could be installed. One type failing
 	// while the other succeeds is a partial success the front end can act on,
@@ -268,8 +318,10 @@ func runInstall(stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if !resp.OK {
+		logger.Event("command_complete", map[string]any{"command": "install-models", "ok": false, "results": len(results), "errors": len(errs)})
 		return 1
 	}
+	logger.Event("command_complete", map[string]any{"command": "install-models", "ok": true, "results": len(results), "errors": len(errs)})
 	return 0
 }
 

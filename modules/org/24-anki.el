@@ -260,6 +260,7 @@ ANKI_NOTE_TYPE 이 아직 없으면 Cloze 로 지정해 준다 (프로퍼티를 
                    ("F" . imoogi-anki-register-file)
                    ("l" . imoogi-anki-list-targets)
                    ("L" . imoogi-anki-list-files)
+                   ("g" . imoogi-anki-open-log)
                    ("u" . imoogi-anki-unregister-target)))
   (define-key imoogi-anki-map (kbd (car binding)) (cdr binding)))
 
@@ -285,6 +286,7 @@ ANKI_NOTE_TYPE 이 아직 없으면 Cloze 로 지정해 준다 (프로퍼티를 
      ["실행 -----------"
       ("s" "동기화" imoogi-sync)
       ("S" "최초 설정" imoogi-anki-setup)
+      ("g" "진단 로그" imoogi-anki-open-log)
       ("q" "종료" transient-quit-one)]
      ["동기화 대상 ---------"
       ("D" "폴더 등록" imoogi-anki-register-directory)

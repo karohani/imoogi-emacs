@@ -15,6 +15,9 @@
 (require 'json)
 (require 'seq)
 
+(defvar imoogi-anki-log-file nil
+  "Persistent log path configured by the imoogi front end.")
+
 (defvar imoogi-protocol-version 1
   "Wire-contract version this front end speaks.
 Must match the Go binary's compiled-in `internal/protocol.Version'.")
@@ -56,7 +59,9 @@ prints its own argv back, so all four forms are asserted rather than
 kept in sync by hand."
   (with-temp-buffer
     (insert request-json)
-    (let* ((coding-system-for-write 'utf-8)
+    (let* ((process-environment (copy-sequence process-environment))
+           (_ (setenv "IMOOGI_ANKI_LOG" imoogi-anki-log-file))
+           (coding-system-for-write 'utf-8)
            (coding-system-for-read 'utf-8)
            (exit-code (apply #'call-process-region
                              (point-min) (point-max)
