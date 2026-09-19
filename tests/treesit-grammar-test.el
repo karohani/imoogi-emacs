@@ -17,7 +17,8 @@
     (python     . python-ts-mode)
     (go         . go-ts-mode)
     (java       . java-ts-mode)
-    (yaml       . yaml-ts-mode))
+    (yaml       . yaml-ts-mode)
+    (kotlin     . kotlin-ts-mode))
   "반입 대상 문법과 그 문법이 켜줘야 할 메이저 모드.")
 
 (defconst imoogi-treesit-test--samples
@@ -58,6 +59,21 @@
     ;; 하나도 검사하지 못했다면 그 사실을 알린다(조용한 통과 방지).
     (when (zerop checked)
       (message "treesit 문법이 하나도 없어 전부 건너뜀"))))
+
+(ert-deftest imoogi-treesit-kotlin-font-lock-rules-match-vendored-grammar ()
+  "Kotlin mode must compile every font-lock rule against its bundled grammar."
+  (skip-unless (treesit-language-available-p 'kotlin))
+  (let (mismatches)
+    (cl-letf (((symbol-function 'display-warning)
+               (lambda (type message &optional level buffer-name)
+                 (when (eq type 'treesit-font-lock-rules-mismatch)
+                   (push (list message level buffer-name) mismatches)))))
+      (with-temp-buffer
+        (setq buffer-file-name "/tmp/imoogi-kotlin-font-lock-test.kt")
+        (insert "const val ANSWER = 42\nfun main() { println(\"$ANSWER\") }\n")
+        (kotlin-ts-mode)
+        (font-lock-ensure)))
+    (should-not mismatches)))
 
 ;;; 망분리 — 런타임 문법 다운로드 금지
 
