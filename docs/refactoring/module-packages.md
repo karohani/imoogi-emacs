@@ -72,4 +72,6 @@ Org·Markdown·미리보기·첨부·학습카드는 org, 개발 도구는 devel
 - `make lint` (go vet), `git diff --check` 통과.
 - fmt-check 종료 코드는 0이지만 기존 vendor/go-mode 테스트 fixture 두 개에서
   Go package 선언이 없다는 진단이 발생한다. 이번 변경은 Go 소스를 수정하지 않는다.
-- 개인 데이터·사용자 레지스트리 이동 없음. 커밋·푸시는 수행하지 않았다.
+- 개인 데이터·사용자 레지스트리 이동 없음. 2026-09-19 전체 변경을 포함한
+  `make ci-local` 재검증에서 ERT 392개 중 390개 통과, GUI 2개 skip, 실패 0개였다.
+  로컬 HTTP 테스트에는 루프백 소켓 사용 권한이 필요하다.
