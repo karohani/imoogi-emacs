@@ -32,7 +32,7 @@ CLIPBOARD_PREFIX ?= $(HOME)/.local/bin
 IMOOGI_CLIP_VERSION ?= dev
 
 .DEFAULT_GOAL := help
-.PHONY: help emacs-install emacs-prewarm emacs-where install toolchain-setup tmux-install tmux-check grammars build build-anki build-org-preview build-clipboard install-clipboard clipboard-version provenance-generate provenance-verify verify-vendor fmt fmt-check lint test test-elisp test-go test-shell ci-local clean-elc clean
+.PHONY: help emacs-install emacs-prewarm emacs-where install toolchain-setup tmux-install tmux-check grammars build build-all build-anki-bin build-toolchain build-provenance build-anki build-org-preview build-clipboard build-notes install-clipboard clipboard-version provenance-generate provenance-verify verify-vendor fmt fmt-check lint test test-elisp test-go test-shell ci-local clean-elc clean
 
 help: ## 이 도움말
 	@echo "imoogi-emacs"
@@ -54,9 +54,11 @@ help: ## 이 도움말
 	@echo "  make provenance-generate 온라인 갱신 후 provenance manifest 재생성"
 	@echo "  make lint                go vet"
 	@echo "  make fmt                 go fmt"
-	@echo "  make build               imoogi-toolchain CLI 빌드"
+	@echo "  make build               모든 Go 패키지 컴파일 검사"
+	@echo "  make build-all           모든 Go CLI를 bin/에 빌드"
 	@echo "  make build-anki          Org→Anki 백엔드를 $(ANKI_PREFIX) 에 설치"
 	@echo "  make build-clipboard     클립보드 자산 CLI를 bin/에 빌드"
+	@echo "  make build-notes         프로젝트 노트 안전 이동 CLI를 bin/에 빌드"
 	@echo "  make install-clipboard   클립보드 자산 CLI를 $(CLIPBOARD_PREFIX) 에 설치"
 	@echo "  make clipboard-version   빌드된 클립보드 CLI 버전 확인"
 	@echo "  make ci-local            pre-push 훅이 부르는 전체 검사"
@@ -101,8 +103,23 @@ grammars: ## tree-sitter 문법을 vendor/tree-sitter/ 로 빌드한다 (온라�
 
 ## ---------------------------------------------------------------- 개발
 
-build: ## imoogi-toolchain CLI 를 빌드한다
+build: ## 모든 Go 패키지가 컴파일되는지 검사한다
 	@$(GO) build ./...
+
+build-all: build-toolchain build-anki-bin build-org-preview build-clipboard build-notes build-provenance ## 모든 Go CLI를 bin/에 빌드한다
+	@echo "모든 Go CLI 빌드 완료: bin/"
+
+build-toolchain: ## 언어 도구 설치 CLI를 bin/에 빌드한다
+	@mkdir -p bin
+	@$(GO) build -o bin/imoogi-toolchain ./cmd/imoogi-toolchain
+
+build-anki-bin: ## Org→Anki 백엔드를 bin/에 빌드한다
+	@mkdir -p bin
+	@$(GO) build -o bin/imoogi-anki ./cmd/imoogi-anki
+
+build-provenance: ## 공급망 매니페스트 CLI를 bin/에 빌드한다
+	@mkdir -p bin
+	@$(GO) build -o bin/imoogi-provenance ./cmd/imoogi-provenance
 
 build-org-preview: ## 로컬 Org 브라우저 미리보기 서버를 빌드한다
 	@mkdir -p bin
@@ -111,6 +128,10 @@ build-org-preview: ## 로컬 Org 브라우저 미리보기 서버를 빌드한�
 build-clipboard: ## 클립보드 텍스트·파일·이미지 판별 및 자산 복사 CLI를 빌드한다
 	@mkdir -p bin
 	@$(GO) build -ldflags "-X main.version=$(IMOOGI_CLIP_VERSION)" -o bin/imoogi-clip ./cmd/imoogi-clip
+
+build-notes: ## 프로젝트 노트 검증 이동 CLI를 bin/에 빌드한다
+	@mkdir -p bin
+	@$(GO) build -o bin/imoogi-notes ./cmd/imoogi-notes
 
 install-clipboard: ## 클립보드 자산 CLI를 CLIPBOARD_PREFIX 에 설치한다
 	@mkdir -p "$(CLIPBOARD_PREFIX)"

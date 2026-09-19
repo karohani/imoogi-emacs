@@ -323,6 +323,7 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
     ("L" "루트·노트 목록" imoogi-project-notes-mounted-root-list)
     ("E" "루트 설정 편집" imoogi-project-notes-mounted-root-edit)
     ("R" "다시 검색" imoogi-project-notes-mounted-root-refresh)
+    ("v" "로컬 노트를 외장으로 이동" imoogi-project-notes-move-to-mounted-root)
     ("D" "루트 등록 제거" imoogi-project-notes-mounted-root-remove)
     ("x" "노트 세션 분리" imoogi-project-notes-detach)
     ("u" "장치 안전 unmount" imoogi-project-notes-unmount-device)

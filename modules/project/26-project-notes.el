@@ -31,6 +31,11 @@ a navigation file.  Changing this option does not migrate existing projects."
                  (const :tag "Central agenda.org" central))
   :group 'imoogi-project-notes)
 
+(defcustom imoogi-project-notes-command '("imoogi-notes")
+  "Command used for verified project-note filesystem operations."
+  :type '(repeat string)
+  :group 'imoogi-project-notes)
+
 (defvar-local imoogi-project-notes-source-root nil
   "Source root associated with the current project notes buffer.")
 
@@ -59,6 +64,10 @@ a navigation file.  Changing this option does not migrate existing projects."
 (defvar imoogi-project-notes-unmount-executor-function
   #'imoogi-project-notes--default-unmount-executor
   "Function that performs an already validated unmount descriptor.")
+
+(defvar imoogi-project-notes-move-runner-function
+  #'imoogi-project-notes--run-move-command
+  "Function that asks the Go helper to move a verified note tree.")
 
 (defconst imoogi-project-notes--metadata-file-name ".imoogi-project.json"
   "File that identifies the kind and layout of a project-notes directory.")
@@ -670,15 +679,25 @@ even though the project notes registry key is shared across worktrees."
   "Return the two-digit year used in a new study identifier."
   (format-time-string "%y"))
 
-(defun imoogi-project-notes--next-study-id (&optional year)
-  "Return the next YEAR.NN study identifier below the notes root."
+(defun imoogi-project-notes--next-study-id (&optional year additional-root)
+  "Return the next YEAR.NN study identifier across available notes roots.
+Scan the local notes root, registered mounted roots, and ADDITIONAL-ROOT when
+provided so a portable study note cannot reuse an existing identifier."
   (let* ((year (or year (imoogi-project-notes--study-year)))
          (regexp (format "\\`%s\\.\\([0-9][0-9]\\)-" (regexp-quote year)))
+         (mounted-state (imoogi-project-notes--read-mounted-state 'noerror))
+         (roots (cons imoogi-project-notes-directory
+                      (mapcar (lambda (root) (alist-get 'path root))
+                              (alist-get 'roots mounted-state))))
          (maximum 0))
-    (when (file-directory-p imoogi-project-notes-directory)
-      (dolist (name (directory-files imoogi-project-notes-directory nil regexp))
-        (when (string-match regexp name)
-          (setq maximum (max maximum (string-to-number (match-string 1 name)))))))
+    (when additional-root
+      (push additional-root roots))
+    (dolist (root (delete-dups (delq nil roots)))
+      (when (file-directory-p root)
+        (dolist (name (directory-files root nil regexp))
+          (when (string-match regexp name)
+            (setq maximum
+                  (max maximum (string-to-number (match-string 1 name))))))))
     (when (>= maximum 99)
       (user-error "%s년 학습 노트가 99개를 초과했습니다" year))
     (format "%s.%02d" year (1+ maximum))))
@@ -829,6 +848,27 @@ This startup path intentionally avoids writing string-backed agenda storage."
             (imoogi-org--write-agenda-storage-file org-agenda-files targets)
           (setq org-agenda-files targets)))
     (imoogi-project-notes--register-agenda-file-list-only file)))
+
+(defun imoogi-project-notes--replace-agenda-target (old-file new-file)
+  "Replace OLD-FILE with NEW-FILE in the configured agenda targets."
+  (require 'org-agenda)
+  (let* ((old-file (expand-file-name old-file))
+         (new-file (expand-file-name new-file))
+         (targets
+          (delete-dups
+           (mapcar (lambda (target)
+                     (let ((expanded (expand-file-name target org-directory)))
+                       (if (string= expanded old-file) new-file expanded)))
+                   (if (fboundp 'imoogi-org--current-agenda-targets)
+                       (imoogi-org--current-agenda-targets)
+                     org-agenda-files)))))
+    (when (and (fboundp 'imoogi-org--agenda-storage-buffer-modified-p)
+               (imoogi-org--agenda-storage-buffer-modified-p))
+      (user-error
+       "Save or kill the agenda file-list buffer before moving project notes"))
+    (if (stringp org-agenda-files)
+        (imoogi-org--write-agenda-storage-file org-agenda-files targets)
+      (setq org-agenda-files targets))))
 
 (defun imoogi-project-notes--values (project-name source-root task-file notes-dir
                                                   &optional study-id start-date)
@@ -1099,12 +1139,24 @@ The default folder is `YY.NN-STUDY-NAME' below
 optional programmatic overrides.  Existing files are never overwritten."
   (interactive
    (let* ((name (read-string "학습 이름: "))
-          (id (imoogi-project-notes--next-study-id))
+          (mounted-root
+           (when current-prefix-arg
+             (let ((entry (imoogi-project-notes--select-mounted-root
+                           "학습 노트를 만들 외장 루트: ")))
+               (when (eq (alist-get 'enabled entry) :json-false)
+                 (user-error "비활성 외장 루트에는 학습 노트를 만들 수 없습니다"))
+               (let ((path (alist-get 'path entry)))
+                 (unless (file-directory-p path)
+                   (user-error "외장 노트 루트가 연결되어 있지 않습니다: %s" path))
+                 path))))
+          (base (or mounted-root imoogi-project-notes-directory))
+          (id (imoogi-project-notes--next-study-id nil mounted-root))
           (default (expand-file-name
                     (format "%s-%s/" id (imoogi-project-notes--slug name))
-                    imoogi-project-notes-directory))
-          (directory (when current-prefix-arg
-                       (read-directory-name "학습 노트 폴더: " default nil nil))))
+                    base))
+          (directory (when mounted-root
+                       (read-directory-name "외장 학습 노트 폴더: "
+                                            default nil nil))))
      (list name directory id (format-time-string "%Y-%m-%d"))))
   (when (string-empty-p (string-trim study-name))
     (user-error "학습 이름을 입력하세요"))
@@ -1445,6 +1497,194 @@ use their standalone notes directory as the workspace root."
                    (imoogi-project-notes--all-entries))))
     (message "imoogi: 외장 루트 %d개에서 노트 %d개를 찾았습니다" roots entries)
     entries))
+
+(defun imoogi-project-notes--move-command ()
+  "Return the executable command for project-note filesystem operations."
+  (when-let* ((program (car imoogi-project-notes-command))
+              (executable
+               (or (executable-find program)
+                   (let ((bundled (expand-file-name "bin/imoogi-notes"
+                                                    imoogi-emacs-dir)))
+                     (and (file-executable-p bundled) bundled)))))
+    (cons executable (cdr imoogi-project-notes-command))))
+
+(defun imoogi-project-notes--run-move-command (source destination)
+  "Ask the Go helper to move SOURCE to DESTINATION and return its response."
+  (let ((command (imoogi-project-notes--move-command)))
+    (unless command
+      (user-error
+       "imoogi-notes 실행 파일이 없습니다. 저장소에서 make build-notes를 실행하세요"))
+    (let ((stderr-file (make-temp-file "imoogi-notes-stderr-"))
+          response status)
+      (unwind-protect
+          (with-temp-buffer
+            (insert (json-encode `((operation . "move")
+                                   (source . ,(expand-file-name source))
+                                   (destination . ,(expand-file-name destination)))))
+            (setq status
+                  (apply #'call-process-region
+                         (point-min) (point-max) (car command)
+                         t (list t stderr-file) nil (cdr command)))
+            (goto-char (point-min))
+            (condition-case err
+                (let ((json-object-type 'alist)
+                      (json-array-type 'list)
+                      (json-key-type 'symbol)
+                      (json-false :json-false))
+                  (setq response (json-read)))
+              (error
+               (user-error "imoogi-notes 응답을 읽을 수 없습니다: %s"
+                           (error-message-string err)))))
+            (unless (and (integerp status) (zerop status))
+              (user-error "imoogi-notes 실행 실패: %s"
+                          (string-trim
+                           (with-temp-buffer
+                             (insert-file-contents stderr-file)
+                             (buffer-string)))))
+            response)
+        (when (file-exists-p stderr-file)
+          (delete-file stderr-file)))))
+
+(defun imoogi-project-notes--retarget-buffers
+    (buffers old-directory new-directory entry)
+  "Retarget BUFFERS from OLD-DIRECTORY to NEW-DIRECTORY and attach ENTRY."
+  (let ((old-directory (file-name-as-directory (expand-file-name old-directory))))
+    (dolist (buffer buffers)
+      (when-let* ((file (buffer-file-name buffer)))
+        (let ((target (expand-file-name
+                       (file-relative-name file old-directory)
+                       new-directory)))
+          (with-current-buffer buffer
+            (setq default-directory (file-name-directory target))
+            ;; SOURCE no longer exists after the CLI succeeds, so update the
+            ;; visited identity directly instead of asking Emacs to inspect
+            ;; or rename the old path again.
+            (setq buffer-file-name target)
+            (set-visited-file-modtime)
+            (rename-buffer (file-name-nondirectory target) t)
+            (imoogi-project-notes--set-buffer-context entry)
+            (imoogi-project-notes--apply-buffer-status entry)))))))
+
+(defun imoogi-project-notes--remove-local-entry (entry)
+  "Remove local registry ENTRY after it has moved to a mounted root."
+  (let ((key (alist-get 'key entry)))
+    (imoogi-project-notes--write-registry
+     (cl-remove key (imoogi-project-notes--read-registry)
+                :key (lambda (item) (alist-get 'key item))
+                :test #'string=))))
+
+;;;###autoload
+(defun imoogi-project-notes-move-to-mounted-root (&optional entry root)
+  "Move local project-note ENTRY below registered mounted ROOT.
+The destination keeps the current note directory name.  Existing destinations
+are never overwritten.  Open modified note buffers must be saved before the
+copy starts.  The copied tree is hash-verified before local registration and
+Agenda paths are changed and the original directory is removed."
+  (interactive)
+  (let* ((entry (or entry
+                    (imoogi-project-notes--current-entry)
+                    (imoogi-project-notes--select-entry
+                     "외장으로 옮길 로컬 노트: ")))
+         (root (or root
+                   (imoogi-project-notes--select-mounted-root
+                    "옮길 외장 루트: ")))
+         (source (imoogi-project-notes--alist-string 'notes-dir entry))
+         (root-path (imoogi-project-notes--alist-string 'path root)))
+    (unless (eq (alist-get 'origin entry) 'local)
+      (user-error "로컬에 등록된 project/study note만 외장으로 옮길 수 있습니다"))
+    (when (eq (imoogi-project-notes--entry-todo-storage entry) 'central)
+      (user-error
+       "중앙 agenda를 사용하는 프로젝트는 외장으로 옮길 수 없습니다. project tasks.org 저장 방식으로 전환하세요"))
+    (when (eq (alist-get 'enabled root) :json-false)
+      (user-error "비활성 외장 루트로는 노트를 옮길 수 없습니다"))
+    (unless (file-directory-p root-path)
+      (user-error "외장 노트 루트가 연결되어 있지 않습니다: %s" root-path))
+    (unless (file-directory-p source)
+      (user-error "옮길 노트 폴더가 없습니다: %s" source))
+    (let* ((destination
+            (expand-file-name
+             (file-name-nondirectory (directory-file-name source)) root-path))
+           (tasks-relative
+            (file-relative-name
+             (imoogi-project-notes--alist-string 'tasks-file entry) source))
+           (old-tasks (imoogi-project-notes--alist-string 'tasks-file entry))
+           (new-tasks (expand-file-name tasks-relative destination))
+           (buffers (imoogi-project-notes--buffers-under-directory source))
+           (dirty (cl-remove-if-not #'buffer-modified-p buffers))
+           moved-entry)
+      (when (file-exists-p destination)
+        (user-error "외장 루트에 같은 이름의 폴더가 이미 있습니다: %s"
+                    destination))
+      (when dirty
+        (imoogi-project-notes--show-dirty-buffers dirty)
+        (unless (y-or-n-p
+                 (format "변경 파일 %d개를 저장하고 외장 루트로 옮길까요? "
+                         (length dirty)))
+          (user-error "외장 노트 이동을 취소했습니다")))
+      (imoogi-project-notes--save-buffers-or-error dirty)
+      (when (and (fboundp 'imoogi-org--agenda-storage-buffer-modified-p)
+                 (imoogi-org--agenda-storage-buffer-modified-p))
+        (user-error
+         "Save or kill the agenda file-list buffer before moving project notes"))
+      (let ((selected-note-buffer-p (memq (current-buffer) buffers))
+            response)
+        ;; Do not leave Emacs' process cwd inside SOURCE while the helper
+        ;; atomically removes that directory.
+        (when selected-note-buffer-p
+          (setq default-directory root-path))
+        (condition-case err
+            (setq response
+                  (funcall imoogi-project-notes-move-runner-function
+                           source destination))
+          (error
+           (when (and selected-note-buffer-p (file-directory-p source))
+             (setq default-directory (file-name-as-directory source)))
+           (signal (car err) (cdr err))))
+        (unless (eq (alist-get 'ok response) t)
+          (when (and selected-note-buffer-p (file-directory-p source))
+            (setq default-directory (file-name-as-directory source)))
+          (user-error "외장 노트 이동 실패 [%s]: %s"
+                      (or (alist-get 'code response) "unknown")
+                      (or (alist-get 'error response) "원인을 확인할 수 없습니다")))
+        ;; The CLI has atomically removed SOURCE.  Keep the selected note
+        ;; buffer usable while Emacs applies the returned destination paths.
+        (when selected-note-buffer-p
+          (setq default-directory (file-name-as-directory destination)))
+        (unless (and (file-directory-p destination)
+                     (not (file-exists-p source)))
+          (error "imoogi-notes 성공 응답과 실제 파일 상태가 일치하지 않습니다"))
+        (setq moved-entry
+              (imoogi-project-notes--metadata-entry
+               (imoogi-project-notes--metadata-file destination)
+               (imoogi-project-notes--read-metadata-file
+                (imoogi-project-notes--metadata-file destination))))
+        (push '(origin . mounted) moved-entry)
+        (push (cons 'logical-key (alist-get 'key moved-entry)) moved-entry)
+        (push (cons 'mounted-root-id
+                    (imoogi-project-notes--alist-string 'id root))
+              moved-entry)
+        (push (cons 'mounted-root root-path) moved-entry)
+        (push (cons 'device-label
+                    (imoogi-project-notes--alist-string 'label root))
+              moved-entry)
+        (push (cons 'instance-id
+                    (imoogi-project-notes--mounted-instance-id
+                     (imoogi-project-notes--alist-string 'id root)
+                     destination))
+              moved-entry)
+        (setq moved-entry
+              (imoogi-project-notes--decorate-mounted-status
+               moved-entry (imoogi-project-notes--read-mounted-state)))
+        (imoogi-project-notes--replace-agenda-target old-tasks new-tasks)
+        (imoogi-project-notes--remove-local-entry entry)
+        (imoogi-project-notes--retarget-buffers
+         buffers source destination moved-entry)
+        (when-let* ((warning (imoogi-project-notes--alist-string
+                             'warning response)))
+          (display-warning 'imoogi warning :warning))
+        (message "imoogi: 노트를 외장 루트로 옮겼습니다 (%s개 파일): %s"
+                 (or (alist-get 'files response) 0) destination)
+        (file-name-as-directory destination)))))
 
 ;;;###autoload
 (defun imoogi-project-notes-detach (&optional entry)

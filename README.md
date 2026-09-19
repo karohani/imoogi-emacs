@@ -459,6 +459,7 @@ Perspective의 파일/Dired 버퍼와 창 배치는 정상 종료 시 저장되�
 | `+` | `imoogi-project-notes-mounted-root-add` | SD 카드·SSD의 imoogi 노트 상위 폴더 등록 |
 | `L` | `imoogi-project-notes-mounted-root-list` | 등록한 외장 루트와 발견된 노트 목록 표시 |
 | `E` / `R` / `D` | 루트 편집 / 다시 검색 / 등록 제거 | 호스트의 외장 루트 설정 관리 |
+| `v` | `imoogi-project-notes-move-to-mounted-root` | 기존 로컬 프로젝트·학습 노트를 등록된 외장 루트로 이동 |
 | `x` | `imoogi-project-notes-detach` | 선택한 외장 노트를 현재 세션 목록에서만 분리 |
 | `u` | `imoogi-project-notes-unmount-device` | 변경 버퍼를 확인·저장한 뒤 장치 unmount |
 | `c` / `C` | 소스 재연결 / 연결 해제 | 외장 project note의 호스트별 소스 경로 관리 |
@@ -504,6 +505,20 @@ TODO heading에서 `r`을 누르면 조사·요구사항·설계·문제 분석�
 자신의 `.imoogi-project.json`으로 발견되며 기존 `.cache/project-notes.json`에
 복사하거나 import하지 않는다. 따라서 같은 장치를 다른 PC에 연결해도 노트 폴더
 자체의 metadata를 기준으로 목록을 다시 만들 수 있다.
+
+등록한 외장 루트에 새 학습 노트를 만들 때는
+`C-u M-x imoogi-project-notes-setup-study`를 실행한다. 학습 이름 다음에 외장
+루트를 선택하면 그 루트의 로컬·외장 학습 ID를 모두 확인해 다음 `YY.NN` 폴더를
+제안한다. 폴더 선택을 그대로 확정하면 외장 루트 아래에 학습 노트가 만들어진다.
+
+이미 로컬에 만든 project/study note는 `C-c h p m v`로 외장 루트로 옮긴다.
+먼저 `make build-notes`로 `bin/imoogi-notes`를 빌드한다. 노트와 대상 외장 루트를
+선택하면 Emacs는 이 Go 프로그램을 호출한다. Go 프로그램이 같은 폴더 이름으로
+복사하고 모든 파일의 SHA-256 검증과 원본 전환을 끝낸 뒤 성공 결과를 반환하면,
+Emacs가 로컬 등록·Agenda 경로·열린 버퍼 경로를 새 위치로 바꾼다.
+대상에 같은 이름이 있으면 덮어쓰지 않고 중단한다.
+중앙 `agenda.org`를 사용하는 프로젝트는 노트 폴더 밖에 TODO 원본이 있으므로 이동
+대상에서 제외한다. 외장 이동은 프로젝트 자체의 `tasks.org`를 쓰는 항목에 지원된다.
 
 목록에는 장치 표시 이름이 함께 나오며 study note는 노트 폴더 자체를 작업공간으로
 열 수 있다. project note의 원래 소스 폴더가 현재 PC에 없으면 `[비활성]`으로
