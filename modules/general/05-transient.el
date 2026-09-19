@@ -13,6 +13,17 @@
   (define-key transient-predicate-map
               [imoogi-transient-context-help] #'transient--do-stay))
 
+(defun imoogi-transient--quit-all-on-c-g (map)
+  "Make C-g leave the entire imoogi menu stack in MAP."
+  (when (and transient--prefix
+             (imoogi-transient--imoogi-prefix-p
+              (oref transient--prefix command)))
+    (define-key map (kbd "C-g") #'transient-quit-all))
+  map)
+
+(advice-add 'transient--make-transient-map :filter-return
+            #'imoogi-transient--quit-all-on-c-g)
+
 ;;; 현재 메뉴 도움말 — ?로 우측 패널 토글
 
 (defvar imoogi-transient--help-window nil
@@ -240,6 +251,29 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
   (unless (advice-member-p #'imoogi-call-with-raw-key-input 'avy-read)
     (advice-add 'avy-read :around #'imoogi-call-with-raw-key-input)))
 
+(defun imoogi-window-swap ()
+  "Swap the current window with an Ace-selected window.
+Dedicated scratch windows are made editable before exchanging buffers.
+Window parameters stay in place, so Treemacs side-window layouts remain valid."
+  (interactive)
+  (aw-select
+   " Ace - Swap Window"
+   (lambda (target)
+     (unless (eq target (selected-window))
+       (let* ((source (selected-window))
+              (source-buffer (window-buffer source))
+              (target-buffer (window-buffer target)))
+         (dolist (window (list source target))
+           (when (window-dedicated-p window)
+             (unless (string-prefix-p "*scratch*"
+                                      (buffer-name (window-buffer window)))
+               (user-error "전용 도구 창은 버퍼 교환 대상이 아닙니다"))))
+         (set-window-dedicated-p source nil)
+         (set-window-dedicated-p target nil)
+         (set-window-buffer source target-buffer)
+         (set-window-buffer target source-buffer)
+         (select-window target))))))
+
 ;; 창 관리
 ;; @MX:NOTE 각 suffix 의 :transient t 유무는 hydra 시절 head 색을 그대로 옮긴
 ;; 것이다(SPEC-TRANSIENT-001 plan.md §C.1). 이 메뉴는 amaranth 였으므로 기본이
@@ -266,7 +300,7 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
     ("b" "버퍼전환" imoogi-consult-perspective-buffer :transient t)
     ("f" "파일열기" find-file :transient t)
     ("a" "ace-window" ace-window :transient t)
-    ("m" "스왑" ace-swap-window :transient t)
+    ("m" "스왑" imoogi-window-swap :transient t)
     ("q" "종료" transient-quit-one)]])
 
 ;; 프로젝트

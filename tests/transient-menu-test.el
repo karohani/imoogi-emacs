@@ -68,7 +68,7 @@
      (imoogi-consult-perspective-buffer transient--do-call)
      (find-file                        transient--do-call)
      (ace-window                       transient--do-call)
-     (ace-swap-window                  transient--do-call)
+     (imoogi-window-swap               transient--do-call)
      (transient-quit-one               transient--do-quit-one))
     ;; §C.2 확장 — 원래 8개(열기+관리)에 "작업공간 전환" 그룹을 더했다.
     ;; persp-next/prev 만 훑어보기용이라 열린 채 유지된다.
@@ -445,6 +445,60 @@ q 만 예외 — 접두 맵에서는 eglot-shutdown 이지만 transient 에서 q
           (should (= (length (window-list)) 1)))
       (transient--stack-zap)
       (set-window-configuration config))))
+
+(ert-deftest imoogi-transient-c-g-exits-nested-menu-entirely ()
+  "C-g closes the whole imoogi stack, while other transients keep their binding."
+  (unwind-protect
+      (progn
+        (transient-setup 'imoogi-transient-master)
+        (execute-kbd-macro (kbd "w"))
+        (should (eq (imoogi-test--active-prefix) 'imoogi-transient-window))
+        (should (eq (lookup-key transient--transient-map (kbd "C-g"))
+                    'transient-quit-all))
+        (execute-kbd-macro (kbd "C-g"))
+        (should-not (imoogi-test--active-prefix))
+        (should-not transient--stack)
+        (should (eq (lookup-key transient-map (kbd "C-g"))
+                    'transient-quit-one)))
+    (transient--stack-zap)))
+
+(ert-deftest imoogi-window-swap-exchanges-dedicated-window-state ()
+  "A dedicated scratch window can exchange places with an editor buffer."
+  (let ((config (current-window-configuration))
+        (editor (get-buffer-create " *imoogi-swap-editor*"))
+        (scratch (get-buffer-create "*scratch* (imoogi-swap-test)")))
+    (unwind-protect
+        (progn
+          (delete-other-windows)
+          (let ((source (selected-window))
+                (target (split-window-right)))
+            (set-window-buffer source editor)
+            (set-window-buffer target scratch)
+            (set-window-dedicated-p target t)
+            (set-window-parameter target 'window-side 'left)
+            (cl-letf (((symbol-function 'aw-select)
+                       (lambda (_prompt action)
+                         (funcall action target))))
+              (imoogi-window-swap))
+            (should (eq (window-buffer source) scratch))
+            (should-not (window-dedicated-p source))
+            (should (eq (window-buffer target) editor))
+            (should-not (window-dedicated-p target))
+            (should (eq (window-parameter target 'window-side) 'left))
+            (should-not (window-parameter source 'window-side))
+            (set-window-dedicated-p source t)
+            (cl-letf (((symbol-function 'aw-select)
+                       (lambda (_prompt action)
+                         (funcall action source))))
+              (imoogi-window-swap))
+            (should (eq (window-buffer source) editor))
+            (should-not (window-dedicated-p source))
+            (should (eq (window-buffer target) scratch))
+            (should-not (window-dedicated-p target))
+            (should (eq (window-parameter target 'window-side) 'left))))
+      (set-window-configuration config)
+      (kill-buffer editor)
+      (kill-buffer scratch))))
 
 (ert-deftest imoogi-transient-master-opens-submenu-and-q-closes-it ()
   "마스터에서 z 는 하위 메뉴로 진입하고, q 는 그 메뉴를 닫는다 (AC-007)."
