@@ -371,6 +371,28 @@
       (should-not add-called)
       (should (= 2 (length (treemacs-workspace->projects workspace)))))))
 
+(ert-deftest imoogi-treemacs-follow-perspective-switches-by-managed-name ()
+  "A managed Perspective switches Treemacs even when its current buffer has no project."
+  (require 'treemacs)
+  (let* ((workspace
+          (treemacs-workspace->create! :name "Project: restored-study"))
+         (treemacs--workspaces (list workspace))
+         (current-workspace nil)
+         (switched nil)
+         (perspective-name "restored-study"))
+    (cl-letf (((symbol-function 'persp-current-name)
+               (lambda () perspective-name))
+              ((symbol-function 'treemacs-current-workspace)
+               (lambda () current-workspace))
+              ((symbol-function 'treemacs-do-switch-workspace)
+               (lambda (next)
+                 (setq switched next
+                       current-workspace next))))
+      (let ((imoogi-treemacs-follow-perspective t))
+        (imoogi-treemacs-follow-perspective-maybe))
+      (should (eq switched workspace))
+      (should (eq current-workspace workspace)))))
+
 (ert-deftest imoogi-treemacs-does-not-auto-start-on-emacs-startup-hook ()
   "Treemacs no longer opens itself on startup — only via manual toggle."
   (let ((hooks (mapcar (lambda (entry) (if (consp entry) (car entry) entry))

@@ -517,8 +517,7 @@ opening happen in `imoogi-treemacs-open-project-workspace' when a project is
 opened explicitly."
   (when (and imoogi-treemacs-follow-perspective
              (featurep 'treemacs))
-    (when-let* ((root (imoogi-treemacs--perspective-project-root))
-                (perspective-name (persp-current-name))
+    (when-let* ((perspective-name (persp-current-name))
                 (workspace-name
                  (imoogi-treemacs--project-workspace-name perspective-name))
                 (workspace
@@ -527,8 +526,13 @@ opened explicitly."
                     (equal workspace-name
                            (treemacs-workspace->name candidate)))
                   (treemacs-workspaces))))
-      (when (and (imoogi-treemacs--workspace-has-p workspace root)
-                 (not (eq workspace (treemacs-current-workspace))))
+      ;; The workspace name is the stable perspective↔Treemacs mapping.  Do
+      ;; not require `project-current' or a matching root here: after a
+      ;; perspective restores its windows, the selected buffer can briefly be
+      ;; a scratch/dired buffer, and user-added folders are intentionally not
+      ;; required to include the project's root.  The explicit project open
+      ;; path still creates the workspace and registers its root.
+      (when (not (eq workspace (treemacs-current-workspace)))
         (treemacs-do-switch-workspace workspace)))))
 
 (with-eval-after-load 'perspective
