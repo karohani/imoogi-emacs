@@ -4,6 +4,17 @@
 ;; 외부 패키지 없음(내장 기능만 사용).
 (imoogi-require "01-keys")
 
+;;; Quit an active minibuffer even after focus moves to another window.
+(defun imoogi-keyboard-quit ()
+  "Cancel the active minibuffer, or perform the usual keyboard quit."
+  (interactive)
+  (if-let* ((window (active-minibuffer-window)))
+      (with-selected-window window
+        (minibuffer-keyboard-quit))
+    (keyboard-quit)))
+
+(global-set-key (kbd "C-g") #'imoogi-keyboard-quit)
+
 ;;; macOS: Emacs 포커스 시 시스템 입력 소스를 영문으로 강제 전환
 ;; 한글 입력은 Emacs 내장 input-method (S-SPC)로 처리.
 ;; (터미널은 ghostel + ghostel-ime-mode 를 쓰므로 ghostel 안에서도 S-SPC 로
@@ -42,6 +53,13 @@
 ;;; Korean input method (Shift+Space로 한영 전환)
 (global-set-key (kbd "S-SPC") 'toggle-input-method)
 (setq default-input-method "korean-hangul")
+
+(defun imoogi-call-with-raw-key-input (fn &rest args)
+  "Call synchronous key reader FN without the current Emacs input method.
+This preserves the active input method and only bypasses its translation while
+FN reads modal selection keys in the current buffer."
+  (let ((input-method-function nil))
+    (apply fn args)))
 
 ;;; Korean key translation (한글 입력 상태에서도 주요 키바인딩 동작)
 ;; 한글 두벌식 자판: 영문 키 → 한글 자모 매핑.

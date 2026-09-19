@@ -4,6 +4,7 @@
 
 (require 'ert)
 (require 'transient)
+(require 'ace-window)
 
 (defun imoogi-test--with-korean-input-method (fn)
   "Run FN with the built-in Korean input method active."
@@ -112,6 +113,67 @@
           (quit (setq caught t)))
         (should caught)))
     (should (equal current-input-method "korean-hangul"))))
+
+(ert-deftest imoogi-raw-key-reader-bypasses-without-disabling-input-method ()
+  (with-temp-buffer
+    (imoogi-test--with-korean-input-method
+     (lambda ()
+       (should
+        (eq 'selected
+            (imoogi-call-with-raw-key-input
+             (lambda ()
+               (should (equal current-input-method "korean-hangul"))
+               (should-not input-method-function)
+               'selected))))
+       (should (equal current-input-method "korean-hangul"))))))
+
+(ert-deftest imoogi-raw-key-reader-restores-input-function-after-error ()
+  (with-temp-buffer
+    (imoogi-test--with-korean-input-method
+     (lambda ()
+       (let ((original input-method-function))
+         (should-error
+          (imoogi-call-with-raw-key-input
+           (lambda ()
+             (should-not input-method-function)
+             (error "key reader failed"))))
+         (should (eq input-method-function original))
+         (should (equal current-input-method "korean-hangul")))))))
+
+(ert-deftest imoogi-avy-read-selects-label-with-korean-input-active ()
+  (with-temp-buffer
+    (imoogi-test--with-korean-input-method
+     (lambda ()
+       (let* ((unread-command-events (list ?a))
+              (saw-raw-reader nil)
+             (avy-translate-char-function
+              (lambda (char)
+                (should (equal current-input-method "korean-hangul"))
+                (should-not input-method-function)
+                (setq saw-raw-reader t)
+                char)))
+         (should
+          (eq 'selected
+              (avy-read (avy-tree '(selected) '(?a ?s))
+                        (lambda (&rest _))
+                        (lambda ()))))
+         (should saw-raw-reader))
+       (should (equal current-input-method "korean-hangul"))))))
+
+(ert-deftest imoogi-ace-family-shares-raw-key-reader-boundary ()
+  (dolist (command '(ace-window ace-select-window ace-swap-window
+                     ace-delete-window ace-delete-other-windows
+                     ace-display-buffer))
+    (should (fboundp command)))
+  (should (advice-member-p #'imoogi-call-with-raw-key-input 'avy-read)))
+
+(ert-deftest imoogi-raw-key-reader-advice-does-not-accumulate ()
+  (let (before after)
+    (advice-mapc (lambda (advice _props) (push advice before)) 'avy-read)
+    (load (expand-file-name "modules/general/05-transient.el" imoogi-test-root) nil t)
+    (advice-mapc (lambda (advice _props) (push advice after)) 'avy-read)
+    (should (= (length before) (length after)))
+    (should (= 1 (cl-count #'imoogi-call-with-raw-key-input after)))))
 
 (provide 'transient-input-method-test)
 ;;; transient-input-method-test.el ends here

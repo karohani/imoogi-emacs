@@ -233,7 +233,12 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
   :bind ("M-o" . ace-window)
   :custom
   (aw-keys '(?a ?s ?d ?f ?g ?h ?j ?k ?l))
-  (aw-scope 'frame))
+  (aw-scope 'frame)
+  :config
+  ;; Ace의 모든 진입점은 `avy-read'에서 실제 선택 키를 읽는다. 명령 전체의
+  ;; 입력기 상태를 바꾸지 않고 이 동기 입력 경계만 raw key로 처리한다.
+  (unless (advice-member-p #'imoogi-call-with-raw-key-input 'avy-read)
+    (advice-add 'avy-read :around #'imoogi-call-with-raw-key-input)))
 
 ;; 창 관리
 ;; @MX:NOTE 각 suffix 의 :transient t 유무는 hydra 시절 head 색을 그대로 옮긴
