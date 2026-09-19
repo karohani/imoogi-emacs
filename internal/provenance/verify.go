@@ -29,6 +29,7 @@ func Verify(repoRoot, indexPath string) []error {
 	excluded := map[string]struct{}{}
 	exclusionsSeen := map[string]bool{}
 	insideRoots := map[string]bool{}
+	ignored := gitIgnored(repoRoot)
 	for _, item := range idx.Excludes {
 		excluded[filepath.ToSlash(filepath.Clean(item.Path))] = struct{}{}
 	}
@@ -66,6 +67,9 @@ func Verify(repoRoot, indexPath string) []error {
 				exclusionsSeen[rel] = true
 				return nil
 			}
+			if _, ok := ignored[rel]; ok {
+				return nil
+			}
 			if _, ok := owned[rel]; !ok {
 				issues = append(issues, fmt.Errorf("unowned file: %s", rel))
 			}
@@ -91,6 +95,9 @@ func Verify(repoRoot, indexPath string) []error {
 			rel = filepath.ToSlash(rel)
 			if _, ok := excluded[rel]; ok {
 				exclusionsSeen[rel] = true
+				return nil
+			}
+			if _, ok := ignored[rel]; ok {
 				return nil
 			}
 			if !insideRoots[rel] {

@@ -277,67 +277,6 @@
       ]
     },
     {
-      "id": "elpa/archive-gnu",
-      "kind": "archive-index",
-      "version": "2026-09-13",
-      "source": {
-        "type": "archive",
-        "url": "https://elpa.gnu.org/packages/"
-      },
-      "workflow": "emacs --batch -Q -l scripts/vendor.el",
-      "files": [
-        {
-          "path": "vendor/elpa/archives/gnu/archive-contents",
-          "sha256": "07bd205a05ba7f900ab510d1b975e99005d053912f3959d0bfbafb84469542ec",
-          "size": 188404
-        },
-        {
-          "path": "vendor/elpa/archives/gnu/archive-contents.signed",
-          "sha256": "301caae1c94cd71455b125fde2c5b05dad3ad1d5311cf7483f940e190d47b110",
-          "size": 156
-        }
-      ]
-    },
-    {
-      "id": "elpa/archive-melpa",
-      "kind": "archive-index",
-      "version": "2026-09-13",
-      "source": {
-        "type": "archive",
-        "url": "https://melpa.org/packages/"
-      },
-      "workflow": "emacs --batch -Q -l scripts/vendor.el",
-      "files": [
-        {
-          "path": "vendor/elpa/archives/melpa/archive-contents",
-          "sha256": "e4e15552134bfba2a00b6fc4eba0393eba92f15e411b1a6cfa514edf90343b7c",
-          "size": 2625316
-        }
-      ]
-    },
-    {
-      "id": "elpa/archive-nongnu",
-      "kind": "archive-index",
-      "version": "2026-09-13",
-      "source": {
-        "type": "archive",
-        "url": "https://elpa.nongnu.org/nongnu/"
-      },
-      "workflow": "emacs --batch -Q -l scripts/vendor.el",
-      "files": [
-        {
-          "path": "vendor/elpa/archives/nongnu/archive-contents",
-          "sha256": "ae3733739b9ee6cc1e36c900e172f4a2ae14fc01c917ff32199ddf8ad07734bd",
-          "size": 106903
-        },
-        {
-          "path": "vendor/elpa/archives/nongnu/archive-contents.signed",
-          "sha256": "81da60031ebc5fdb405c04aed7953fbea93be3c937d0e1fbe1e2c561c6a8063a",
-          "size": 156
-        }
-      ]
-    },
-    {
       "id": "elpa/async",
       "kind": "elisp-source",
       "version": "1.9.9",

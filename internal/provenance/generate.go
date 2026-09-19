@@ -54,9 +54,10 @@ func Generate(repoRoot, sourcePath, indexPath string) error {
 		return err
 	}
 	components = append(components, elpa...)
+	ignored := gitIgnored(repoRoot)
 	domains := map[string][]Component{}
 	for _, declaration := range components {
-		files, err := expandFiles(repoRoot, declaration.Paths, sources.Excludes)
+		files, err := expandFiles(repoRoot, declaration.Paths, sources.Excludes, ignored)
 		if err != nil {
 			return fmt.Errorf("component %s: %w", declaration.ID, err)
 		}
@@ -171,7 +172,7 @@ func elpaPaths(root, directory string) ([]string, error) {
 	return paths, nil
 }
 
-func expandFiles(root string, paths []string, excludes []Exclusion) ([]File, error) {
+func expandFiles(root string, paths []string, excludes []Exclusion, ignored map[string]struct{}) ([]File, error) {
 	excluded := map[string]bool{}
 	for _, ex := range excludes {
 		excluded[ex.Path] = true
@@ -195,6 +196,9 @@ func expandFiles(root string, paths []string, excludes []Exclusion) ([]File, err
 			}
 			rel = filepath.ToSlash(rel)
 			if excluded[rel] {
+				return nil
+			}
+			if _, ok := ignored[rel]; ok {
 				return nil
 			}
 			if seen[rel] {

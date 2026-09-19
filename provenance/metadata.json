@@ -48,8 +48,8 @@
       "files": [
         {
           "path": "provenance/sources.json",
-          "sha256": "26a088bea4c1ab9f49850b08ab49073f5828fd788ce0239edd7fb858feddde20",
-          "size": 13923
+          "sha256": "e89f9eb107c72c5357dd2d1b969945bc72298881d90cb6613927fdad6ed3773f",
+          "size": 12632
         }
       ]
     },

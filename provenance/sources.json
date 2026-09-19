@@ -14,10 +14,6 @@
     "vendor/tree-sitter"
   ],
   "excludes": [
-    {"path": "vendor/.DS_Store", "reason": "local Finder metadata; not part of an external dependency"},
-    {"path": "vendor/elpa/transient-0.13.4/.moai/state/config-cache.json", "reason": "local agent state; not part of the vendored dependency"},
-    {"path": "vendor/elpa/transient-0.13.4/.moai/state/context-usage.json", "reason": "local agent state; not part of the vendored dependency"},
-    {"path": "vendor/elpa/transient-0.13.4/.moai/state/github/counts.json", "reason": "local agent state; not part of the vendored dependency"},
     {"path": "vendor/tree-sitter/README.md", "reason": "repository documentation; not an external grammar artifact"}
   ],
   "elpa_overrides": {
@@ -29,9 +25,6 @@
     {"domain":"metadata","id":"metadata/provenance-sources","kind":"repository-metadata","version":"imoogi-vendor-sources/v1","source":{"type":"repository","url":"provenance/sources.json"},"workflow":"make provenance-generate","paths":["provenance/sources.json"]},
     {"domain":"metadata","id":"metadata/toolchain-selection","kind":"repository-metadata","version":"imoogi-toolchains/v1","source":{"type":"repository","url":"toolchains.json"},"workflow":"edit toolchains.json then run imoogi-toolchain fetch","paths":["toolchains.json"]},
     {"domain":"metadata","id":"metadata/toolchain-lock","kind":"repository-metadata","version":"imoogi-toolchains-lock/v1","source":{"type":"repository","url":"toolchains.lock.json"},"workflow":"go run ./cmd/imoogi-toolchain fetch","paths":["toolchains.lock.json"]},
-    {"domain":"elpa","id":"elpa/archive-gnu","kind":"archive-index","version":"2026-09-13","source":{"type":"archive","url":"https://elpa.gnu.org/packages/"},"workflow":"emacs --batch -Q -l scripts/vendor.el","paths":["vendor/elpa/archives/gnu"]},
-    {"domain":"elpa","id":"elpa/archive-melpa","kind":"archive-index","version":"2026-09-13","source":{"type":"archive","url":"https://melpa.org/packages/"},"workflow":"emacs --batch -Q -l scripts/vendor.el","paths":["vendor/elpa/archives/melpa"]},
-    {"domain":"elpa","id":"elpa/archive-nongnu","kind":"archive-index","version":"2026-09-13","source":{"type":"archive","url":"https://elpa.nongnu.org/nongnu/"},"workflow":"emacs --batch -Q -l scripts/vendor.el","paths":["vendor/elpa/archives/nongnu"]},
 
     {"domain":"fonts","id":"font/nanum-gothic-coding","kind":"font-binary","version":"2.5","source":{"type":"archive","url":"https://github.com/naver/nanumfont/releases/download/VER2.5/NanumGothicCoding-2.5.zip"},"platform":{"os":"any","arch":"any"},"workflow":"extract release archive into assets/fonts","paths":["assets/fonts/NanumGothicCoding.ttf","assets/fonts/NanumGothicCoding-Bold.ttf","assets/fonts/OFL.txt"]},
     {"domain":"fonts","id":"font/nerd-font-symbols","kind":"font-binary","version":"sha256:fe471e538392f51910faab985fa8e192a39dd3426125edd15b71b3680df0e749","source":{"type":"download","url":"https://raw.githubusercontent.com/rainstormstudio/nerd-icons.el/main/fonts/NFM.ttf"},"platform":{"os":"any","arch":"any"},"workflow":"scripts/vendor.el","paths":["assets/fonts/NFM.ttf"]},
