@@ -512,8 +512,10 @@ TODO heading에서 `r`을 누르면 조사·요구사항·설계·문제 분석�
 제안한다. 폴더 선택을 그대로 확정하면 외장 루트 아래에 학습 노트가 만들어진다.
 
 이미 로컬에 만든 project/study note는 `C-c h p m v`로 외장 루트로 옮긴다.
-먼저 `make build-notes`로 `bin/imoogi-notes`를 빌드한다. 노트와 대상 외장 루트를
-선택하면 Emacs는 이 Go 프로그램을 호출한다. Go 프로그램이 같은 폴더 이름으로
+먼저 `make build-notes`로 `bin/imoogi-notes`를 빌드한다. 이때 실행할 명령은
+`imoogi-project-notes-command` defcustom으로 정하며 기본값은 `("imoogi-notes")`다.
+Emacs는 이 이름을 PATH에서 먼저 찾고, 없으면 저장소 안의 `bin/imoogi-notes`를 쓴다.
+노트와 대상 외장 루트를 선택하면 Emacs는 이 Go 프로그램을 호출한다. Go 프로그램이 같은 폴더 이름으로
 복사하고 모든 파일의 SHA-256 검증과 원본 전환을 끝낸 뒤 성공 결과를 반환하면,
 Emacs가 로컬 등록·Agenda 경로·열린 버퍼 경로를 새 위치로 바꾼다.
 대상에 같은 이름이 있으면 덮어쓰지 않고 중단한다.
