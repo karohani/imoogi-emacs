@@ -13,6 +13,10 @@
   (locate-user-emacs-file ".cache/perspective-state.el")
   "File used to persist Perspective buffers and window layouts.")
 
+(defvar imoogi-perspective-active-file
+  (locate-user-emacs-file ".cache/perspective-active.el")
+  "File used to persist the Perspective active at the previous exit.")
+
 (defun imoogi-project--perspective-root ()
   "Return the project root mapped to the current Perspective, if any."
   (when (and (fboundp 'persp-current-name)
@@ -181,7 +185,16 @@ perspective 의 `persp-new' 는 interactive 가 아니라 메뉴에 직접 붙�
   "Restore saved Perspective state without making startup fragile."
   (when (file-readable-p imoogi-perspective-state-file)
     (condition-case err
-        (persp-state-load imoogi-perspective-state-file)
+        (progn
+          (persp-state-load imoogi-perspective-state-file)
+          (when (file-readable-p imoogi-perspective-active-file)
+            (let ((active
+                   (with-temp-buffer
+                     (insert-file-contents imoogi-perspective-active-file)
+                     (read (current-buffer)))))
+              (when (and (stringp active)
+                         (member active (persp-names)))
+                (persp-switch active)))))
       (error
        (display-warning
         'imoogi-projects
@@ -196,7 +209,9 @@ perspective 의 `persp-new' 는 interactive 가 아니라 메뉴에 직접 붙�
     (condition-case err
         (progn
           (make-directory (file-name-directory imoogi-perspective-state-file) t)
-          (persp-state-save imoogi-perspective-state-file))
+          (persp-state-save imoogi-perspective-state-file)
+          (with-temp-file imoogi-perspective-active-file
+            (prin1 (persp-current-name) (current-buffer))))
       (error
        (display-warning
         'imoogi-projects

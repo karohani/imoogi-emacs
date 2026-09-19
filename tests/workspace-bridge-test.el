@@ -287,6 +287,11 @@
   (should (equal imoogi-perspective-state-file
                  (locate-user-emacs-file ".cache/perspective-state.el"))))
 
+(ert-deftest imoogi-perspective-state-paths-include-active-perspective-file ()
+  (should (boundp 'imoogi-perspective-active-file))
+  (should (equal imoogi-perspective-active-file
+                 (locate-user-emacs-file ".cache/perspective-active.el"))))
+
 (ert-deftest imoogi-perspective-restore-missing-file-is-nonfatal ()
   (should (fboundp 'imoogi-perspective-state-restore))
   (let ((imoogi-perspective-state-file
@@ -313,15 +318,39 @@
   (should (fboundp 'imoogi-perspective-state-save))
   (let* ((dir (make-temp-file "imoogi-persp-state-" t))
          (imoogi-perspective-state-file (expand-file-name ".cache/perspective-state.el" dir))
+         (imoogi-perspective-active-file (expand-file-name ".cache/perspective-active.el" dir))
          (saved-file nil))
-    (cl-letf (((symbol-function 'persp-state-save)
+    (cl-letf (((symbol-function 'persp-current-name)
+               (lambda () "active-project"))
+              ((symbol-function 'persp-state-save)
                (lambda (file)
                  (setq saved-file file)
                  (with-temp-file file (insert "state")))))
       (imoogi-perspective-state-save)
       (should (file-directory-p (file-name-directory imoogi-perspective-state-file)))
       (should (equal saved-file imoogi-perspective-state-file))
-      (should (file-exists-p imoogi-perspective-state-file)))))
+      (should (file-exists-p imoogi-perspective-state-file))
+      (should (equal (with-temp-buffer
+                       (insert-file-contents imoogi-perspective-active-file)
+                       (read (current-buffer)))
+                     "active-project")))))
+
+(ert-deftest imoogi-perspective-state-restore-switches-to-last-active-perspective ()
+  (let* ((dir (make-temp-file "imoogi-persp-state-" t))
+         (imoogi-perspective-state-file (expand-file-name "state.el" dir))
+         (imoogi-perspective-active-file (expand-file-name "active.el" dir))
+         (switched nil))
+    (with-temp-file imoogi-perspective-state-file
+      (insert "state"))
+    (with-temp-file imoogi-perspective-active-file
+      (prin1 "active-project" (current-buffer)))
+    (cl-letf (((symbol-function 'persp-state-load) #'ignore)
+              ((symbol-function 'persp-names)
+               (lambda () '("main" "active-project")))
+              ((symbol-function 'persp-switch)
+               (lambda (name) (setq switched name))))
+      (imoogi-perspective-state-restore)
+      (should (equal switched "active-project")))))
 
 (ert-deftest imoogi-perspective-state-serialization-keeps-file-and-dired-buffers-only ()
   (require 'dired)
