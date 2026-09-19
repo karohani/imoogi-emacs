@@ -181,3 +181,18 @@ func TestDeckClassScriptAssumesNoLoadEventAndNoCurrentScript(t *testing.T) {
 		t.Error("deck-class script uses toLowerCase, which folds non-ASCII letters the Go normalizer maps to hyphens")
 	}
 }
+
+// Anki expands template directives before handing the card HTML to its web
+// view. A directive in this JavaScript asset is therefore active even when it
+// appears inside a JavaScript comment. In particular, a front-side directive
+// recursively embeds the front template's script and its closing script tag
+// terminates the outer tag early, exposing the remaining JavaScript as card
+// text. Keep all Anki template syntax out of this asset.
+func TestDeckClassScriptCarriesNoAnkiTemplateDirective(t *testing.T) {
+	js := model.DeckClassScript()
+	for _, delimiter := range []string{"{{", "}}"} {
+		if strings.Contains(js, delimiter) {
+			t.Errorf("deck-class script carries Anki template delimiter %q", delimiter)
+		}
+	}
+}

@@ -1,6 +1,6 @@
 /* imoogi deck-class hook — REQ-C-006, design.md section 3.3.
  *
- * Runs inside the card each time it is shown. Anki expands {{Deck}} as the
+ * Runs inside the card each time it is shown. Anki expands the deck field as the
  * full deck path — `::` separators, spaces, parentheses and all — and a CSS
  * class cannot carry that verbatim. So the template emits its wrapper with
  * the stable class `imoogi-deck` and the deck path as the text of a hidden
@@ -15,7 +15,7 @@
  * Runtime facts this file is written against:
  *  - Anki injects the card HTML into an existing page, so there is no load
  *    event to wait for; the script runs when the card is shown.
- *  - The Basic back side embeds {{FrontSide}}, so there this script runs
+ *  - The Basic back side embeds the rendered front side, so this script runs
  *    twice and sees two carriers (the back's own and the front's, nested).
  *    Everything below is idempotent: a second run adds nothing new.
  *  - document.currentScript is not relied on; carriers are found by class.
