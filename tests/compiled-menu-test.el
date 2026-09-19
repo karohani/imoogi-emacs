@@ -42,8 +42,8 @@
      (setq use-package-always-ensure nil)
      (defvar imoogi-emacs-dir
        ,(file-name-as-directory (expand-file-name imoogi-compiled-menu-test--root)))
-     (add-to-list 'load-path (expand-file-name "modules/anki/" imoogi-emacs-dir))
-     (add-to-list 'load-path (expand-file-name "modules/flashcards/" imoogi-emacs-dir))
+     (add-to-list 'load-path (expand-file-name "modules/org/anki/" imoogi-emacs-dir))
+     (add-to-list 'load-path (expand-file-name "modules/org/flashcards/" imoogi-emacs-dir))
      (defun imoogi-require (module &rest packages)
        (let ((missing (seq-remove
                        (lambda (p) (locate-library (symbol-name p)))
@@ -61,7 +61,7 @@
                            (dolist (module '("14-org" "24-anki" "25-flashcards"
                                              "27-gptel"))
                              (let* ((src (expand-file-name
-                                          (concat "modules/" module ".el")
+                                          (concat "modules/" (if (equal module "27-gptel") "development/" "org/") module ".el")
                                           imoogi-emacs-dir))
                                     (dst (expand-file-name
                                           (concat module ".el") ,tmpdir))
@@ -75,7 +75,7 @@
                 (format "%S"
                         `(progn
                            ,(imoogi-compiled-menu-test--common-setup-form tmpdir)
-                           (load ,(expand-file-name "modules/05-transient.el"
+                           (load ,(expand-file-name "modules/general/05-transient.el"
                                                     imoogi-compiled-menu-test--root)
                                  nil t)
                            (load ,(expand-file-name "14-org.elc" tmpdir) nil nil t)

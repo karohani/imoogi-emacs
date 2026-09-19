@@ -1,11 +1,11 @@
-;;; 12-navigation.el --- 탐색/도움말/Git 표시 (minimal-emacs.d 추천) -*- lexical-binding: t; -*-
+;;; 12-navigation.el --- 탐색/도움말 (minimal-emacs.d 추천) -*- lexical-binding: t; -*-
 
-;; avy(점프), helpful(향상된 도움말), diff-hl(여백 Git 변경 표시),
+;; avy(점프), helpful(향상된 도움말),
 ;; bufferfile(파일 이름변경/삭제).
 
 ;;; Code:
 
-(imoogi-require "12-navigation" 'avy 'helpful 'diff-hl 'bufferfile)
+(imoogi-require "12-navigation" 'avy 'helpful 'bufferfile)
 
 ;;; avy — 화면 내 빠른 점프
 (use-package avy
@@ -24,19 +24,6 @@
   ([remap describe-variable] . helpful-variable)
   :custom
   (helpful-max-buffers 7))
-
-;;; diff-hl — 버퍼 여백에 커밋되지 않은 Git 변경 표시
-(use-package diff-hl
-  :ensure t
-  :hook ((prog-mode . diff-hl-mode)
-         (dired-mode . diff-hl-dired-mode)
-         (magit-pre-refresh . diff-hl-magit-pre-refresh)
-         (magit-post-refresh . diff-hl-magit-post-refresh))
-  :init
-  (setq diff-hl-flydiff-delay 0.4
-        diff-hl-show-staged-changes nil
-        diff-hl-update-async t
-        diff-hl-global-modes '(not pdf-view-mode image-mode)))
 
 ;;; bufferfile — 현재 버퍼의 파일을 안전하게 이름변경/복사/삭제
 (use-package bufferfile

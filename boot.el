@@ -35,7 +35,7 @@
         auto-save-file-name-transforms `((".*" ,autosave-dir t))
         lock-file-directory             autosave-dir))
 
-;; 스크롤 등 편집 기본값은 modules/00-defaults.el 에서 통합 관리한다.
+;; 스크롤 등 편집 기본값은 modules/general/00-defaults.el 에서 통합 관리한다.
 
 ;;; 모듈 사전조건 점검 헬퍼
 ;; 각 모듈 파일은 맨 위에서 (imoogi-require "NN-name" 'pkg ...) 로 필요 라이브러리가
@@ -58,53 +58,54 @@
 tests/assert-boot.el 이 이 값을 설치 검증의 판정 근거로 쓴다.")
 
 ;; 이 파일은 `imoogi-reload' 로 다시 로드될 수 있다. 목록을 비우지 않으면
-;; 재로드마다 같은 모듈이 중복 누적돼(예: ("06-git" "06-git")) 이 변수를 판정
+;; 재로드마다 같은 모듈이 중복 누적돼(예: ("project/06-git" "project/06-git")) 이 변수를 판정
 ;; 근거로 쓰는 쪽이 잘못 읽는다. 매 로드가 그 로드의 결과만 담도록 초기화한다.
 (setq imoogi-failed-modules nil)
 
-(dolist (module '("00-defaults"
-                  "01-keys"
-                  "02-completion"
-                  "03-which-key"
-                  "04-projects"
-                  "05-transient"
-                  "06-git"
-                  "07-treemacs"
-                  "08-obsidian"
-                  "09-autorevert"
-                  "10-theme"
-                  "11-editing"
-                  "12-navigation"
-                  "13-system"
-                  "14-org"
+(dolist (module '("general/00-defaults"
+                  "general/01-keys"
+                  "development/formatting"
+                  "general/02-completion"
+                  "general/03-which-key"
+                  "project/04-projects"
+                  "general/05-transient"
+                  "project/06-git"
+                  "project/07-treemacs"
+                  "org/08-obsidian"
+                  "general/09-autorevert"
+                  "general/10-theme"
+                  "general/11-editing"
+                  "general/12-navigation"
+                  "general/13-system"
+                  "org/14-org"
                   ;; Org preview depends on 14-org but is intentionally numbered
                   ;; after the existing modules to avoid renumbering churn.
-                  "23-org-preview"
-                  "15-markdown"
-                  "16-elisp"
-                  "17-lsp"
-                  "18-languages"
-                  "19-folding"
-                  "20-terminal"
-                  "21-native-compile"
-                  "22-tabs"
+                  "org/23-org-preview"
+                  "org/15-markdown"
+                  "development/16-elisp"
+                  "development/17-lsp"
+                  "development/18-languages"
+                  "development/19-folding"
+                  "development/20-terminal"
+                  "general/21-native-compile"
+                  "project/22-tabs"
                   ;; Anki 동기화는 14-org 에 의존한다. 23-org-preview 와 같은
                   ;; 이유로 기존 번호를 건드리지 않고 뒤에 붙인다.
-                  "24-anki"
+                  "org/24-anki"
                   ;; Anki 가 없는 폐쇄망용 Emacs-native flashcard fallback.
                   ;; 24-anki 와 상태를 공유하지 않고, sqlite 가 없으면 이 모듈만 건너뛴다.
-                  "25-flashcards"
-                  "26-project-notes"
-                  "27-gptel"
-                  "28-clipboard"))
+                  "org/25-flashcards"
+                  "project/26-project-notes"
+                  "development/27-gptel"
+                  "org/28-clipboard"))
   (condition-case err
       (load (expand-file-name (concat "modules/" module) imoogi-emacs-dir))
     (error
      (setq imoogi-failed-modules
-           (append imoogi-failed-modules (list module)))
+           (append imoogi-failed-modules (list (file-name-nondirectory module))))
      (display-warning 'imoogi
                       (format "모듈 %s 로딩 실패(건너뜀): %s"
-                              module (error-message-string err))
+                              (file-name-nondirectory module) (error-message-string err))
                       :error))))
 
 ;;; Reload

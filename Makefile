@@ -169,7 +169,7 @@ ci-local: fmt-check lint test ## pre-push 훅 진입점 — 지우지 말 것 (�
 
 clean-elc: ## modules 의 바이트컴파일 산출물을 지운다 (다음 부팅에 재생성)
 	@echo "지우기 전 — 어느 Emacs 가 컴파일했는지:"
-	@for f in modules/*.elc modules/lsp/*.elc; do \
+	@find modules -name '*.elc' -print | while IFS= read -r f; do \
 	   [ -e "$$f" ] || continue; \
 	   head -c 200 "$$f" | strings | grep -o 'in Emacs version [0-9.]*' | head -1; \
 	 done | sort | uniq -c | sed 's/^/  /' || true

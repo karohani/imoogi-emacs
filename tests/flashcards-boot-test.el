@@ -16,7 +16,7 @@
                             (file-name-directory
                              (or load-file-name buffer-file-name)))))
                      default-directory)))
-         (file (expand-file-name "modules/25-flashcards.el" root)))
+         (file (expand-file-name "modules/org/25-flashcards.el" root)))
     (cl-letf (((symbol-function 'sqlite-available-p) (lambda () nil)))
       (should-error (load file nil t)))))
 

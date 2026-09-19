@@ -3,7 +3,7 @@
 ;;; Commentary:
 
 ;; Local-only flashcards for air-gapped machines where Anki is unavailable.
-;; This deliberately does not share state with modules/24-anki.el.  Org is the
+;; This deliberately does not share state with modules/org/24-anki.el.  Org is the
 ;; source of card content and SQLite holds a local projection, review state, and
 ;; immutable review log.
 
@@ -18,8 +18,15 @@
 (unless (sqlite-available-p)
   (error "[25-flashcards] sqlite module is present but SQLite support is unavailable"))
 
+(when (and (boundp 'imoogi-flashcards-lisp-dir)
+           (equal imoogi-flashcards-lisp-dir
+                  (expand-file-name "modules/flashcards/" imoogi-emacs-dir)))
+  (setq load-path (delete imoogi-flashcards-lisp-dir load-path))
+  (setq imoogi-flashcards-lisp-dir
+        (expand-file-name "modules/org/flashcards/" imoogi-emacs-dir)))
+
 (defvar imoogi-flashcards-lisp-dir
-  (expand-file-name "modules/flashcards/" imoogi-emacs-dir)
+  (expand-file-name "modules/org/flashcards/" imoogi-emacs-dir)
   "Directory holding the Emacs-native flashcards implementation.")
 
 (add-to-list 'load-path imoogi-flashcards-lisp-dir)

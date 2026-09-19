@@ -89,7 +89,7 @@
         (imoogi-boot-health-required-packages nil)
         (imoogi-boot-health-lock-packages nil)
         (imoogi-boot-health-vendor-packages nil)
-        (imoogi-boot-health-module-files '("modules/04-projects.el"))
+        (imoogi-boot-health-module-files '("modules/project/04-projects.el"))
         (imoogi-boot-health-module-source nil)
         (imoogi-boot-health-required-features nil))
     (should-not (imoogi-boot-health-issues))))
@@ -100,10 +100,10 @@
         (imoogi-boot-health-required-packages nil)
         (imoogi-boot-health-lock-packages nil)
         (imoogi-boot-health-vendor-packages nil)
-        (imoogi-boot-health-module-files '("modules/04-projects.el"
-                                           "modules/07-treemacs.el"))
+        (imoogi-boot-health-module-files '("modules/project/04-projects.el"
+                                           "modules/project/07-treemacs.el"))
         (imoogi-boot-health-module-source
-         '(("modules/04-projects.el" . nil)))
+         '(("modules/project/04-projects.el" . nil)))
         (imoogi-boot-health-required-features nil))
     (should-not (imoogi-boot-health-issues))))
 
@@ -210,11 +210,11 @@
         (imoogi-boot-health-lock-packages '(perspective))
         (imoogi-boot-health-vendor-packages '(perspective))
         (imoogi-boot-health-module-source
-         '(("modules/04-projects.el" . "(imoogi-require \"04-projects\" 'projectile)")
-           ("modules/07-treemacs.el" . "(imoogi-require \"07-treemacs\" 'treemacs)")))
+         '(("modules/project/04-projects.el" . "(imoogi-require \"04-projects\" 'projectile)")
+           ("modules/project/07-treemacs.el" . "(imoogi-require \"07-treemacs\" 'treemacs)")))
         (imoogi-boot-health-required-features nil))
     (should (imoogi-test-boot-health--has-issue-p
-             "제거된 Projectile 계열 토큰이 modules/04-projects\\.el 에 남아 있음: projectile"
+             "제거된 Projectile 계열 토큰이 modules/project/04-projects\\.el 에 남아 있음: projectile"
              (imoogi-boot-health-issues)))))
 
 (ert-deftest imoogi-boot-health-projectile-family-is-rejected-across-mixed-boundaries ()
@@ -224,8 +224,8 @@
         (imoogi-boot-health-lock-packages '(projectile perspective))
         (imoogi-boot-health-vendor-packages '(perspective treemacs-projectile))
         (imoogi-boot-health-module-source
-         '(("modules/04-projects.el" . "(imoogi-require \"04-projects\" 'project)")
-           ("modules/07-treemacs.el" . "(require 'treemacs-projectile)")))
+         '(("modules/project/04-projects.el" . "(imoogi-require \"04-projects\" 'project)")
+           ("modules/project/07-treemacs.el" . "(require 'treemacs-projectile)")))
         (imoogi-boot-health-required-features nil))
     (let ((issues (imoogi-boot-health-issues)))
       (should (imoogi-test-boot-health--has-issue-p
@@ -235,7 +235,7 @@
       (should (imoogi-test-boot-health--has-issue-p
                "vendor/elpa 에 남아 있음: treemacs-projectile" issues))
       (should (imoogi-test-boot-health--has-issue-p
-               "modules/07-treemacs\\.el 에 남아 있음: treemacs-projectile"
+               "modules/project/07-treemacs\\.el 에 남아 있음: treemacs-projectile"
                issues)))))
 
 (ert-deftest imoogi-boot-health-current-projectile-family-stays-absent ()
@@ -249,7 +249,7 @@
       (should-not (memq pkg required))
       (should-not (memq pkg locked))
       (should-not (memq pkg vendored))))
-  (dolist (file '("modules/04-projects.el" "modules/07-treemacs.el"))
+  (dolist (file '("modules/project/04-projects.el" "modules/project/07-treemacs.el"))
     (let ((source (imoogi-boot-health--module-source file)))
       (dolist (pkg imoogi-boot-health-projectile-family)
         (should-not (imoogi-boot-health--symbol-token-present-p pkg source))))))

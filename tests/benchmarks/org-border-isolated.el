@@ -9,7 +9,7 @@
 (setq use-package-always-ensure nil)
 (defun imoogi-require (_module &rest packages)
   (dolist (package packages) (unless (locate-library (symbol-name package)) (error "Missing %s" package))))
-(load (expand-file-name "modules/14-org.el" (getenv "BENCH_ROOT")))
+(load (expand-file-name "modules/org/14-org.el" (getenv "BENCH_ROOT")))
 (load (expand-file-name "tests/benchmarks/org-border-bench.el" (getenv "BENCH_ROOT")))
 (setq imoogi-border-bench-disable-org-menu
       (equal (getenv "BENCH_NO_ORG_MENU") "1"))

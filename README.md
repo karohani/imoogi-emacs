@@ -152,7 +152,7 @@ make emacs-prewarm EMACS=/Applications/Emacs-31.1.app/Contents/MacOS/Emacs
 make clean-elc
 ```
 
-**버전을 바꿨을 때 가장 먼저 할 일이다.** `modules/*.elc` 는 `.gitignore` 대상이라
+**버전을 바꿨을 때 가장 먼저 할 일이다.** `modules/**/*.elc` 는 `.gitignore` 대상이라
 `git status` 에 보이지 않고, 소스를 고치지 않는 한 재생성되지 않는다. 그래서 낡은
 바이트코드가 조용히 남아 새 Emacs 에서만 이상하게 동작할 수 있다.
 
@@ -321,7 +321,7 @@ Eglot이 연결된 언어는 LSP 후보를 사용하고, Cape가 단어·파일 
 | `C-c l R` | 심볼 이름 변경 · `C-c l c/o` 코드 액션/임포트 정리 |
 | `C-c l e/q` | Eglot 수동 연결/종료 |
 
-언어별 자동 연결은 `modules/lsp/` 아래에서 독립적으로 관리한다. 현재 Bash,
+언어별 자동 연결은 `modules/development/lang/` 아래에서 독립적으로 관리한다. 현재 Bash,
 JavaScript/TypeScript, Go, Python, Rust, Clojure, Java, Kotlin 설정이 있으며,
 새 언어는 같은 폴더에 설정 파일 하나를 추가하면 `17-lsp`가 자동으로 로드한다.
 Go/TypeScript 서버는 저장소의 `vendor/toolchains/`에 고정된 artifact를 사용한다.

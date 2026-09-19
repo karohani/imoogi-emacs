@@ -263,7 +263,7 @@
                 flymake-mode t)
     (should-not (imoogi-test--inapt-keys 'imoogi-transient-modes))))
 
-;;; 모듈이 스스로 등록한 Anki 메뉴 (modules/24-anki.el)
+;;; 모듈이 스스로 등록한 Anki 메뉴 (modules/org/24-anki.el)
 
 (ert-deftest imoogi-transient-anki-is-registered-on-master ()
   (should (eq (plist-get (cdr (transient-get-suffix 'imoogi-transient-master "a"))
@@ -296,7 +296,7 @@
       (dolist (name imoogi-anki-property-names)
         (should (member name keys))))))
 
-;;; 모듈이 스스로 등록한 로컬 flashcards 메뉴 (modules/25-flashcards.el)
+;;; 모듈이 스스로 등록한 로컬 flashcards 메뉴 (modules/org/25-flashcards.el)
 
 (ert-deftest imoogi-transient-flashcards-is-registered-on-master ()
   (should (eq (plist-get (cdr (transient-get-suffix 'imoogi-transient-master "f"))
@@ -332,7 +332,7 @@
                           imoogi-flashcards-kind-property))
         (should (member name keys))))))
 
-;;; 모듈이 스스로 등록한 LSP 메뉴 (modules/17-lsp.el)
+;;; 모듈이 스스로 등록한 LSP 메뉴 (modules/development/17-lsp.el)
 
 (ert-deftest imoogi-transient-lsp-is-registered-on-master ()
   (should (eq (plist-get (cdr (transient-get-suffix 'imoogi-transient-master "l"))
@@ -588,7 +588,7 @@ tests/assert-boot.el 이 잘못 읽는다(실제로 발생했던 버그).
       (imoogi-transient--close-context-help)
       (transient--stack-zap))))
 
-;;; 탭 메뉴 (tmux window 층, modules/22-tabs.el)
+;;; 탭 메뉴 (tmux window 층, modules/project/22-tabs.el)
 
 (ert-deftest imoogi-tab-prefix-map-is-bound-outside-treemacs-territory ()
   "Emacs 표준 C-x t 는 treemacs 가 이미 쓰므로 C-c w 를 쓴다."

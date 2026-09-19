@@ -15,8 +15,8 @@ cd "$ROOT_DIR"
 echo "== check-parens =="
 "$EMACS_BIN" --batch -Q \
   --eval "(dolist (file '(\"early-init.el\" \"boot.el\" \"packages.el\")) (with-temp-buffer (insert-file-contents file) (emacs-lisp-mode) (check-parens)))" \
-  --eval "(dolist (file (directory-files \"modules\" t \"\\\\.el\\\\'\")) (with-temp-buffer (insert-file-contents file) (emacs-lisp-mode) (check-parens)))" \
-  --eval "(dolist (file (directory-files \"tests\" t \"\\\\.el\\\\'\")) (with-temp-buffer (insert-file-contents file) (emacs-lisp-mode) (check-parens)))"
+  --eval "(dolist (file (directory-files-recursively \"modules\" \"\\\\.el\\\\'\")) (with-temp-buffer (insert-file-contents file) (emacs-lisp-mode) (check-parens)))" \
+  --eval "(dolist (file (directory-files-recursively \"tests\" \"\\\\.el\\\\'\")) (with-temp-buffer (insert-file-contents file) (emacs-lisp-mode) (check-parens)))"
 
 echo "== offline boot =="
 IMOOGI_TEST_ROOT="$ROOT_DIR" \

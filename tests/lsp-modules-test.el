@@ -78,15 +78,15 @@
                       (expand-file-name "typescript-language-server" local-bin))
                      (file-truename
                       (executable-find "typescript-language-server"))))
-    (load (expand-file-name "modules/lsp/go.el" imoogi-test-root) nil t)
-    (load (expand-file-name "modules/lsp/typescript.el" imoogi-test-root) nil t)
+    (load (expand-file-name "modules/development/lang/go.el" imoogi-test-root) nil t)
+    (load (expand-file-name "modules/development/lang/typescript.el" imoogi-test-root) nil t)
     (should (assoc '(go-mode go-ts-mode) eglot-server-programs))
     (should (assoc '(typescript-mode typescript-ts-mode) eglot-server-programs))))
 
 (ert-deftest imoogi-lsp-module-source-stays-side-effect-free ()
   (let ((source (with-temp-buffer
                   (insert-file-contents
-                   (expand-file-name "modules/17-lsp.el" imoogi-test-root))
+                   (expand-file-name "modules/development/17-lsp.el" imoogi-test-root))
                   (buffer-string))))
     (dolist (forbidden '("call-process"
                          "start-process"

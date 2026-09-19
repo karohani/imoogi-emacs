@@ -12,7 +12,7 @@
 ;; 이 파일은 설정 배선이라 네이티브 컴파일로 얻는 성능도 없다.
 
 ;; 공통 LSP 수명주기와 xref 진입점만 관리한다. 언어별 서버 연결과
-;; workspace 설정은 modules/lsp/*.el 에서 독립적으로 로드한다.
+;; workspace 설정은 modules/development/lang/*.el 에서 독립적으로 로드한다.
 
 ;;; Code:
 
@@ -20,8 +20,14 @@
 
 (defvar eglot-server-programs)
 
+(when (and (boundp 'imoogi-lsp-language-config-dir)
+           (equal imoogi-lsp-language-config-dir
+                  (expand-file-name "modules/lsp/" imoogi-emacs-dir)))
+  (setq imoogi-lsp-language-config-dir
+        (expand-file-name "modules/development/lang/" imoogi-emacs-dir)))
+
 (defvar imoogi-lsp-language-config-dir
-  (expand-file-name "modules/lsp/" imoogi-emacs-dir)
+  (expand-file-name "modules/development/lang/" imoogi-emacs-dir)
   "Directory containing language-specific LSP configurations.")
 
 (defun imoogi-lsp-local-bin-dir ()

@@ -5,10 +5,10 @@
 ;; Org 노트를 Anki 카드로 단방향 동기화한다. Anki 에서 Org 로 돌아오는 것은
 ;; imoogi 자신이 써 넣는 노트 식별자(ANKI_NOTE_ID) 뿐이다.
 ;;
-;; 구현은 modules/anki/*.el 에, 렌더링과 AnkiConnect 통신을 맡는 Go 백엔드는
-;; cmd/imoogi-anki/ 와 internal/anki/ 에 있다. 17-lsp.el 이 modules/lsp/ 를
+;; 구현은 modules/org/anki/*.el 에, 렌더링과 AnkiConnect 통신을 맡는 Go 백엔드는
+;; cmd/imoogi-anki/ 와 internal/anki/ 에 있다. 17-lsp.el 이 modules/development/lang/ 를
 ;; 다루는 방식과 같게, 이 파일은 로드 경로를 붙이고 이 설정 저장소에만
-;; 해당하는 편의(자동완성·단축키·메뉴)를 얹는 층이다.  modules/anki/*.el 은
+;; 해당하는 편의(자동완성·단축키·메뉴)를 얹는 층이다.  modules/org/anki/*.el 은
 ;; 상류 패키지 그대로 두고 여기서만 감싼다.
 ;;
 ;; 백엔드 바이너리는 `make build-anki' 로 빌드한다.
@@ -21,8 +21,15 @@
 ;; menu macro there too, before the deferred runtime registration executes.
 (eval-when-compile (require 'transient))
 
+(when (and (boundp 'imoogi-anki-lisp-dir)
+           (equal imoogi-anki-lisp-dir
+                  (expand-file-name "modules/anki/" imoogi-emacs-dir)))
+  (setq load-path (delete imoogi-anki-lisp-dir load-path))
+  (setq imoogi-anki-lisp-dir
+        (expand-file-name "modules/org/anki/" imoogi-emacs-dir)))
+
 (defvar imoogi-anki-lisp-dir
-  (expand-file-name "modules/anki/" imoogi-emacs-dir)
+  (expand-file-name "modules/org/anki/" imoogi-emacs-dir)
   "Directory holding the Org-to-Anki implementation files.")
 
 (add-to-list 'load-path imoogi-anki-lisp-dir)

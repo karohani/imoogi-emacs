@@ -1,4 +1,4 @@
-;;; anki-commands-test.el --- modules/24-anki.el 의 편집 명령 -*- lexical-binding: t; -*-
+;;; anki-commands-test.el --- modules/org/24-anki.el 의 편집 명령 -*- lexical-binding: t; -*-
 
 ;;; Code:
 

@@ -73,7 +73,6 @@
 ;; 모드라인에 줄:열 표시, Tree-sitter 최대 하이라이트 레벨.
 (setq line-number-mode t
       column-number-mode t)
-(setq treesit-font-lock-level 4)
 
 ;;; 괄호 매칭
 (setq show-paren-delay 0.1

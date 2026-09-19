@@ -35,7 +35,7 @@
   "Injected vendored package names used by tests.")
 
 (defvar imoogi-boot-health-module-files
-  '("modules/04-projects.el" "modules/07-treemacs.el")
+  '("modules/project/04-projects.el" "modules/project/07-treemacs.el")
   "Module files scanned for removed Projectile-family package tokens.")
 
 (defvar imoogi-boot-health-module-source imoogi-boot-health--unset

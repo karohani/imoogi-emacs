@@ -22,14 +22,14 @@ scripts/vendor.el        온라인 vendoring 스크립트
 vendor/elpa/             동봉 패키지(커밋됨)
 vendor/tree-sitter/      선택적 tree-sitter 문법 라이브러리(커밋됨, 플랫폼별)
 assets/fonts/            동봉 글꼴(NanumGothicCoding, NFM.ttf) + OFL.txt
-modules/NN-name.el       기능 모듈(번호 순 로딩)
+modules/<package>/NN-name.el       기능 모듈(번호 순 로딩)
 ```
 
 런타임 로더: `~/.emacs.d/{early-init,init}.el` 은 `~/.config/imoogi-emacs`(저장소 심볼릭 링크)의 파일을 load 만 한다.
 
 ## 2. 모듈 작성 규칙
 
-각 `modules/NN-name.el` 은:
+각 `modules/<package>/NN-name.el` 은:
 
 1. `;;; Code:` **바로 아래 최상단에 사전조건 점검**을 둔다:
    ```elisp
@@ -38,18 +38,18 @@ modules/NN-name.el       기능 모듈(번호 순 로딩)
    `imoogi-require`(boot.el 정의)는 `locate-library` 로 필요 라이브러리가 vendor 에 있는지(또는 내장인지) 확인하고, 누락 시 error 를 시그널한다. boot.el 이 각 모듈 로딩을 `condition-case` 로 감싸므로 **그 모듈만 건너뛰고 나머지는 계속 로딩**된다.
 2. `use-package` 로 설정. 내장 패키지는 `:ensure nil`, vendor 패키지는 `:ensure t`(이미 설치돼 있어 네트워크 안 탐).
 3. 파일 끝에 `(provide 'imoogi-NAME)`.
-4. `boot.el` 의 `dolist` 모듈 리스트에 `"NN-name"` 추가(로딩 순서 = 의존성 순서).
+4. `boot.el` 의 `dolist` 모듈 리스트에 `"<package>/NN-name"` 추가(로딩 순서 = 의존성 순서).
 
 ### LSP 언어 설정
 
-- `modules/17-lsp.el` 은 Eglot/Flymake/xref 공통 설정과 하위 로더만 둔다.
-- 언어별 자동기동과 workspace 설정은 `modules/lsp/LANGUAGE.el` 에 둔다.
+- `modules/development/17-lsp.el` 은 Eglot/Flymake/xref 공통 설정과 하위 로더만 둔다.
+- 언어별 자동기동과 workspace 설정은 `modules/development/lang/LANGUAGE.el` 에 둔다.
   `17-lsp`가 이 폴더의 `*.el`을 자동 로드하므로 새 언어를 추가할 때
   최상위 모듈 번호나 `boot.el`은 수정하지 않는다.
 - 각 언어 파일도 `;;; Code:` 바로 아래 `imoogi-require`로 사전조건을 확인하고,
   서버 실행 파일은 `executable-find` 기반 공통 헬퍼로 감지한다. 런타임 설치나
   다운로드를 추가하지 않는다.
-- 메이저 모드, 확장자, Tree-sitter remap은 `modules/18-languages.el`이 소유한다.
+- 메이저 모드, 확장자, Tree-sitter remap은 `modules/development/18-languages.el`이 소유한다.
 
 ## 3. 패키지 추가/업데이트 (반드시 온라인 머신에서)
 

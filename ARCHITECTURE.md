@@ -45,7 +45,14 @@
   ├── vendor/toolchains/           ← 고정 바이너리·archive·license (커밋됨)
   ├── vendor/tree-sitter/          ← 선택적 tree-sitter 문법 라이브러리
   ├── assets/fonts/                ← Nerd Font (동봉, 선택)
-  └── modules/                     ← 기능 모듈
+  └── modules/
+      ├── general/                 ← 공통 설정·키 바인딩
+      ├── project/                 ← 프로젝트·작업공간·노트 관리
+      ├── org/                     ← 문서 작성·미리보기·학습카드
+      │   ├── anki/
+      │   └── flashcards/
+      └── development/             ← 개발 공통 설정
+          └── lang/                ← 언어별 LSP
 ~/.config/imoogi-emacs/            ← 심볼릭 링크 → ~/workspace/imoogi-emacs
 ~/.emacs.d/                        ← Emacs 런타임 (init.el, early-init.el 로더, .cache/)
   ├── early-init.el                ← repo의 early-init.el 로더
@@ -85,7 +92,7 @@ git-ignored 런타임 상태다.
 boot.el의 `dolist`에서 정의된 순서대로 로딩된다. 의존성이 있으므로 순서가 중요하다:
 
 0. **00-defaults** — 내장 기본값/세션 영속(외부 패키지 없음), 가장 먼저
-1. **01-keys** — 한글 키매핑 (독립적)
+1. **01-keys** — 한글 키매핑 (독립적). 이어서 `development/formatting`의 공통 포맷 명령 로드
 2. **02-completion** — vertico/consult/corfu 스택 (hydra가 consult 함수 참조)
 3. **03-which-key** — Emacs 30 내장
 4. **04-projects** — project.el + perspective 작업공간 연결/영속화
@@ -101,7 +108,7 @@ boot.el의 `dolist`에서 정의된 순서대로 로딩된다. 의존성이 있�
 14. **14-org** — org, org-appear
 15. **15-markdown** — markdown-mode, markdown-toc
 16. **16-elisp** — aggressive-indent, paredit, highlight-defined 등
-17. **17-lsp** — 내장 Eglot/Flymake/xref 공통 설정과 `modules/lsp/*.el` 로더
+17. **17-lsp** — 내장 Eglot/Flymake/xref 공통 설정과 `modules/development/lang/*.el` 로더
 18. **18-languages** — 21종 파일타입 메이저 모드(언어별 LSP와 분리)
 19. **19-folding** — kirigami, outline-indent, 내장 outline/hs-minor
 20. **20-terminal** — ghostel + ghostel-ime (모듈은 vendor/ghostel-module/ 동봉)
@@ -122,9 +129,9 @@ boot.el의 `dolist`에서 정의된 순서대로 로딩된다. 의존성이 있�
     preflight와 저장 성공 뒤에만 플랫폼 adapter를 호출한다.
     Git common directory로 worktree의 기록을 공유하고 재개 지점은 경로별로 나눈다.
 
-언어별 LSP 설정은 `modules/lsp/` 아래의 이름 기반 파일로 분리한다. `17-lsp`가
+언어별 LSP 설정은 `modules/development/lang/` 아래의 이름 기반 파일로 분리한다. `17-lsp`가
 `*.el`을 정렬해 자동 로드하고 각 파일의 실패를 격리하므로, 새 언어는
-`modules/lsp/LANGUAGE.el`만 추가하면 최상위 모듈 번호나 `boot.el`을 바꿀 필요가 없다.
+`modules/development/lang/LANGUAGE.el`만 추가하면 최상위 모듈 번호나 `boot.el`을 바꿀 필요가 없다.
 
 Go CLI도 같은 경계를 따른다. `internal/cli`는 명령 해석만 담당하고,
 `internal/lang/golang`과 `internal/lang/typescript`가 언어별 설치 surface를
@@ -144,7 +151,7 @@ straight.el 은 망분리 대응을 위해 제거됐다(부트스트랩이 네�
 
 ## 새 모듈 추가 방법
 
-1. `modules/이름.el` 파일 생성
+1. `modules/<package>/NN-name.el` 파일 생성
 2. `;;; Code:` 바로 아래에 **사전조건 점검**을 맨 위에 둔다:
    `(imoogi-require "이름" 'pkg1 'pkg2 ...)` — 필요한 라이브러리가 vendor 에
    동봉됐는지(또는 내장인지) `locate-library` 로 확인하고, 누락 시 그 모듈만
@@ -226,7 +233,7 @@ suffix 로 지정한 명령이 **그 자체로 transient prefix 인 경우**(현
 
 `05-transient.el` 은 하위 메뉴를 하드코딩하지 않는다. 각 모듈이 자기 메뉴를
 정의하고 `transient-append-suffix` 로 마스터에 **스스로 등록**한다
-(`modules/17-lsp.el` 의 LSP 메뉴가 이 방식의 참조 구현).
+(`modules/development/17-lsp.el` 의 LSP 메뉴가 이 방식의 참조 구현).
 
 ```elisp
 (with-eval-after-load 'imoogi-transient
@@ -316,3 +323,21 @@ Asian Ambiguous 라 폰트에 따라 2칸으로 그려지는데, Emacs 의 `char
 > 보인다. `tests/run.el` 은 이미 켜 두었다. 모듈 이름을 바꿨다면 옛 이름의 `.elc`
 > (예: `05-hydra.elc`)도 지운다 — `.gitignore` 대상이라 커밋에는 안 잡히지만 로컬에서
 > 계속 로드될 수 있다.
+
+## 모듈 패키지 경계
+
+- `modules/general/`: 키 바인딩, 입력기, 완성, UI, 일반 편집 및 공통 시스템 설정.
+- `modules/project/`: project.el, perspective, Treemacs, Git, 탭, project/study notes.
+- `modules/org/`: Org/Markdown 작성 규약, 미리보기, 클립보드, Anki와 로컬 학습카드.
+  기존 라이브러리는 `org/anki/`, `org/flashcards/`에 둔다.
+- `modules/development/`: 포맷팅, LSP 공통 연결, 메이저 모드, 접기, 터미널, GPTel.
+- `modules/development/lang/`: 언어별 LSP 설정.
+
+`boot.el`의 명시적 상대 경로 목록이 패키지를 가로질러 기존 의존 순서를 유지한다.
+번호는 기존 모듈 식별자이므로 실패 목록과 feature/명령 이름은 바뀌지 않는다.
+폴더 전체를 무작위 순서로 로드하거나 구 경로에 복제 설정을 남기지 않는다.
+설정 파일·레지스트리·notes·study ID와 사용자 데이터는 이동하지 않는다.
+기존 세션은 `imoogi-reload`로 새 모듈을 읽는다. 사용자가 지정한 LSP 폴더는
+그대로 유지하고 이전 내장 기본 경로만 새 `development/lang/` 경로로 전환한다.
+
+시나리오 및 검증 범위는 [모듈 리팩토링](docs/refactoring/module-packages.md)을 참고한다.
