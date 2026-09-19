@@ -7,6 +7,8 @@
 (require 'ert)
 (require 'project)
 
+(defvar imoogi-project-perspective-alist)
+
 (defun imoogi-test--root (name)
   (file-name-as-directory
    (expand-file-name name (make-temp-file "imoogi-project-root-" t))))
@@ -135,6 +137,40 @@
                        name))
         (should (equal (cdr (assoc canonical-other imoogi-project-perspective-alist))
                        "delta"))))))
+
+(ert-deftest imoogi-project-context-root-follows-perspective-mapping ()
+  "The project command context is recalculated after a Perspective switch."
+  (let* ((first (imoogi-test--root "first-context"))
+         (second (imoogi-test--root "second-context"))
+         (current "first")
+         (seen nil))
+    (cl-letf (((symbol-function 'persp-current-name)
+               (lambda () current))
+              ((symbol-function 'imoogi-project-context-root)
+               (lambda ()
+                 (if (equal current "first") first second)))
+              ((symbol-function 'project-find-file)
+               (lambda () (interactive) (setq seen default-directory))))
+      (imoogi-project-find-file)
+      (should (equal seen first))
+      (setq current "second")
+      (imoogi-project-find-file)
+      (should (equal seen second)))))
+
+(ert-deftest imoogi-project-context-falls-back-to-project-el ()
+  "Unmapped Perspectives retain normal `project-current' detection."
+  (let* ((root (imoogi-test--root "fallback-context"))
+         (imoogi-project-perspective-alist nil)
+         (seen nil))
+    (cl-letf (((symbol-function 'persp-current-name)
+               (lambda () "unmapped"))
+              ((symbol-function 'project-current)
+               (lambda (&optional _maybe-prompt _directory)
+                 (imoogi-test--project root)))
+              ((symbol-function 'project-find-file)
+               (lambda () (interactive) (setq seen default-directory))))
+      (imoogi-project-find-file)
+      (should (equal seen (imoogi-project--canonical-root root))))))
 
 (ert-deftest imoogi-project-perspective-registry-distinguishes-same-basename-roots ()
   (let* ((parent-a (make-temp-file "imoogi-parent-a-" t))

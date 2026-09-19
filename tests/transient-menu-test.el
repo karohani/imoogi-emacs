@@ -74,9 +74,9 @@
     ;; persp-next/prev 만 훑어보기용이라 열린 채 유지된다.
     (imoogi-transient-project
      (imoogi-project-switch-perspective transient--do-exit)
-     (project-find-file                transient--do-exit)
-     (project-find-regexp              transient--do-exit)
-     (project-dired                    transient--do-exit)
+     (imoogi-project-find-file         transient--do-exit)
+     (imoogi-project-find-regexp       transient--do-exit)
+     (imoogi-project-dired             transient--do-exit)
      (project-switch-to-buffer         transient--do-exit)
      (imoogi-persp-new                 transient--do-exit)
      (persp-switch-last                transient--do-exit)

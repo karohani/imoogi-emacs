@@ -13,6 +13,63 @@
   (locate-user-emacs-file ".cache/perspective-state.el")
   "File used to persist Perspective buffers and window layouts.")
 
+(defun imoogi-project--perspective-root ()
+  "Return the project root mapped to the current Perspective, if any."
+  (when (and (fboundp 'persp-current-name)
+             (boundp 'imoogi-project-perspective-alist))
+    (when-let ((root
+                (cl-loop for (candidate . name)
+                         in (symbol-value 'imoogi-project-perspective-alist)
+                         when (equal name (persp-current-name))
+                         return candidate)))
+      (when (file-directory-p root)
+        (imoogi-project--canonical-root root)))))
+
+(defun imoogi-project-context-root ()
+  "Return the root for the current Imoogi project context.
+
+An explicitly mapped Perspective is preferred because it survives buffer
+restoration and also works for study notes without a VCS root.  When no
+mapping exists, fall back to Emacs' normal `project-current' detection."
+  (or (imoogi-project--perspective-root)
+      (when-let* ((project (and (fboundp 'project-current)
+                                (project-current nil)))
+                  (root (project-root project)))
+        (imoogi-project--canonical-root root))))
+
+(defun imoogi-project-context ()
+  "Return the current Imoogi project context as a property list."
+  (list :perspective (and (fboundp 'persp-current-name)
+                          (persp-current-name))
+        :root (imoogi-project-context-root)))
+
+(defun imoogi-project-context-call (command)
+  "Call interactive project COMMAND using the current Imoogi context.
+
+The current Perspective is resolved on every invocation, so switching
+Perspectives immediately changes the project used by COMMAND.  Commands that
+already have a project fallback continue to use the current buffer when no
+Imoogi context is mapped."
+  (interactive)
+  (let ((default-directory (or (plist-get (imoogi-project-context) :root)
+                               default-directory)))
+    (call-interactively command)))
+
+(defun imoogi-project-find-file ()
+  "Find a file in the current Imoogi project context."
+  (interactive)
+  (imoogi-project-context-call #'project-find-file))
+
+(defun imoogi-project-find-regexp ()
+  "Search files in the current Imoogi project context."
+  (interactive)
+  (imoogi-project-context-call #'project-find-regexp))
+
+(defun imoogi-project-dired ()
+  "Open Dired at the current Imoogi project context root."
+  (interactive)
+  (imoogi-project-context-call #'project-dired))
+
 (defun imoogi-project--canonical-root (root)
   "Return ROOT as a canonical directory name."
   (file-name-as-directory (file-truename (expand-file-name root))))

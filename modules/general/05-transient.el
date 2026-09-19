@@ -277,9 +277,9 @@ transient 는 `fit-window-to-buffer' 를 최소 높이 1로 호출해 팝업을 
   :column-widths '(17 17 21)
   [["열기 -----------"
     ("p" "프로젝트 전환" imoogi-project-switch-perspective)
-    ("f" "파일찾기" project-find-file)
-    ("s" "검색(grep)" project-find-regexp)
-    ("d" "dired" project-dired)
+    ("f" "파일찾기" imoogi-project-find-file)
+    ("s" "검색(grep)" imoogi-project-find-regexp)
+    ("d" "dired" imoogi-project-dired)
     ("b" "버퍼" project-switch-to-buffer)
     ("m" "프로젝트 기록" imoogi-project-notes-transient)]
    ;; 이미 열려 있는 작업공간 사이를 오가는 쪽. n/N 은 훑어보는 동작이라
