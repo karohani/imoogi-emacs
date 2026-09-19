@@ -27,3 +27,8 @@ modules/.omc/
 
 # Locally built helper executables
 /bin/
+
+# OS metadata, editor backups, stray local binaries
+.DS_Store
+*~
+*.exe
