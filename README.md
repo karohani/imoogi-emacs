@@ -1028,7 +1028,7 @@ note type 오류 원문을 확인할 수 있다. `imoogi-sync`는 기존 note ty
 | `28-clipboard` | Org · Markdown · 외부 `imoogi-clip` CLI | 텍스트 yank 보존, 파일·스크린샷 자산 붙여넣기와 저장 수명주기 |
 | `15-markdown` | markdown-mode · markdown-toc | Markdown + Org-style 구조 편집 키 |
 | `16-elisp` | aggressive-indent · highlight-defined · paredit · page-break-lines · elisp-refs | Elisp 개발 |
-| `17-lsp` | Eglot · Flymake · xref (Emacs 30 내장) | 공통 LSP 설정 + `modules/lsp/*.el` 언어별 자동 로더 |
+| `17-lsp` | Eglot · Flymake · xref (Emacs 30 내장) | 공통 LSP 설정 + `modules/development/lang/*.el` 언어별 자동 로더 |
 | `18-languages` | git-modes · yaml · dockerfile · gnuplot · lua · jinja2 · csv · go · rust · crontab · nginx · hcl · nix · fish · vimrc · jenkinsfile · clojure · kotlin · typescript · web/tsx (+내장 sgml/java/treesit) | 21종 파일타입 모드 + 선택적 `*-ts-mode` 전환 |
 | `19-folding` | kirigami · outline-indent (+내장 outline/hs-minor) | 코드 폴딩 (`C-c z` 접두) |
 | `20-terminal` | ghostel (+ghostel-ime) | libghostty-vt 터미널 (`C-c t`). 모듈은 vendor 동봉, S-SPC 한글 동작 |
@@ -1080,3 +1080,11 @@ M-x ghostel-module-compile         # Zig 로 소스 빌드(zig 0.15.2 필요)
 
 - 나눔고딕코딩은 **SIL Open Font License (OFL) 1.1** 하에 배포되며, 라이선스를 명시하면 상용 소프트웨어 포함 재배포가 허용된다. 전문은 [`assets/fonts/OFL.txt`](assets/fonts/OFL.txt) 참조.
 - OFL 조건에 따라 글꼴 원본과 라이선스 전문을 함께 동봉한다.
+
+### 설정 모듈 서브패키지
+
+설정 소스는 `modules/general/`, `modules/project/`, `modules/org/`,
+`modules/development/`로 구분한다. 언어별 LSP는 `modules/development/lang/`에
+있다. 기존 단축키와 사용자 데이터 저장 위치는 동일하며 `M-x imoogi-reload`로
+적용할 수 있다. [구조](ARCHITECTURE.md)와
+[보존 시나리오·검증 범위](docs/refactoring/module-packages.md)를 참고한다.
