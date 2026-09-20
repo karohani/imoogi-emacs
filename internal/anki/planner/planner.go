@@ -162,6 +162,20 @@ type runner struct {
 // A rendered field with no counterpart in the model is an error rather than
 // a dropped key: writing part of a note and calling it a success is the
 // failure mode this whole function exists to remove.
+// clozeExtraAliases pairs the names the cloze-style note types give the SAME
+// supplementary field. imoogi-Cloze calls it "Back Extra"; a stock "Cloze"
+// profile can call it plain "Extra". The renderer knows only that it is
+// rendering a cloze note — renderType collapses both declared types onto one
+// name — so it cannot pick between them, and this is the layer that can.
+//
+// Deliberately narrow: one documented pair, consulted only AFTER an exact
+// match fails, and a model carrying neither name still errors. The alias
+// rescues a naming difference; it never covers a field that is actually absent.
+var clozeExtraAliases = map[string][]string{
+	"back extra": {"extra"},
+	"extra":      {"back extra"},
+}
+
 func (r *runner) resolveFields(noteType string, fields map[string]string, key string) (map[string]string, *protocol.Error) {
 	names, ok := r.modelFields[noteType]
 	if !ok {
@@ -187,7 +201,14 @@ func (r *runner) resolveFields(noteType string, fields map[string]string, key st
 
 	resolved := make(map[string]string, len(fields))
 	for rendered, value := range fields {
-		actual, found := byLower[strings.ToLower(rendered)]
+		lowered := strings.ToLower(rendered)
+		actual, found := byLower[lowered]
+		for _, alias := range clozeExtraAliases[lowered] {
+			if found {
+				break
+			}
+			actual, found = byLower[alias]
+		}
 		if !found {
 			return nil, &protocol.Error{
 				Code: protocol.CodeNoteFieldMissing,

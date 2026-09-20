@@ -44,7 +44,7 @@ func (e *ClozeMarkerMissingError) Error() string {
 //
 //   - Basic (spec.md REQ-003): Front = the rendered title, Back = the
 //     rendered body.
-//   - Cloze (spec.md REQ-004): a single Text field carrying the rendered
+//   - Cloze (spec.md REQ-004): a Text field carrying the rendered
 //     combination of title and body, with every {{cN::answer}} marker
 //     preserved byte-for-byte. go-org treats a cloze marker as literal
 //     inline text it does not specially parse (research.md §2) — the
@@ -64,11 +64,24 @@ func Render(noteType, title, body string) (map[string]string, error) {
 			"Back":  renderFragment(body),
 		}, nil
 	case NoteTypeCloze:
-		if !hasClozeMarker(title) && !hasClozeMarker(body) {
+		// The extra content leaves the body before the marker gate runs.
+		// Anki's cloze template reads {{cloze:Text}} and nothing else, so a
+		// marker living only inside the extra content yields a note with no
+		// cloze deletion — which Anki refuses. Gating on the remaining
+		// fragment reports that as the missing marker it effectively is,
+		// rather than letting it fail later at AnkiConnect.
+		rest, extra := splitExtraBlocks(body)
+		if !hasClozeMarker(title) && !hasClozeMarker(rest) {
 			return nil, &ClozeMarkerMissingError{}
 		}
+		// Back Extra is emitted even when empty. Omitting an absent field
+		// would look tidier, but AnkiConnect leaves a field it is not given:
+		// deleting an extra block from a card that had one would then send an
+		// update that never mentions the field, and the stale content would
+		// survive in the collection forever.
 		return map[string]string{
-			"Text": renderFragment(combineTitleAndBody(title, body)),
+			"Text":       renderFragment(combineTitleAndBody(title, rest)),
+			"Back Extra": renderFragment(extra),
 		}, nil
 	default:
 		return nil, fmt.Errorf("orgdoc: unrecognized note type %q", noteType)

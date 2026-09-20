@@ -185,9 +185,10 @@ func (f *fakeClient) ModelFieldNames(ctx context.Context, modelName string) ([]s
 	// The imoogi-owned types mirror their stock counterparts' field names
 	// exactly (REQ-C-001.2), which is what lets a migrated entry reuse the
 	// renderer's output map shape unchanged. imoogi-Cloze's second field is
-	// "Back Extra" rather than stock Cloze's "Extra"; the renderer emits
-	// neither, so the difference is invisible to the field-resolution layer
-	// and is reproduced here only so the stub is not lying about the model.
+	// "Back Extra" rather than stock Cloze's "Extra". The renderer now emits
+	// that field, so the difference is NOT invisible to the field-resolution
+	// layer: resolveFields' clozeExtraAliases is what bridges the two names,
+	// and this stub reproduces the difference so that bridge stays tested.
 	case "imoogi-Basic":
 		return []string{"Front", "Back"}, nil
 	case "imoogi-Cloze":
