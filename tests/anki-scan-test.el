@@ -112,5 +112,87 @@
      (should (= (length entries) 1))
      (should (equal (plist-get (car entries) :title) "Parent")))))
 
+;; --- SPEC-ANKICARD-002: the scan attaches the three resolved card-option
+;; values to the entry, so an entry's option set is fixed at scan time and is
+;; never re-derived downstream.
+
+;; AC-OPT-003: a sync target carries its three resolved values, drawn from
+;; whichever level of the chain supplied each.
+(ert-deftest imoogi-scan-test-entry-carries-resolved-card-options ()
+  (imoogi-test--with-root
+   (imoogi-test--write (expand-file-name "opts.org" root)
+                        (concat "#+PROPERTY: ANKI_SWIFT t\n"
+                                "* Optioned\n:PROPERTIES:\n"
+                                ":ANKI_NOTE_TYPE: imoogi-Cloze\n"
+                                ":ANKI_DIRECTION: <->\n:END:\n"
+                                "Body {{c1::x}}\n"))
+   (let* ((scan (imoogi-scan-root root nil))
+          (entry (car (plist-get scan :entries))))
+     (should (equal (plist-get entry :direction) "<->"))
+     ;; inherited from the file-level keyword
+     (should (equal (plist-get entry :swift) "t"))
+     ;; absent at every level -- no value, which the wire spells null
+     (should (null (plist-get entry :incremental))))))
+
+;; AC-OPT-003's second half: a heading carrying no card-option property at any
+;; level produces an entry whose three values are all no value.
+(ert-deftest imoogi-scan-test-entry-without-card-options-carries-none ()
+  (imoogi-test--with-root
+   (imoogi-test--write (expand-file-name "bare.org" root)
+                        "* Bare\n:PROPERTIES:\n:ANKI_NOTE_TYPE: imoogi-Basic\n:END:\nBody\n")
+   (let* ((scan (imoogi-scan-root root nil))
+          (entry (car (plist-get scan :entries))))
+     (should (null (plist-get entry :direction)))
+     (should (null (plist-get entry :incremental)))
+     (should (null (plist-get entry :swift))))))
+
+;; AC-OPT-002a through the scan: a value the back end will reject reaches the
+;; entry unchanged. The front end drops no entry and substitutes no default.
+(ert-deftest imoogi-scan-test-malformed-card-option-reaches-the-entry-verbatim ()
+  (imoogi-test--with-root
+   (imoogi-test--write (expand-file-name "bad.org" root)
+                        (concat "* Bad\n:PROPERTIES:\n"
+                                ":ANKI_NOTE_TYPE: imoogi-Cloze\n"
+                                ":ANKI_DIRECTION: -->\n:ANKI_INCREMENTAL: yes\n:END:\n"
+                                "Body {{c1::x}}\n"))
+   (let* ((scan (imoogi-scan-root root nil))
+          (entries (plist-get scan :entries))
+          (entry (car entries)))
+     (should (= (length entries) 1))
+     (should (equal (plist-get entry :direction) "-->"))
+     (should (equal (plist-get entry :incremental) "yes")))))
+
+;; AC-OPT-002d: ANKI_NOTE_TYPE still does not inherit. A child carrying card
+;; options but no note type of its own is not a sync target at all -- this SPEC
+;; changes nothing about the property that decides target-hood.
+(ert-deftest imoogi-scan-test-note-type-still-does-not-inherit ()
+  (imoogi-test--with-root
+   (imoogi-test--write (expand-file-name "inherit.org" root)
+                        (concat "* Parent\n:PROPERTIES:\n"
+                                ":ANKI_NOTE_TYPE: imoogi-Cloze\n:END:\n"
+                                "Parent body {{c1::x}}\n"
+                                "** Child\n:PROPERTIES:\n:ANKI_SWIFT: t\n:END:\n"
+                                "Child body\n"))
+   (let* ((scan (imoogi-scan-root root nil))
+          (entries (plist-get scan :entries)))
+     (should (= (length entries) 1))
+     (should (equal (plist-get (car entries) :title) "Parent")))))
+
+;; AC-OPT-010's suppression case: an inherited option that would conflict is
+;; switched off by an empty value in the heading's own drawer, so the entry
+;; reaches the back end with a null swift and no conflict to report.
+(ert-deftest imoogi-scan-test-inherited-option-is-suppressible-by-empty-value ()
+  (imoogi-test--with-root
+   (imoogi-test--write (expand-file-name "suppress.org" root)
+                        (concat "#+PROPERTY: ANKI_SWIFT t\n"
+                                "* Suppressed\n:PROPERTIES:\n"
+                                ":ANKI_NOTE_TYPE: imoogi-Cloze\n"
+                                ":ANKI_DIRECTION: ->\n:ANKI_SWIFT:\n:END:\n"
+                                "Body {{c1::x}}\n"))
+   (let* ((scan (imoogi-scan-root root nil))
+          (entry (car (plist-get scan :entries))))
+     (should (equal (plist-get entry :direction) "->"))
+     (should (null (plist-get entry :swift))))))
+
 (provide 'imoogi-scan-test)
 ;;; imoogi-scan-test.el ends here

@@ -19,7 +19,7 @@
                                :title "T" :body "B")))
          (json (imoogi-process-serialize-request config census entries))
          (parsed (json-parse-string json :object-type 'alist :array-type 'list)))
-    (should (= (cdr (assq 'protocol_version parsed)) 1))
+    (should (= (cdr (assq 'protocol_version parsed)) imoogi-protocol-version))
     (let ((cfg (cdr (assq 'config parsed))))
       (should (equal (cdr (assq 'default_deck cfg)) "Inbox"))
       (should (eq (cdr (assq 'scan_complete cfg)) t)))
@@ -49,9 +49,9 @@
 
 (ert-deftest imoogi-process-test-parse-response-round-trip ()
   (let* ((response-json
-          "{\"protocol_version\":1,\"ok\":true,\"results\":[{\"key\":\"a.org::0\",\"action\":\"added\",\"note_id\":1001},{\"key\":null,\"action\":\"deleted\",\"note_id\":1005}],\"errors\":[{\"code\":\"cloze_marker_missing\",\"message\":\"no marker\",\"key\":\"b.org::0\"}]}")
+          "{\"protocol_version\":2,\"ok\":true,\"results\":[{\"key\":\"a.org::0\",\"action\":\"added\",\"note_id\":1001},{\"key\":null,\"action\":\"deleted\",\"note_id\":1005}],\"errors\":[{\"code\":\"cloze_marker_missing\",\"message\":\"no marker\",\"key\":\"b.org::0\"}]}")
          (parsed (imoogi-process-parse-response response-json)))
-    (should (= (plist-get parsed :protocol-version) 1))
+    (should (= (plist-get parsed :protocol-version) 2))
     (should (eq (plist-get parsed :ok) t))
     (should (= (length (plist-get parsed :results)) 2))
     (let ((added (car (plist-get parsed :results)))
@@ -72,7 +72,7 @@
 (ert-deftest imoogi-process-test-run-with-stub ()
   (let ((imoogi-process-runner
          (lambda (_binary _request-json)
-           (cons 0 "{\"protocol_version\":1,\"ok\":true,\"results\":[],\"errors\":[]}"))))
+           (cons 0 "{\"protocol_version\":2,\"ok\":true,\"results\":[],\"errors\":[]}"))))
     (let ((response (imoogi-process-run
                       "irrelevant-binary"
                       (list :default-deck "D" :anki-connect-url "u"
@@ -98,10 +98,56 @@
                (lambda (&rest _args)
                  (setq observed (getenv "IMOOGI_ANKI_LOG"))
                  (erase-buffer)
-                 (insert "{\"protocol_version\":1,\"ok\":true,\"results\":[],\"errors\":[]}")
+                 (insert "{\"protocol_version\":2,\"ok\":true,\"results\":[],\"errors\":[]}")
                  0)))
       (imoogi-process--call-binary "fake-imoogi-anki" "{}"))
     (should (equal observed imoogi-anki-log-file))))
+
+;; --- SPEC-ANKICARD-002: the three card-option keys on the wire.
+
+;; AC-OPT-004a: the keys are ALWAYS emitted. A dropped key and a null value
+;; are not interchangeable on this wire, so an unresolved option must arrive
+;; as an explicit null rather than as a missing key.
+(ert-deftest imoogi-process-test-card-option-keys-are-always-emitted ()
+  (let* ((entries (list (list :key "a.org::0" :note-id nil
+                               :note-type "imoogi-Cloze" :source-path "a.org"
+                               :deck nil :tags nil :title "T" :body "B"
+                               :direction nil :incremental nil :swift nil)))
+         (json (imoogi-process-serialize-request
+                (list :default-deck "D" :anki-connect-url "u"
+                      :registry-path "r" :sync-root "s"
+                      :exclude-patterns nil :scan-complete t)
+                nil entries))
+         (parsed (json-parse-string json :object-type 'alist :array-type 'list))
+         (entry (car (cdr (assq 'entries parsed)))))
+    (should (assq 'direction entry))
+    (should (assq 'incremental entry))
+    (should (assq 'swift entry))
+    (should (eq (cdr (assq 'direction entry)) :null))
+    (should (eq (cdr (assq 'incremental entry)) :null))
+    (should (eq (cdr (assq 'swift entry)) :null))))
+
+;; AC-OPT-004b: a resolved value is a JSON STRING -- including the falsy
+;; spelling, which is exactly the value a boolean-typed wire would collapse
+;; into the same thing as "no option at all". The malformed value rides
+;; through untouched too: the front end interprets none of them.
+(ert-deftest imoogi-process-test-card-options-serialize-as-strings ()
+  (let* ((entries (list (list :key "a.org::0" :note-id nil
+                               :note-type "imoogi-Cloze" :source-path "a.org"
+                               :deck nil :tags nil :title "T" :body "B"
+                               :direction "-->" :incremental "T" :swift "nil")))
+         (json (imoogi-process-serialize-request
+                (list :default-deck "D" :anki-connect-url "u"
+                      :registry-path "r" :sync-root "s"
+                      :exclude-patterns nil :scan-complete t)
+                nil entries))
+         (parsed (json-parse-string json :object-type 'alist :array-type 'list))
+         (entry (car (cdr (assq 'entries parsed)))))
+    (should (equal (cdr (assq 'swift entry)) "nil"))
+    (should (stringp (cdr (assq 'swift entry))))
+    ;; case intact, and a value the back end will reject carried verbatim
+    (should (equal (cdr (assq 'incremental entry)) "T"))
+    (should (equal (cdr (assq 'direction entry)) "-->"))))
 
 (provide 'imoogi-process-test)
 ;;; imoogi-process-test.el ends here

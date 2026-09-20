@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -88,7 +89,7 @@ func buildRequest(t *testing.T, ankiConnectURL string) string {
 // protocol-version mismatch caught before decode, an unknown subcommand) —
 // tests that DO reach the handshake use buildRequest against a live stub.
 const minimalRequest = `{
-  "protocol_version": 1,
+  "protocol_version": 2,
   "config": {
     "default_deck": "Inbox",
     "anki_connect_url": "http://127.0.0.1:8765",
@@ -313,7 +314,7 @@ func TestSyncEndToEnd_AddsANoteThroughThePlanner(t *testing.T) {
 func TestSyncReportsProtocolMismatchRatherThanProceeding(t *testing.T) {
 	mismatched := strings.Replace(
 		minimalRequest,
-		`"protocol_version": 1`,
+		`"protocol_version": 2`,
 		`"protocol_version": 99`,
 		1,
 	)
@@ -348,8 +349,11 @@ func TestSyncReportsProtocolMismatchRatherThanProceeding(t *testing.T) {
 		t.Errorf("errors[0].key = %q, want nil for a run-level error", *resp.Errors[0].Key)
 	}
 	// The message is machine-oriented detail, but it must name both versions so
-	// the mismatch is diagnosable by hand.
-	if !strings.Contains(resp.Errors[0].Message, "99") || !strings.Contains(resp.Errors[0].Message, "1") {
+	// the mismatch is diagnosable by hand. The binary's own version is read
+	// from the constant rather than spelled literally, so a future bump moves
+	// this assertion with it instead of passing on a coincidental substring.
+	if !strings.Contains(resp.Errors[0].Message, "99") ||
+		!strings.Contains(resp.Errors[0].Message, strconv.Itoa(protocol.Version)) {
 		t.Errorf("errors[0].message = %q; want both the request and binary versions named",
 			resp.Errors[0].Message)
 	}

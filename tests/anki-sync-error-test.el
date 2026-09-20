@@ -56,7 +56,7 @@
            (imoogi-sync-root "/tmp/root")
            (response-json
             (json-serialize
-             (list (cons 'protocol_version 1) (cons 'ok :false)
+             (list (cons 'protocol_version 2) (cons 'ok :false)
                    (cons 'results (vector))
                    (cons 'errors
                          (vector (list (cons 'code "anki_unreachable")
@@ -78,7 +78,7 @@
            (imoogi-sync-root "/tmp/root")
            (response-json
             (json-serialize
-             (list (cons 'protocol_version 1) (cons 'ok :false)
+             (list (cons 'protocol_version 2) (cons 'ok :false)
                    (cons 'results (vector))
                    (cons 'errors
                          (vector (list (cons 'code "ankiconnect_missing")
@@ -93,6 +93,42 @@
           (should-not (string-match-p (regexp-quote forbidden) report)))
         ;; textually distinct from AC-005's message
         (should-not (equal report (imoogi-error-message "anki_unreachable")))))))
+
+;; --- SPEC-ANKICARD-002 AC-OPT-006b: this front end against an older binary
+
+(ert-deftest imoogi-sync-error-test-version-skew-renders-the-table-message ()
+  "AC-OPT-006b: a binary speaking an older protocol version answers
+`binary_incompatible', and the front end renders ITS OWN table's message
+for that code -- naming the rebuild -- rather than any raw transport or
+process detail.
+
+Skew is caught on the REQUEST side, at the binary's own probe, in both
+directions; the front end parses the response's version and never
+compares it (the reason no second mechanism exists on this side).  So
+the front end's obligation here is exactly what this test asserts: turn
+the code into the corrective action, and write nothing."
+  (imoogi-sync-error-test--with-scan (imoogi-sync-error-test--scan-with-one-target)
+    (let* ((imoogi-binary-path (executable-find "true"))
+           (imoogi-sync-root "/tmp/root")
+           ;; The stub answers as a version-1 binary would: it declares its
+           ;; own older version and reports the skew it detected.
+           (response-json
+            (json-serialize
+             (list (cons 'protocol_version 1) (cons 'ok :false)
+                   (cons 'results (vector))
+                   (cons 'errors
+                         (vector (list (cons 'code "binary_incompatible")
+                                       (cons 'message "request protocol_version 2, binary speaks 1")
+                                       (cons 'key :null)))))))
+           (imoogi-process-runner
+            (lambda (&rest _args) (cons 1 response-json))))
+      (let ((report (imoogi-sync)))
+        ;; The message comes from the front end's own table, and names the
+        ;; corrective action.
+        (should (string-match-p "make build-anki" report))
+        ;; and carries none of the machine-oriented detail the binary sent.
+        (dolist (forbidden '("request protocol_version" "goroutine" "panic:" "exit status"))
+          (should-not (string-match-p (regexp-quote forbidden) report)))))))
 
 ;; --- AC-021's unreadable-files-naming clause ---------------------------
 
@@ -115,7 +151,7 @@ docstring; this test only exercises the report-rendering side)."
            (imoogi-sync-root "/tmp/root")
            (response-json
             (json-serialize
-             (list (cons 'protocol_version 1) (cons 'ok t)
+             (list (cons 'protocol_version 2) (cons 'ok t)
                    (cons 'results (vector))
                    (cons 'errors
                          (vector (list (cons 'code "delete_suppressed")
@@ -142,7 +178,7 @@ silently hide real add/update work that happened in the same run."
            (imoogi-sync-root "/tmp/root")
            (response-json
             (json-serialize
-             (list (cons 'protocol_version 1) (cons 'ok t)
+             (list (cons 'protocol_version 2) (cons 'ok t)
                    (cons 'results (vector (list (cons 'key "a.org::0")
                                                  (cons 'action "skipped")
                                                  (cons 'note_id :null))))
@@ -168,7 +204,7 @@ for a missing {{cN:: marker looked like Cloze silently not working."
            (imoogi-sync-root "/tmp/root")
            (response-json
             (json-serialize
-             (list (cons 'protocol_version 1) (cons 'ok t)
+             (list (cons 'protocol_version 2) (cons 'ok t)
                    (cons 'results (vector (list (cons 'key "a.org::0")
                                                  (cons 'action "skipped")
                                                  (cons 'note_id :null))))

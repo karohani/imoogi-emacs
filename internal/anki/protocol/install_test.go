@@ -19,7 +19,7 @@ import (
 // sync spelling; design.md §6's form is therefore read as a typo and the
 // existing `anki_connect_url` is authoritative.
 const installRequestFixture = `{
-  "protocol_version": 1,
+  "protocol_version": 2,
   "anki_connect_url": "127.0.0.1:8765",
   "user_css": ".card { letter-spacing: 0.01em; }"
 }`
@@ -29,8 +29,8 @@ func TestInstallRequestDecodesTheThreeDocumentedFields(t *testing.T) {
 	if err := json.Unmarshal([]byte(installRequestFixture), &req); err != nil {
 		t.Fatalf("install request fixture did not decode: %v", err)
 	}
-	if req.ProtocolVersion != 1 {
-		t.Errorf("protocol_version = %d, want 1", req.ProtocolVersion)
+	if req.ProtocolVersion != protocol.Version {
+		t.Errorf("protocol_version = %d, want this binary's own %d", req.ProtocolVersion, protocol.Version)
 	}
 	if req.AnkiConnectURL != "127.0.0.1:8765" {
 		t.Errorf("anki_connect_url = %q, want %q", req.AnkiConnectURL, "127.0.0.1:8765")

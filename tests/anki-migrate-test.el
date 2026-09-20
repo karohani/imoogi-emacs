@@ -26,7 +26,7 @@
 
 (defun imoogi-migrate-test--response (results)
   "Serialize an ok response carrying RESULTS (list of alists)."
-  (json-serialize (list (cons 'protocol_version 1)
+  (json-serialize (list (cons 'protocol_version 2)
                         (cons 'ok t)
                         (cons 'results (vconcat results))
                         (cons 'errors (vector)))))

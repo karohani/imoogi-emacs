@@ -115,5 +115,40 @@ a present-but-empty value -- REQ-006's absent-value fallback."
         (split-string (string-trim v))
       nil)))
 
+(defun imoogi-props--resolve-card-option (property)
+  "Resolve a card-option PROPERTY at point.
+
+Returns the resolved text EXACTLY as the drawer or keyword spells it,
+or nil when the property is absent at every level or a
+present-but-empty value terminated the chain.  Absent and
+present-but-empty are indistinguishable downstream, by construction --
+the same collapse `imoogi-props-resolve-deck' performs, and the
+mechanism that lets a heading suppress an inherited option.
+
+Nothing else is done to the value.  It is not trimmed, not
+case-folded, not defaulted, and not checked against any recognized
+set, including when it is a value this package could see is malformed.
+Deciding what a card-option value MEANS belongs to the back end, which
+names the offending text in its diagnostic; a front end that coerced
+first would make that diagnostic unreachable."
+  (let ((v (imoogi-props-resolve property)))
+    (if (and v (not (string-empty-p v))) v nil)))
+
+(defun imoogi-props-resolve-direction ()
+  "Resolve ANKI_DIRECTION at point, or nil.  See
+`imoogi-props--resolve-card-option' for what is and is not done to the
+value."
+  (imoogi-props--resolve-card-option "ANKI_DIRECTION"))
+
+(defun imoogi-props-resolve-incremental ()
+  "Resolve ANKI_INCREMENTAL at point, or nil.  See
+`imoogi-props--resolve-card-option'."
+  (imoogi-props--resolve-card-option "ANKI_INCREMENTAL"))
+
+(defun imoogi-props-resolve-swift ()
+  "Resolve ANKI_SWIFT at point, or nil.  See
+`imoogi-props--resolve-card-option'."
+  (imoogi-props--resolve-card-option "ANKI_SWIFT"))
+
 (provide 'imoogi-props)
 ;;; imoogi-props.el ends here

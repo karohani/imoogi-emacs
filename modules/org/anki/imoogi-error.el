@@ -59,7 +59,13 @@
     ("media_upload_failed" .
      "An image was found and readable, but Anki would not accept it into the collection's media folder. Nothing was written for this entry. Confirm Anki is running and has space for the file, then run the sync again.")
     ("migration_add_failed" .
-     "A note being migrated to imoogi's own note type could not be recreated in Anki, so the migration was abandoned for it. The original note, its registry record, and the Org heading were all left exactly as they were -- nothing was lost. Confirm Anki is responsive, then run `imoogi-anki-setup' again to retry the migration; do not edit the heading's ANKI_NOTE_TYPE by hand, since the note in Anki is still on its original type."))
+     "A note being migrated to imoogi's own note type could not be recreated in Anki, so the migration was abandoned for it. The original note, its registry record, and the Org heading were all left exactly as they were -- nothing was lost. Confirm Anki is responsive, then run `imoogi-anki-setup' again to retry the migration; do not edit the heading's ANKI_NOTE_TYPE by hand, since the note in Anki is still on its original type.")
+    ("card_option_invalid" .
+     "One of this heading's card-option properties carries a value imoogi does not recognize, so the heading was skipped and nothing was written for it. ANKI_DIRECTION accepts `->', `<-', `<->', or `nil'; ANKI_INCREMENTAL and ANKI_SWIFT accept `t' or `nil'. Surrounding spaces and letter case do not matter. The reported detail names the property and the value it actually found -- correct that line in the heading's PROPERTIES drawer, or in the file-level `#+PROPERTY:' line it was inherited from, and sync again.")
+    ("card_option_conflict" .
+     "This heading asks for two card shapes at once: ANKI_SWIFT is on, and so is ANKI_DIRECTION or ANKI_INCREMENTAL. They select different kinds of card and imoogi will not guess between them, so the heading was skipped and nothing was written for it. Remove one of the two -- and note that either may have been inherited from an ancestor heading or a file-level `#+PROPERTY:' line rather than written here. To switch an inherited option off for this heading alone, give it the value `nil' in the heading's own drawer, or leave the value empty.")
+    ("card_option_needs_cloze" .
+     "This heading carries a card option (ANKI_DIRECTION, ANKI_INCREMENTAL, or ANKI_SWIFT) but its ANKI_NOTE_TYPE is not a cloze type, and every card those options produce is built on one. The heading was skipped and nothing was written for it. Either change its ANKI_NOTE_TYPE to `imoogi-Cloze', or remove the option. If the option was inherited from an ancestor heading or a file-level `#+PROPERTY:' line, switch it off for this heading alone by giving it the value `nil' in its own drawer, or by leaving the value empty."))
   "plan.md D-5's code -> user-facing message table (REQ-018).
 
 Every value names the missing prerequisite or the problem and states a

@@ -126,5 +126,25 @@ Anki 의 cloze 정규식은 비탐욕(non-greedy)이라 첫 `}}' 에서 빈칸�
     (goto-char (point-min))
     (should (= 1 (count-matches "^#\\+PROPERTY: ANKI_DECK")))))
 
+;; --- SPEC-ANKICARD-002 AC-OPT-007: 앞단 cloze 판별의 나머지 절반
+
+(ert-deftest imoogi-anki-test-cloze-note-type-p-matches-the-back-end ()
+  "AC-OPT-007: 앞단 판별기가 back end 판별기와 똑같은 여덟 값에 똑같이
+답한다.
+
+같은 표를 양쪽에서 돌리는 것이 요점이다.  두 판별기가 각자 맞기만 해서는
+부족하고, 서로 어긋나지 않아야 한다 -- 어긋나면 사용자가 Org 쪽에서 보는
+빈칸 자동 표시와 back end 가 내리는 판정이 갈라진다."
+  (dolist (row '(("Cloze" . t)
+                 ("imoogi-Cloze" . t)
+                 ("Basic" . nil)
+                 ("imoogi-Basic" . nil)
+                 ("imoogi-Other" . nil)
+                 ("MyCloze" . nil)
+                 ("cloze" . nil)
+                 ("" . nil)))
+    (should (eq (imoogi-anki-cloze-note-type-p (car row))
+                (cdr row)))))
+
 (provide 'anki-commands-test)
 ;;; anki-commands-test.el ends here

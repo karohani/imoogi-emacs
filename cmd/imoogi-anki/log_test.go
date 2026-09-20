@@ -55,7 +55,7 @@ func TestSyncLogRecordsImoogiBasicEntryWithoutItsContent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "anki.jsonl")
 	t.Setenv(logPathEnvironment, path)
 	request := `{
-  "protocol_version": 1,
+  "protocol_version": 2,
   "config": {
     "default_deck": "Default",
     "anki_connect_url": "http://127.0.0.1:1",

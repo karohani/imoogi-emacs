@@ -1,0 +1,80 @@
+{
+  "mixed": {
+    "write_sequence": [
+      "addNote",
+      "updateNoteFields",
+      "updateNoteTags"
+    ],
+    "add_calls": [
+      {
+        "deck": "Inbox",
+        "model_name": "imoogi-Basic",
+        "fields": {
+          "Back": "\u003cp\u003eWith a body.\u003c/p\u003e\n",
+          "Front": "\u003cp\u003eA brand new heading\u003c/p\u003e\n"
+        },
+        "tags": [
+          "new",
+          "alpha"
+        ]
+      }
+    ],
+    "create_deck_calls": null,
+    "update_fields_calls": [
+      {
+        "note_id": 201,
+        "fields": {
+          "Back Extra": "",
+          "Text": "\u003cp\u003eEdited {{c1::cloze}} heading\u003c/p\u003e\n\u003cp\u003e\nNew body text.\u003c/p\u003e\n"
+        }
+      }
+    ],
+    "update_tags_calls": [
+      {
+        "note_id": 201,
+        "tags": null
+      }
+    ],
+    "change_deck_calls": null,
+    "delete_calls": null,
+    "notes_info_calls": null,
+    "store_media_calls": null,
+    "results": [
+      {
+        "key": "b.org::0",
+        "action": "added",
+        "note_id": 1
+      },
+      {
+        "key": "b.org::1",
+        "action": "updated",
+        "note_id": 201
+      }
+    ],
+    "errors": null
+  },
+  "no_op": {
+    "write_sequence": null,
+    "add_calls": null,
+    "create_deck_calls": null,
+    "update_fields_calls": null,
+    "update_tags_calls": null,
+    "change_deck_calls": null,
+    "delete_calls": null,
+    "notes_info_calls": null,
+    "store_media_calls": null,
+    "results": [
+      {
+        "key": "a.org::0",
+        "action": "skipped",
+        "note_id": 101
+      },
+      {
+        "key": "a.org::1",
+        "action": "skipped",
+        "note_id": 102
+      }
+    ],
+    "errors": null
+  }
+}

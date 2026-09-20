@@ -10,7 +10,15 @@ package protocol
 // Version is the wire-contract version this binary speaks. The front end sends
 // its own version in every request; a mismatch is reported rather than parsed
 // through, because the hand-built distribution model makes version skew routine.
-const Version = 1
+//
+// Went to 2 when Entry gained the three card-option fields. The bump is a
+// constant change plus its pins, not a negotiation: the front end and this
+// binary ship from one checkout and are rebuilt by one command, so skew means
+// a stale build, and the useful answer to a stale build is to say so. A
+// compatibility window that accepted a version-1 request by treating the new
+// fields as null would let a user write card options the binary quietly
+// ignores — the silent-acceptance failure this SPEC rejects everywhere else.
+const Version = 2
 
 // Result actions reported per sync target, plus one per orphan this run deleted.
 const (
@@ -65,6 +73,23 @@ const (
 	CodeMediaFileNotFound  = "media_file_not_found"
 	CodeMediaUploadFailed  = "media_upload_failed"
 	CodeMigrationAddFailed = "migration_add_failed"
+
+	// The card-option SPEC's three codes. Three rather than one because the
+	// code is what the front end's table turns into a corrective action, and
+	// these are three different fixes: fix the value; remove one of two
+	// conflicting options; change the note type or drop the option. The
+	// existing codes split the same way — two deck operations, two media
+	// failures, and two reasons one delete did not happen each get their own
+	// code. Folding these three into card_option_needs_cloze would also make
+	// that name assert something false about a malformed arrow.
+	//
+	// Exactly one of them is emitted per rejected entry, selected in the
+	// order they are declared here: a malformed value is reported even when
+	// the other two rules would also fire, because the conflict rule cannot
+	// classify a value it does not recognize.
+	CodeCardOptionInvalid    = "card_option_invalid"
+	CodeCardOptionConflict   = "card_option_conflict"
+	CodeCardOptionNeedsCloze = "card_option_needs_cloze"
 )
 
 // Request is the document the front end writes to the binary's stdin.
@@ -114,6 +139,28 @@ type Entry struct {
 	Title string   `json:"title"`
 	// Body is raw Org text. The back end renders it; the front end never does.
 	Body string `json:"body"`
+
+	// The three card-option values, carried VERBATIM from the Org drawer or
+	// the file-level keyword through the same nearest-wins chain that
+	// resolves Deck. nil means the chain resolved to no value — either the
+	// property was absent at all three levels, or a present-but-empty value
+	// terminated the chain.
+	//
+	// Strings, including the two whose recognized values are boolean in
+	// meaning. A boolean on the wire would require the front end to decide
+	// which spellings are true, which it is barred from doing, and would
+	// leave this side unable to name the offending text in a diagnostic.
+	//
+	// nil and "nil" are DIFFERENT things here: nil is "no value resolved",
+	// "nil" is "the user explicitly wrote the falsy spelling". They reach
+	// the same outcome at the validation gate today — the option is off
+	// either way — and nothing should come to depend on telling them apart.
+	//
+	// The back end validates these; it never renders them. Every card shape
+	// they eventually select belongs to a later SPEC.
+	Direction   *string `json:"direction"`
+	Incremental *string `json:"incremental"`
+	Swift       *string `json:"swift"`
 }
 
 // InstallRequest is the document the front end writes to the install-models

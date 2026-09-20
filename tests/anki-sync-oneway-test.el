@@ -69,7 +69,7 @@ them."
 (defun imoogi-oneway-test--response (action note-id)
   "Serialize an `ok: true' response carrying one ACTION result on NOTE-ID."
   (json-serialize
-   (list (cons 'protocol_version 1)
+   (list (cons 'protocol_version 2)
          (cons 'ok t)
          (cons 'results (vector (imoogi-oneway-test--result action note-id)))
          (cons 'errors (vector)))))
@@ -93,6 +93,24 @@ buffer rather than a re-read of the file).  Cleans up after."
          (with-current-buffer buffer (set-buffer-modified-p nil))
          (kill-buffer buffer))
        (delete-directory root t))))
+
+(defun imoogi-oneway-test--card-options (file)
+  "Read the three card-option properties from FILE's first heading.
+
+Returns an alist of (PROPERTY . VALUE), VALUE nil when the property is
+absent from that heading's own drawer."
+  (with-temp-buffer
+    (insert-file-contents file)
+    (delay-mode-hooks (org-mode))
+    (goto-char (point-min))
+    (outline-next-heading)
+    (mapcar (lambda (prop)
+              (cons prop (org-entry-get (point) prop nil)))
+            '("ANKI_DIRECTION" "ANKI_INCREMENTAL" "ANKI_SWIFT"))))
+
+(defun imoogi-oneway-test--without-note-id (text)
+  "Return TEXT with every ANKI_NOTE_ID drawer line removed."
+  (replace-regexp-in-string "^[ \t]*:ANKI_NOTE_ID:.*\n" "" text))
 
 (defun imoogi-oneway-test--file-contents (file)
   (with-temp-buffer
@@ -202,6 +220,54 @@ wrote them."
         ;; additive (the one new property line) and nothing else.
         (dolist (line (split-string buffer-before "\n"))
           (should (member line (split-string after "\n"))))))))
+
+;; --- SPEC-ANKICARD-002 AC-OPT-002c: no card-option property is written back
+
+(ert-deftest imoogi-sync-oneway-test-card-options-are-never-written-back ()
+  "AC-OPT-002c: after a scan and a sync run, no card-option property
+appears in a drawer that did not already carry it, and no existing
+card-option value is modified.
+
+Asserted on the three properties' own drawer values, NOT on the whole
+buffer.  A sync run does modify the buffer -- the write-back writes
+ANKI_NOTE_ID into a newly-added heading's drawer -- so a whole-buffer
+comparison would fail for a reason this criterion is not about.  The
+delta is checked here to touch ANKI_NOTE_ID and nothing else.
+
+The run is driven over an `added' result, because write-back is the
+only path that edits an Org file at all: a run that wrote nothing
+could not fail this assertion however the code behaved."
+  (imoogi-oneway-test--with-root
+      (concat "* Optioned\n"
+              ":PROPERTIES:\n"
+              ":ANKI_NOTE_TYPE: imoogi-Cloze\n"
+              ":ANKI_DIRECTION: ->\n"
+              ":END:\n"
+              "A {{c1::cloze}} body.\n")
+    (let ((options-before (imoogi-oneway-test--card-options file))
+          (disk-before (imoogi-oneway-test--file-contents file)))
+      (let* ((imoogi-sync-root root)
+             (imoogi-exclude-patterns nil)
+             (imoogi-binary-path (executable-find "true"))
+             (imoogi-process-runner
+              (lambda (_binary _request-json)
+                (cons 0 (imoogi-oneway-test--response "added" 4242)))))
+        (imoogi-sync))
+
+      ;; The three card-option values are exactly as the user wrote them:
+      ;; the one present is unmodified, and the two absent stayed absent.
+      (should (equal (imoogi-oneway-test--card-options file) options-before))
+      (should (equal (cdr (assoc "ANKI_DIRECTION" options-before)) "->"))
+      (should (null (cdr (assoc "ANKI_INCREMENTAL" options-before))))
+      (should (null (cdr (assoc "ANKI_SWIFT" options-before))))
+
+      ;; The run DID write -- so the assertion above is about a file the
+      ;; write-back actually touched, and the delta is ANKI_NOTE_ID alone.
+      (let ((disk-after (imoogi-oneway-test--file-contents file)))
+        (should-not (equal disk-after disk-before))
+        (should (string-match-p "ANKI_NOTE_ID: 4242" disk-after))
+        (should (equal (imoogi-oneway-test--without-note-id disk-after)
+                       (imoogi-oneway-test--without-note-id disk-before)))))))
 
 (provide 'imoogi-sync-oneway-test)
 ;;; imoogi-sync-oneway-test.el ends here

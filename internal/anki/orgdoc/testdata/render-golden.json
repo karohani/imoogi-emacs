@@ -1,0 +1,22 @@
+{
+  "basic": {
+    "Back": "\u003cp\u003eA monoid in the category of endofunctors.\u003c/p\u003e\n\u003cul\u003e\n\u003cli\u003eassociative\u003c/li\u003e\n\u003cli\u003ehas a unit\u003c/li\u003e\n\u003c/ul\u003e\n",
+    "Front": "\u003cp\u003eWhat is a monad?\u003c/p\u003e\n"
+  },
+  "cloze": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003eThe capital of {{c1::France}} is {{c2::Paris}}.\u003c/p\u003e\n\u003cp\u003e\nBoth are worth remembering.\u003c/p\u003e\n"
+  },
+  "cloze_with_extra_block": {
+    "Back Extra": "\u003cp\u003eOn-reading: スイ\nKun-reading: みず\u003c/p\u003e\n",
+    "Text": "\u003cp\u003eKanji {{c1::水}} means water.\u003c/p\u003e\n\u003cp\u003e\nIt is a pictograph of flowing water.\u003c/p\u003e\n"
+  },
+  "empty_body": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003eA title carrying its own {{c1::marker}} and nothing else.\u003c/p\u003e\n"
+  },
+  "math": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003eEuler\u0026#39;s identity is {{c1::\\(e^{i\\pi} + 1 = 0\\)}}.\u003c/p\u003e\n\u003cp\u003e\nDerived from \\[e^{i\\theta} = \\cos\\theta + i\\sin\\theta\\].\u003c/p\u003e\n"
+  }
+}

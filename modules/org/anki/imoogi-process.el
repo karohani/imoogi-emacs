@@ -18,7 +18,7 @@
 (defvar imoogi-anki-log-file nil
   "Persistent log path configured by the imoogi front end.")
 
-(defvar imoogi-protocol-version 1
+(defvar imoogi-protocol-version 2
   "Wire-contract version this front end speaks.
 Must match the Go binary's compiled-in `internal/protocol.Version'.")
 
@@ -97,7 +97,14 @@ stylesheet exists; the key is never dropped."
         (cons 'deck (or (plist-get entry :deck) :null))
         (cons 'tags (vconcat (plist-get entry :tags)))
         (cons 'title (plist-get entry :title))
-        (cons 'body (plist-get entry :body))))
+        (cons 'body (plist-get entry :body))
+        ;; The three card-option values.  Emitted ALWAYS -- an unresolved
+        ;; option is an explicit null, never a dropped key, matching this
+        ;; contract's rule for note_id and deck.  Each carries the drawer's
+        ;; text verbatim; the back end decides what it means.
+        (cons 'direction (or (plist-get entry :direction) :null))
+        (cons 'incremental (or (plist-get entry :incremental) :null))
+        (cons 'swift (or (plist-get entry :swift) :null))))
 
 (defun imoogi-process-serialize-request (config census entries)
   "Serialize CONFIG (plist), CENSUS (list of census plists), and ENTRIES

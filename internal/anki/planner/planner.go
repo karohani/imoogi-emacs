@@ -270,6 +270,24 @@ func (r *runner) processEntry(entry protocol.Entry) (*protocol.Result, []protoco
 	key := entry.Key
 	resolvedDeck := resolveDeck(entry.Deck, r.defaultDeck)
 
+	// The card-option gate runs HERE — before the render, before the media
+	// pass, before the hash, and before any branch that could issue a
+	// request. Placing it first is what makes a mis-specified option report
+	// against the properties the user wrote instead of surfacing later as a
+	// rendering or field-resolution failure: an unrecognized note type would
+	// otherwise be reported as org_parse_error, and a cloze entry with no
+	// marker as cloze_marker_missing, in both cases sending the user to the
+	// wrong line.
+	//
+	// A rejected entry is SKIPPED carrying its existing identifier, and
+	// leaves the collection, the registry, and the Org heading untouched.
+	// An entry carrying no card option at all reaches this and passes
+	// through with no change in behavior whatsoever.
+	if optErr := validateCardOptions(entry, key); optErr != nil {
+		return &protocol.Result{Key: &key, Action: protocol.ActionSkipped, NoteID: entry.NoteID},
+			[]protocol.Error{*optErr}
+	}
+
 	fields, err := orgdoc.Render(renderType(entry.NoteType), entry.Title, entry.Body)
 	if err != nil {
 		if _, ok := err.(*orgdoc.ClozeMarkerMissingError); ok {

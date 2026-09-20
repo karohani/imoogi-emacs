@@ -385,3 +385,36 @@ func indexOfAction(haystack []string, needle string) int {
 	}
 	return -1
 }
+
+// SPEC-ANKICARD-002 AC-OPT-006a, the migrate arm.
+//
+// The skew probe is shared: `sync` and `migrate` both reach it through
+// runOverSyncRequest, and `install-models` through runInstall. The sync and
+// install arms already have tests; this is migrate's own, so the criterion's
+// "at every request-reading subcommand" rests on three observations rather
+// than on two plus an argument about shared code.
+func TestMigrateReportsProtocolMismatchRatherThanProceeding(t *testing.T) {
+	mismatched := strings.Replace(
+		minimalRequest,
+		`"protocol_version": `+strconv.Itoa(protocol.Version),
+		`"protocol_version": 99`,
+		1,
+	)
+
+	var stdout, stderr strings.Builder
+	code := run([]string{"migrate"}, strings.NewReader(mismatched), &stdout, &stderr)
+
+	if code == 0 {
+		t.Error("exit code = 0, want non-zero on a version mismatch")
+	}
+	resp := decodeResponse(t, stdout.String())
+	if resp.OK {
+		t.Error("ok = true, want false")
+	}
+	if len(resp.Errors) != 1 || resp.Errors[0].Code != protocol.CodeBinaryIncompatible {
+		t.Fatalf("errors = %+v, want exactly one %s", resp.Errors, protocol.CodeBinaryIncompatible)
+	}
+	if len(resp.Results) != 0 {
+		t.Errorf("len(results) = %d, want 0 — nothing is processed on a mismatch", len(resp.Results))
+	}
+}

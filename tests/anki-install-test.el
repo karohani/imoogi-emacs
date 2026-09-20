@@ -97,7 +97,7 @@ carries the install document rather than the sync one."
           (lambda (_binary request-json)
             (push (cons imoogi-process-argv request-json) seen)
             (cons 0 (json-serialize
-                     (list (cons 'protocol_version 1) (cons 'ok t)
+                     (list (cons 'protocol_version 2) (cons 'ok t)
                            (cons 'results (vector (list (cons 'key "imoogi-Basic")
                                                         (cons 'action "added")
                                                         (cons 'note_id :null))))
@@ -169,7 +169,7 @@ the plain sync run still binds `sync'."
          (imoogi-process-runner
           (lambda (_binary _json)
             (push imoogi-process-argv seen)
-            (cons 0 (json-serialize (list (cons 'protocol_version 1) (cons 'ok t)
+            (cons 0 (json-serialize (list (cons 'protocol_version 2) (cons 'ok t)
                                           (cons 'results (vector)) (cons 'errors (vector)))))))
          (config (list :default-deck "D" :anki-connect-url "u" :registry-path "r"
                        :sync-root "s" :exclude-patterns nil :scan-complete t)))

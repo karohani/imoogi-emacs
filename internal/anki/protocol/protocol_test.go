@@ -10,7 +10,7 @@ import (
 )
 
 const requestFixture = `{
-  "protocol_version": 1,
+  "protocol_version": 2,
   "config": {
     "default_deck": "Inbox",
     "anki_connect_url": "http://127.0.0.1:8765",
@@ -32,7 +32,10 @@ const requestFixture = `{
       "deck": "Geography::Europe",
       "tags": ["geography", "europe"],
       "title": "Capital of France",
-      "body": "Paris."
+      "body": "Paris.",
+      "direction": null,
+      "incremental": null,
+      "swift": null
     },
     {
       "key": "b.org::0",
@@ -42,7 +45,10 @@ const requestFixture = `{
       "deck": null,
       "tags": [],
       "title": "France",
-      "body": "The capital of France is {{c1::Paris}}."
+      "body": "The capital of France is {{c1::Paris}}.",
+      "direction": "<->",
+      "incremental": "t",
+      "swift": null
     }
   ]
 }`
@@ -53,8 +59,8 @@ func TestRequestDecodesWireFixture(t *testing.T) {
 		t.Fatalf("decoding request fixture: %v", err)
 	}
 
-	if req.ProtocolVersion != 1 {
-		t.Errorf("protocol_version = %d, want 1", req.ProtocolVersion)
+	if req.ProtocolVersion != protocol.Version {
+		t.Errorf("protocol_version = %d, want this binary's own %d", req.ProtocolVersion, protocol.Version)
 	}
 	if req.Config.DefaultDeck != "Inbox" {
 		t.Errorf("config.default_deck = %q, want %q", req.Config.DefaultDeck, "Inbox")
@@ -199,7 +205,7 @@ func TestRequestEncodesSnakeCaseWireNames(t *testing.T) {
 }
 
 const responseFixture = `{
-  "protocol_version": 1,
+  "protocol_version": 2,
   "ok": true,
   "results": [
     {"key": "a.org::0", "action": "updated", "note_id": 1001},
@@ -219,8 +225,8 @@ func TestResponseDecodesWireFixture(t *testing.T) {
 		t.Fatalf("decoding response fixture: %v", err)
 	}
 
-	if resp.ProtocolVersion != 1 {
-		t.Errorf("protocol_version = %d, want 1", resp.ProtocolVersion)
+	if resp.ProtocolVersion != protocol.Version {
+		t.Errorf("protocol_version = %d, want this binary's own %d", resp.ProtocolVersion, protocol.Version)
 	}
 	if !resp.OK {
 		t.Error("ok = false, want true")
@@ -337,9 +343,12 @@ func TestEmptyResponseEncodesEmptyArraysNotNull(t *testing.T) {
 	}
 }
 
-func TestVersionConstantIsOne(t *testing.T) {
-	if protocol.Version != 1 {
-		t.Errorf("protocol.Version = %d, want 1 (plan.md D-2: present from the first release)", protocol.Version)
+// The compiled-in wire-contract version. Went from 1 to 2 when Entry gained
+// the three card-option fields; the front end's own declared version moves
+// with it, and the two are asserted equal from both sides of the wire.
+func TestVersionConstantIsTwo(t *testing.T) {
+	if protocol.Version != 2 {
+		t.Errorf("protocol.Version = %d, want 2 (the card-option fields)", protocol.Version)
 	}
 }
 
@@ -370,12 +379,13 @@ func TestMigrateCandidateIsTheOnlyWireAddition(t *testing.T) {
 		t.Errorf("ActionMigrateCandidate = %q, want %q", protocol.ActionMigrateCandidate, "migrate_candidate")
 	}
 
-	// The version constant is unchanged. TestVersionConstantIsOne asserts
-	// the same value for the parent SPEC's reason; this restates it under
-	// REQ-C-018's own clause, because the two would have to be un-asserted
-	// separately for the wire contract to drift silently.
-	if protocol.Version != 1 {
-		t.Errorf("protocol.Version = %d, want 1 — REQ-C-018 leaves it unchanged", protocol.Version)
+	// The version the card-styling SPEC left unchanged has since moved: the
+	// card-option SPEC took it to 2 when the entry shape gained three
+	// fields. What REQ-C-018 claimed — that the MIGRATE subcommand adds
+	// only an action value — is untouched by that, so the clause survives
+	// and only its version pin follows the constant.
+	if protocol.Version != 2 {
+		t.Errorf("protocol.Version = %d, want 2", protocol.Version)
 	}
 
 	// Result gained no field. A `migrate_candidate` result is an ordinary

@@ -24,7 +24,10 @@
     "model_install_failed"
     "media_file_not_found"
     "media_upload_failed"
-    "migration_add_failed")
+    "migration_add_failed"
+    "card_option_invalid"
+    "card_option_conflict"
+    "card_option_needs_cloze")
   "The `Code...' string constants internal/anki/protocol/protocol.go
 declares today -- hardcoded here because this suite has no Go parser
 available.  The last four are the card-styling SPEC's own codes

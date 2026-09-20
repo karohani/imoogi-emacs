@@ -90,7 +90,15 @@ Returns a plist (:entries LIST :census LIST)."
                     (title (org-get-heading t t t t))
                     (body (imoogi-scan--entry-body))
                     (deck (imoogi-props-resolve-deck))
-                    (tags (imoogi-props-resolve-tags)))
+                    (tags (imoogi-props-resolve-tags))
+                    ;; The three card-option values are resolved HERE, at
+                    ;; scan time, so an entry's option set is fixed once and
+                    ;; is never re-derived anywhere downstream.  Each is the
+                    ;; drawer's or keyword's text verbatim, or nil when the
+                    ;; chain resolved to no value.
+                    (direction (imoogi-props-resolve-direction))
+                    (incremental (imoogi-props-resolve-incremental))
+                    (swift (imoogi-props-resolve-swift)))
                (push (list :key key
                             :note-id (and note-id (string-to-number note-id))
                             :note-type note-type
@@ -98,7 +106,10 @@ Returns a plist (:entries LIST :census LIST)."
                             :deck deck
                             :tags tags
                             :title title
-                            :body body)
+                            :body body
+                            :direction direction
+                            :incremental incremental
+                            :swift swift)
                      entries)
                (setq index (1+ index))))))))
     (list :entries (nreverse entries) :census (nreverse census))))

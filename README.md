@@ -984,6 +984,54 @@ Anki 메뉴(`C-c a a`)의 **동기화 대상**에서도 같은 명령을 실행�
 충돌을 보고하며, 그 실행에서는 자동 삭제도 억제한다.
 이미지는 등록 폴더 안에서 참조하며, 개별 파일은 그 파일이 있는 폴더를 기준으로 한다.
 
+### Anki 카드 옵션 속성
+
+heading에 붙일 수 있는 카드 옵션 속성이 세 개 있다. 값은 `ANKI_DECK`과 똑같은
+방식으로 상속된다. 지금은 값을 back end까지 전달하고 검사하는 데까지만 하며,
+이 속성들이 실제로 카드 모양을 바꾸는 일은 아직 하지 않는다.
+
+| 속성 | 받는 값 | 쓰임 |
+| --- | --- | --- |
+| `ANKI_DIRECTION` | `->`, `<-`, `<->`, `nil` | 어느 쪽을 문제로 낼지 |
+| `ANKI_INCREMENTAL` | `t`, `nil` | 항목마다 빈칸을 따로 만들지 |
+| `ANKI_SWIFT` | `t`, `nil` | 본문의 줄을 한 줄씩 쪼갠 카드로 만들지 |
+
+`t`가 켬, `nil`이 끔이다. 앞뒤 공백과 대소문자는 가리지 않아서 `T`와 `NIL`도
+그대로 받는다. 표에 없는 값을 쓰면 그 heading은 건너뛰고 `card_option_invalid`로
+보고한다. 어느 속성의 어떤 값이 걸렸는지 진단 로그에 그대로 남으므로 고칠 줄을
+바로 찾을 수 있다.
+
+값은 자기 drawer → 가장 가까운 상위 heading의 drawer → 파일 맨 위의
+`#+PROPERTY:` 순서로 찾고, 먼저 찾은 값 하나만 쓴다. 여러 단계의 값을 합치지는
+않는다. 상속받은 값을 이 heading에서만 끄려면 자기 drawer에 `nil`을 쓰거나 값을
+비워 둔다.
+
+```org
+#+PROPERTY: ANKI_SWIFT t
+
+* 이 heading에서만 swift를 끈다
+:PROPERTIES:
+:ANKI_NOTE_TYPE: imoogi-Cloze
+:ANKI_SWIFT:
+:ANKI_DIRECTION: ->
+:END:
+```
+
+카드 옵션을 켠 heading은 `ANKI_NOTE_TYPE`이 `imoogi-Cloze`나 `Cloze`여야 한다.
+이 옵션들이 만들 카드가 모두 빈칸(cloze) 카드이기 때문이다. 다른 타입에 옵션을
+켜 두면 건너뛰고 `card_option_needs_cloze`로 보고한다. 끈 값(`nil`)만 있는
+heading은 옵션을 켠 것이 아니므로 이 제한에 걸리지 않는다. 파일 전체에
+`#+PROPERTY:`로 옵션을 걸어 둔 채 Basic heading을 섞어 쓸 때 이 점이 중요하다.
+
+`ANKI_SWIFT`를 켠 채로 `ANKI_DIRECTION`이나 `ANKI_INCREMENTAL`도 함께 켜면 서로
+다른 모양의 카드를 동시에 요구하는 셈이라 건너뛰고 `card_option_conflict`로
+보고한다. 둘 중 하나를 지우면 된다. 한쪽이 상위 heading이나 파일에서 상속된
+값일 수도 있으니, 위의 끄는 방법을 함께 참고한다.
+
+이번 변경으로 front end와 바이너리 사이의 프로토콜 버전이 2로 올라갔다. 예전
+바이너리를 그대로 두면 `binary_incompatible`이 나므로 `make build-anki`로 다시
+빌드한다.
+
 ### Anki 동기화 진단 로그
 
 `imoogi-sync`, note type 설치, migration 실행은 기본적으로

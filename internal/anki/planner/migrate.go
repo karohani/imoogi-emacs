@@ -180,6 +180,26 @@ func (r *runner) migrateOne(entry protocol.Entry, counterpart string) (*protocol
 	resolvedDeck := resolveDeck(entry.Deck, r.defaultDeck)
 	skipped := &protocol.Result{Key: &key, Action: protocol.ActionSkipped, NoteID: &noteID}
 
+	// The SAME card-option gate the ordinary sync path runs, from one
+	// implementation, and in the same position: before the render.
+	//
+	// It reads the entry's DECLARED note type rather than the counterpart,
+	// which keeps one signature and one call shape for both paths. That is
+	// safe rather than approximate: migrationTarget admits a candidate only
+	// when the declared type is the recorded stock type or its imoogi- owned
+	// counterpart, and a type and its counterpart are cloze-style together or
+	// not at all — so the two names never disagree on the property this gate
+	// reads.
+	//
+	// Only CONFIRMED candidates reach here. A dry run and an entry rejected
+	// as a non-candidate both return before this per-entry pipeline, so no
+	// position for the gate inside it can reach them; neither loses coverage,
+	// because an entry not migrated is still processed by the ordinary sync
+	// path, where the gate does run.
+	if optErr := validateCardOptions(entry, key); optErr != nil {
+		return skipped, []protocol.Error{*optErr}
+	}
+
 	// The full §2 pipeline, in the order the sync path runs it: render,
 	// then media, then hash. Rendering under the counterpart is rendering
 	// under its stock mirror (renderType), because the two carry the same
