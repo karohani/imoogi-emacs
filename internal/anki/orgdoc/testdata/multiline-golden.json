@@ -1,0 +1,42 @@
+{
+  "both_incremental": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003e{{c3::Capital of Japan}}\u003c/p\u003e\n\u003cul class=\"children-list\"\u003e\n\u003cli\u003e{{c1::Tokyo}}\u003c/li\u003e\n\u003cli\u003e{{c2::Osaka}}\u003c/li\u003e\n\u003c/ul\u003e\n"
+  },
+  "checkbox_and_nested_child": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003eCities\u003c/p\u003e\n\u003cul class=\"children-list\"\u003e\n\u003cli class=\"unchecked\"\u003e\n\u003cp\u003e{{c1::Tokyo}}\u003c/p\u003e\n\u003cul\u003e\n\u003cli\u003eKanto\u003c/li\u003e\n\u003c/ul\u003e\n\u003c/li\u003e\n\u003cli class=\"checked\"\u003e{{c1::Osaka}}\u003c/li\u003e\n\u003c/ul\u003e\n"
+  },
+  "description_list": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003eCities\u003c/p\u003e\n\u003cdl class=\"children-list\"\u003e\n\u003cdt\u003e\nTokyo\n\u003c/dt\u003e\n\u003cdd\u003e{{c1::the capital}}\u003c/dd\u003e\n\u003cdt\u003e\nOsaka\n\u003c/dt\u003e\n\u003cdd\u003e{{c1::the second city}}\u003c/dd\u003e\n\u003c/dl\u003e\n"
+  },
+  "hand_written_marker_is_left_alone": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003eCities\u003c/p\u003e\n\u003cul class=\"children-list\"\u003e\n\u003cli\u003eTokyo is {{c4::big}}\u003c/li\u003e\n\u003cli\u003e{{c5::Osaka}}\u003c/li\u003e\n\u003c/ul\u003e\n"
+  },
+  "incremental_alone_defaults_to_rightward": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003eCapital of Japan\u003c/p\u003e\n\u003cul class=\"children-list\"\u003e\n\u003cli\u003e{{c1::Tokyo}}\u003c/li\u003e\n\u003cli\u003e{{c2::Osaka}}\u003c/li\u003e\n\u003c/ul\u003e\n"
+  },
+  "korean_answers_with_a_status": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003e대한민국의 수도\u003c/p\u003e\n\u003cul class=\"children-list\"\u003e\n\u003cli class=\"unchecked\"\u003e{{c1::서울특별시}}\u003c/li\u003e\n\u003cli class=\"checked\"\u003e{{c1::부산}}\u003c/li\u003e\n\u003c/ul\u003e\n"
+  },
+  "latex_braces": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003eFormula\u003c/p\u003e\n\u003cul class=\"children-list\"\u003e\n\u003cli\u003e{{c1::\\sqrt{a\u003csup\u003e2\u003c/sup\u003e } }}\u003c/li\u003e\n\u003cli\u003e{{c1::f(x} }}\u003c/li\u003e\n\u003c/ul\u003e\n"
+  },
+  "leftward": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003e{{c2::Capital of Japan}}\u003c/p\u003e\n\u003cul class=\"children-list\"\u003e\n\u003cli\u003eTokyo\u003c/li\u003e\n\u003cli\u003eOsaka\u003c/li\u003e\n\u003c/ul\u003e\n"
+  },
+  "rightward": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003eCapital of Japan\u003c/p\u003e\n\u003cul class=\"children-list\"\u003e\n\u003cli\u003e{{c1::Tokyo}}\u003c/li\u003e\n\u003cli\u003e{{c1::Osaka}}\u003c/li\u003e\n\u003c/ul\u003e\n"
+  },
+  "supplementary_block_between_two_answers": {
+    "Back Extra": "\u003cp\u003enote\u003c/p\u003e\n",
+    "Text": "\u003cp\u003eCities\u003c/p\u003e\n\u003cul class=\"children-list\"\u003e\n\u003cli\u003e{{c1::Tokyo}}\u003c/li\u003e\n\u003cli\u003e{{c1::Osaka}}\u003c/li\u003e\n\u003c/ul\u003e\n"
+  }
+}

@@ -94,6 +94,44 @@
   color: var(--imoogi-emphasis-fg);
 }
 
+/* 9. The multiline card's answer list.
+ *
+ * A heading carrying ANKI_DIRECTION or ANKI_INCREMENTAL renders its answers as
+ * the list the author wrote, wrapped in an element the renderer marks with this
+ * class. The class rides whichever element the list became — ul, ol, or dl —
+ * so the rule is written against the class alone.
+ *
+ * The list sits under the question rather than beside it, and its markers are
+ * removed: on a card the bullets are noise, because the blanks themselves are
+ * already what the reader is counting. Indentation is kept so a nested
+ * sub-item, which stays visible outside every blank, still reads as
+ * subordinate to its answer.
+ *
+ * Every declaration consumes an existing token or a plain length; this rule
+ * names no network-hosted resource and derives nothing from a deck name, which
+ * is what the whole-file assertions above already require of it.
+ */
+.card .children-list {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+  line-height: var(--imoogi-line-height);
+}
+
+.card ul.children-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.card .children-list > li,
+.card .children-list > dd {
+  margin: 0.35rem 0;
+}
+
+.card .children-list > dt {
+  font-weight: 600;
+  color: var(--imoogi-emphasis-fg);
+}
+
 /* 6. Night theme, under BOTH selector forms: .card.nightMode is Anki desktop
  * and AnkiMobile, .card.night_mode is AnkiDroid — no space between the class
  * names in either. Only the three themed tokens are reassigned; every

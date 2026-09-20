@@ -90,6 +90,16 @@ const (
 	CodeCardOptionInvalid    = "card_option_invalid"
 	CodeCardOptionConflict   = "card_option_conflict"
 	CodeCardOptionNeedsCloze = "card_option_needs_cloze"
+
+	// CodeMultilineAnswerMissing reports a multiline entry whose remaining
+	// body yields no answer item (SPEC-ANKICARD-003 REQ-ML-002).
+	//
+	// It is NOT a fourth member of the gate's fixed order above. Those three
+	// are decided before the render; this condition is detectable only during
+	// composition, so it never competes with them for the
+	// one-diagnostic-per-entry slot — it is fourth by construction rather than
+	// by placement (REQ-ML-011).
+	CodeMultilineAnswerMissing = "multiline_answer_missing"
 )
 
 // Request is the document the front end writes to the binary's stdin.

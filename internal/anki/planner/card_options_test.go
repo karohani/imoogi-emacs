@@ -17,6 +17,18 @@ import (
 // downstream neighbours rather than tripping cloze_marker_missing first.
 const clozeBody = "A {{c1::cloze}} body."
 
+// multilineBody carries a marker AND an answer list, so an entry using it
+// reaches the gate's downstream neighbours under a MULTILINE option too.
+//
+// The list is what SPEC-ANKICARD-003 added to the picture: that SPEC gives the
+// direction and incremental values a rendering meaning, and REQ-ML-002 rejects
+// a multiline entry whose body yields no answer item. A list-free body was
+// sufficient while the options rendered nothing; it now reports
+// multiline_answer_missing before the assertion under test is reached. The
+// list restores the fixture's original purpose rather than relaxing anything —
+// every assertion these tests make is unchanged.
+const multilineBody = "A {{c1::cloze}} body.\n\n- an answer\n"
+
 // runOne drives one entry through an ordinary sync run and returns what the
 // run reported for it, plus the client so a caller can assert on the request
 // log. The registry starts empty and the entry carries no identifier, so an
@@ -43,7 +55,7 @@ func optionEntry(direction, incremental, swift *string) protocol.Entry {
 		NoteType:    "imoogi-Cloze",
 		SourcePath:  "a.org",
 		Title:       "A heading",
-		Body:        clozeBody,
+		Body:        multilineBody,
 		Direction:   direction,
 		Incremental: incremental,
 		Swift:       swift,
@@ -329,15 +341,24 @@ func TestGatePrecedesRendering(t *testing.T) {
 	expectSkippedWithCode(t, results, errs, protocol.CodeCardOptionInvalid)
 }
 
-// AC-OPT-013: the marker-missing baseline this SPEC pins for the multiline
-// card that comes later. A valid option on a valid type passes the gate and is
-// then reported by the EXISTING code — this SPEC introduces no marker the
-// options generate. The test is expected to be UPDATED by the multiline card,
-// not to keep passing forever.
+// AC-OPT-013: the marker-missing baseline SPEC-ANKICARD-002 pinned for the
+// multiline card that comes later. A valid option on a valid type passes the
+// gate and is then reported by the EXISTING code.
+//
+// SPEC-ANKICARD-003 is that card, and this is the update SPEC-ANKICARD-002's
+// own note anticipated ("expected to be UPDATED by the multiline card, not to
+// keep passing forever"). The claim it protects is unchanged and still
+// discriminating: a valid option does not BYPASS the marker gate. What changed
+// is which body demonstrates it. A list-free body now earns
+// multiline_answer_missing first (REQ-ML-002), so the fixture is an answer
+// list of items with no content: composition finds the list, generates no
+// marker for an empty span, and the gate fires exactly as it always did. That
+// is REQ-ML-009.3 read correctly — the gate is SATISFIED by composition, not
+// bypassed by it.
 func TestValidOptionStillReachesClozeMarkerMissing(t *testing.T) {
 	results, errs, client := runOne(t, protocol.Entry{
 		Key: "a.org::0", NoteType: "imoogi-Cloze", SourcePath: "a.org",
-		Title: "A heading with no marker", Body: "A plain body.",
+		Title: "A heading with no marker", Body: "- \n- \n",
 		Direction: strPtr("->"),
 	})
 	expectSkippedWithCode(t, results, errs, protocol.CodeClozeMarkerMissing)
@@ -443,7 +464,7 @@ func TestMigrationBypassArmsRaiseNoOptionDiagnostic(t *testing.T) {
 func TestMigrationGateReadsTheDeclaredType(t *testing.T) {
 	entry := protocol.Entry{
 		Key: "a.org::0", NoteID: intPtr(56), NoteType: "Cloze", SourcePath: "a.org",
-		Title: "A heading", Body: clozeBody,
+		Title: "A heading", Body: multilineBody,
 		Direction: strPtr("->"),
 	}
 	results, errs, _, _ := migrateOneEntry(t, entry, "Cloze", false)

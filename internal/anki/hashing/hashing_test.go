@@ -112,3 +112,20 @@ func TestHash_EmptyTagsVsNilTags_ProduceSameHash(t *testing.T) {
 		t.Fatalf("Hash treats nil and empty tag slices differently: %q != %q", h1, h2)
 	}
 }
+
+// SPEC-ANKICARD-003 AC-ML-013d: the content hash's input set gained no member.
+//
+// A build-time assertion rather than a reviewer reading a signature: a
+// parameter added to Hash for a card option makes this fail to COMPILE, which
+// is the assertion. It lives here, in the package that owns the hash, so the
+// claim is checked where the function is defined rather than only where it is
+// called.
+//
+// REQ-ML-014.2 is about the input SET, not about the hash VALUE. A multiline
+// entry does change its recorded hash — through the rendered field value, which
+// is already one of the four inputs — and that is the intended behaviour, not a
+// violation: the wrapped Text is genuinely different content from the
+// unwrapped one, so a note whose options changed SHOULD be reported as updated.
+func TestHashInputSetGainedNoMember(t *testing.T) {
+	var _ func(noteType string, fields map[string]string, deck string, tags []string) string = Hash
+}

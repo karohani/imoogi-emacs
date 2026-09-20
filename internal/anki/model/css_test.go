@@ -256,3 +256,30 @@ func declaredUnder(css, selector, declaration string) bool {
 		rest = rest[close+1:]
 	}
 }
+
+// SPEC-ANKICARD-003 AC-ML-011b: the stylesheet carries a rule for the
+// container a multiline card's answer list renders inside.
+//
+// The renderer attaches the class to whichever element the answer list
+// becomes — the <ul>, the <ol>, and the <dl> alike — so the rule is written
+// against the class alone rather than against any one element.
+func TestBaseStylesheetCarriesTheChildrenListRule(t *testing.T) {
+	css := model.BaseCSS()
+	if !strings.Contains(css, "children-list") {
+		t.Error("base stylesheet carries no rule naming `children-list`")
+	}
+	// The base rule must be ELEMENT-AGNOSTIC. A rule written only against one
+	// element type would leave the other two list forms unstyled, which is the
+	// failure REQ-ML-012.1 names: the container is carried by the <ul>, the
+	// <ol>, and the <dl> alike, so a `ul`-only rule would silently skip a
+	// description-style answer list.
+	if !strings.Contains(css, ".card .children-list") {
+		t.Error("the container rule is not element-agnostic; a description-style answer list would render unstyled")
+	}
+
+	// AC-ML-011c, the negative half, is asserted over the WHOLE file by
+	// TestBaseStylesheetReachesNoNetworkResource and
+	// TestBaseStylesheetCarriesNoPerDeckRule — both of which the new rule is
+	// inside the scope of. Nothing is re-asserted here; the pointer records
+	// that the coverage is deliberate rather than incidental.
+}

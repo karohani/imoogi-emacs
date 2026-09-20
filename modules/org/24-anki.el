@@ -48,11 +48,16 @@
 ;;; 프로퍼티 자동완성
 
 (defconst imoogi-anki-property-names
-  '("ANKI_NOTE_TYPE" "ANKI_DECK" "ANKI_TAGS" "ANKI_NOTE_ID")
+  '("ANKI_NOTE_TYPE" "ANKI_DECK" "ANKI_TAGS" "ANKI_NOTE_ID"
+    "ANKI_DIRECTION" "ANKI_INCREMENTAL")
   "imoogi 가 읽는 Org 프로퍼티 이름.
 `C-c C-x p'(`org-set-property')의 이름 후보로 등록된다 — 등록하지 않으면
 버퍼에 이미 쓰인 프로퍼티만 후보로 나와서, 첫 카드를 만들 때 이름을
-통째로 타이핑해야 한다.")
+통째로 타이핑해야 한다.
+
+ANKI_SWIFT 는 일부러 빠져 있다.  이름의 후보 자격은 그 프로퍼티를 쓰는
+명령과 함께 간다는 것이 SPEC-ANKICARD-002 이 정한 바이고, 이 설정이 쓰는
+것은 셋 중 둘이다 — 나머지 하나는 swift 카드 명령의 몫이다.")
 
 (with-eval-after-load 'org
   (dolist (name imoogi-anki-property-names)
@@ -213,6 +218,26 @@ Anki 의 cloze 정규식은 비탐욕(non-greedy)이라 여는 `{{cN::' 뒤 처�
    (lambda (run) (mapconcat #'string run " "))
    text t t))
 
+(defun imoogi-anki-cloze-safe-span (text)
+  "TEXT 를 빈칸 안에 그대로 넣어도 되는 형태로 돌려준다.
+
+`imoogi-anki--cloze-safe-text' 의 분리와, 끝이 `}' 일 때의 패딩을 한
+번에 적용한다.  둘을 한 함수로 묶은 것은 편의가 아니라 요구다
+(SPEC-ANKICARD-003 REQ-ML-007.3): Go 쪽 composition 이 같은 규칙을
+구현하고, 두 구현을 하나의 공유 픽스처로 맞대어 보려면 그 형태를
+통째로 만들어 내는 함수가 양쪽에 하나씩 있어야 한다.  분리만 하는
+`imoogi-anki--cloze-safe-text' 를 픽스처가 부르면 `f(x}' 같은 줄에서
+어긋나고, 테스트가 패딩을 스스로 다시 구현하게 되는데 — 그것이 바로
+공유 픽스처가 막으려는 갈라짐이다.
+
+패딩이 필요한 이유: 영역이 `}' 로 끝나면 닫는 `}}' 와 맞붙어 경계에서
+다시 `}}' 가 생기고, Anki 의 비탐욕 정규식이 거기서 빈칸을 한 글자
+일찍 닫는다.  공백 하나가 그 둘을 떼어 놓는다."
+  (let ((separated (imoogi-anki--cloze-safe-text text)))
+    (if (string-suffix-p "}" separated)
+        (concat separated " ")
+      separated)))
+
 (defun imoogi-anki-cloze-region (beg end &optional number)
   "선택 영역 BEG..END 를 `{{cN::...}}' 로 감싼다.
 
@@ -241,13 +266,10 @@ ANKI_NOTE_TYPE 이 아직 없으면 Cloze 로 지정해 준다 (프로퍼티를 
                        (user-error "imoogi: 빈칸으로 만들 영역을 선택하거나 낱말 위에 커서를 두세요")))))
      (list (car bounds) (cdr bounds) current-prefix-arg)))
   (let* ((n (if number (prefix-numeric-value number) (imoogi-anki--next-cloze-number)))
-         (text (imoogi-anki--cloze-safe-text
-                (buffer-substring-no-properties beg end)))
-         ;; 영역이 `}' 로 끝나면 닫는 `}}' 와 맞붙어 경계에서 다시 `}}' 가
-         ;; 생긴다.  공백 하나가 그 둘을 떼어 놓는다.
-         (pad (if (string-suffix-p "}" text) " " "")))
+         (text (imoogi-anki-cloze-safe-span
+                (buffer-substring-no-properties beg end))))
     (delete-region beg end)
-    (insert (format "{{c%d::%s%s}}" n text pad))
+    (insert (format "{{c%d::%s}}" n text))
     (save-excursion
       (imoogi-anki--at-heading)
       (let ((type (org-entry-get (point) "ANKI_NOTE_TYPE")))
@@ -265,6 +287,118 @@ ANKI_NOTE_TYPE 이 아직 없으면 Cloze 로 지정해 준다 (프로퍼티를 
           (message "imoogi: c%d 빈칸을 만들었지만 이 heading 은 %s 카드입니다 — 이대로 동기화하면 표식이 글자 그대로 들어갑니다. Cloze 로 바꾸려면 C-c a c"
                    n type)))))))
 
+;;; 멀티라인 카드 옵션 (SPEC-ANKICARD-003 REQ-ML-013)
+
+;; 방향은 세 값 중 하나를 고르는 일이고 incremental 은 켜고 끄는 일이라,
+;; 명령을 둘로 나눈다.  하나로 묶으면 방향만 바꾸고 싶을 때마다 — 그게 더
+;; 흔한 쪽인데 — incremental 을 매번 묻게 된다.
+
+(defconst imoogi-anki-option-falsy "nil"
+  "옵션을 끌 때 쓰는 철자.
+
+지우지 않고 이 값을 heading 자신의 드로어에 쓴다.  세 카드 옵션 프로퍼티는
+모두 상속되므로, 지우면 조상 heading 이나 파일 레벨 `#+PROPERTY:' 의 값이
+다시 드러나 토글이 동작하지 않는 것처럼 보인다.  back end 가 세 프로퍼티
+모두에서 이 철자를 인식하는 것도 바로 그래서다.")
+
+(defconst imoogi-anki-directions '("->" "<-" "<->")
+  "ANKI_DIRECTION 이 받는 세 화살표.
+`->' 는 답을 가리고, `<-' 는 제목을 가리고, `<->' 는 둘 다 가린다.")
+
+(defun imoogi-anki--ensure-cloze-type ()
+  "카드 옵션을 쓰기 전에 노트 타입을 확인한다.  써도 되면 non-nil.
+
+`imoogi-anki-cloze-region' 과 같은 계약이다.  타입이 아직 없으면 imoogi-Cloze
+를 달아 준다 — 멀티라인 옵션을 다는 행위 자체가 \"이건 Cloze 카드\" 라는
+뜻이다.  이미 Cloze 계열이면(스톡 \"Cloze\" 포함) 손대지 않는다.  다른
+타입이면 알리기만 하고 nil 을 돌려준다 — 그 옵션이 만드는 카드는 모두
+Cloze 계열 위에 세워지므로, 다른 타입에 달면 만들 수 없는 카드를 적어 두는
+셈이 된다."
+  (let ((type (org-entry-get (point) "ANKI_NOTE_TYPE")))
+    (cond
+     ((null type)
+      (org-set-property "ANKI_NOTE_TYPE" imoogi-anki-cloze-note-type)
+      t)
+     ((imoogi-anki-cloze-note-type-p type) t)
+     (t
+      (message "imoogi: 이 heading 은 %s 카드라 멀티라인 옵션을 달 수 없습니다 — Cloze 로 바꾸려면 C-c a c"
+               type)
+      nil))))
+
+(defun imoogi-anki--resolve-swift-conflict ()
+  "swift 가 켜져 있으면 물어보고, 계속해도 되면 non-nil.
+
+swift 가 켜진 heading 에 방향을 쓰면 SPEC-ANKICARD-002 의 충돌 규칙이 다음
+동기화에서 거부하는 바로 그 heading 이 된다 — 그것도 사용자가 카드를
+설정했다고 믿은 시점에는 알 수 없는 채로.  그래서 세 선택지 중 \"알리고
+확인을 받는다\" 를 고른다: 그냥 쓰면 알려진 실패를 미루는 것이고, 말없이
+swift 를 끄면 사용자가 요청하지 않은 변경이다.
+
+거절하면 nil 을 돌려주고, 호출자는 아무것도 쓰지 않는다 — 노트 타입도.
+거절한 명령은 흔적을 남기지 않는다."
+  (let ((swift (imoogi-props-resolve-swift)))
+    (cond
+     ((null swift) t)
+     ((not (string-equal-ignore-case (string-trim swift) "t")) t)
+     ((yes-or-no-p "imoogi: 이 heading 은 ANKI_SWIFT 가 켜져 있습니다. 둘은 다른 종류의 카드라 함께 쓸 수 없습니다. swift 를 끄고 계속할까요? ")
+      (org-set-property "ANKI_SWIFT" imoogi-anki-option-falsy)
+      t)
+     (t
+      (message "imoogi: ANKI_SWIFT 가 켜져 있어 아무것도 쓰지 않았습니다")
+      nil))))
+
+(defun imoogi-anki--write-card-option (property value)
+  "PROPERTY 를 VALUE 로 쓴다.  노트 타입 계약과 swift 충돌을 먼저 확인한다.
+
+두 확인 모두 통과해야 무엇이든 쓴다.  swift 확인을 노트 타입보다 먼저 두는
+이유는, 거절했을 때 노트 타입조차 남지 않아야 하기 때문이다."
+  (imoogi-anki--at-heading)
+  (when (and (imoogi-anki--resolve-swift-conflict)
+             (imoogi-anki--ensure-cloze-type))
+    (org-set-property property value)
+    t))
+
+(defun imoogi-anki-set-direction (direction)
+  "이 heading 의 ANKI_DIRECTION 을 DIRECTION 으로 지정한다.
+
+DIRECTION 은 `->' (답을 가린다), `<-' (제목을 가린다), `<->' (둘 다), 또는
+nil (해제) 이다.  해제는 프로퍼티를 지우는 것이 아니라 거짓 철자를 쓰는
+것이다 — 프로퍼티가 상속되기 때문이다 (`imoogi-anki-option-falsy').
+
+멀티라인 카드는 heading 제목을 질문으로, 본문 첫 목록을 답으로 읽는다.
+본문에 목록이 없으면 동기화가 이 heading 만 건너뛰고 그 이유를 알려 준다."
+  (interactive
+   (list (let ((choice (completing-read
+                        "방향 (비우면 해제): "
+                        imoogi-anki-directions nil t
+                        (org-entry-get (point) "ANKI_DIRECTION" t))))
+           (if (string-empty-p choice) nil choice))))
+  (let ((value (or direction imoogi-anki-option-falsy)))
+    (when (imoogi-anki--write-card-option "ANKI_DIRECTION" value)
+      (message (if direction
+                   (format "imoogi: 방향을 %s 로 지정했습니다" value)
+                 "imoogi: 방향을 해제했습니다 (상속을 끊기 위해 nil 을 씁니다)")))))
+
+(defun imoogi-anki-toggle-incremental ()
+  "이 heading 의 ANKI_INCREMENTAL 을 켜고 끈다.
+
+켜면 답마다 번호가 하나씩 붙어 답 하나당 카드 하나가 되고, 끄면 모든 답이
+한 번호를 나눠 가져 한 카드가 된다.  끄는 것은 지우는 것이 아니다 —
+상속된 값이 다시 드러나지 않도록 거짓 철자를 쓴다.
+
+상속으로 보이는 값을 기준으로 뒤집는다.  화면에 보이는 상태가 곧 사용자가
+뒤집으려는 상태이고, heading 자신의 드로어만 보면 상속된 `t' 를 켜는
+것으로 착각하게 된다."
+  (interactive)
+  (imoogi-anki--at-heading)
+  (let* ((current (imoogi-props-resolve-incremental))
+         (on (and current (string-equal-ignore-case (string-trim current) "t")))
+         (value (if on imoogi-anki-option-falsy "t")))
+    (when (imoogi-anki--write-card-option "ANKI_INCREMENTAL" value)
+      (message (if on
+                   "imoogi: 답별 카드 분리를 껐습니다 (상속을 끊기 위해 nil 을 씁니다)"
+                 "imoogi: 답별 카드 분리를 켰습니다")))))
+
 ;;; 키 — C-c a 접두 맵 (17-lsp.el 의 C-c l 맵과 같은 구조)
 
 (defvar imoogi-anki-map
@@ -275,6 +409,8 @@ ANKI_NOTE_TYPE 이 아직 없으면 Cloze 로 지정해 준다 (프로퍼티를 
     (define-key map (kbd "d") #'imoogi-anki-set-deck)
     (define-key map (kbd "t") #'imoogi-anki-set-tags)
     (define-key map (kbd "z") #'imoogi-anki-cloze-region)
+    (define-key map (kbd "r") #'imoogi-anki-set-direction)
+    (define-key map (kbd "i") #'imoogi-anki-toggle-incremental)
     (define-key map (kbd "s") #'imoogi-sync)
     map)
   "Anki 명령 접두 맵.  Org 버퍼에서 `C-c a' 에 붙는다.
@@ -313,7 +449,9 @@ ANKI_NOTE_TYPE 이 아직 없으면 Cloze 로 지정해 준다 (프로퍼티를 
      ["내용 ---------------"
       ("d" "덱 지정" imoogi-anki-set-deck)
       ("t" "태그 지정" imoogi-anki-set-tags)
-      ("z" "선택 영역을 빈칸으로" imoogi-anki-cloze-region)]
+      ("z" "선택 영역을 빈칸으로" imoogi-anki-cloze-region)
+      ("r" "방향 지정" imoogi-anki-set-direction)
+      ("i" "답별 카드 분리" imoogi-anki-toggle-incremental)]
      ["실행 -----------"
       ("s" "동기화" imoogi-sync)
       ("S" "최초 설정" imoogi-anki-setup)

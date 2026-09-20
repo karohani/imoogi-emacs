@@ -288,15 +288,22 @@ func (r *runner) processEntry(entry protocol.Entry) (*protocol.Result, []protoco
 			[]protocol.Error{*optErr}
 	}
 
-	fields, err := orgdoc.Render(renderType(entry.NoteType), entry.Title, entry.Body)
+	// The options reach the renderer HERE (SPEC-ANKICARD-003 REQ-ML-010.2). An
+	// entry carrying no multiline option takes the same path it always did:
+	// the option-taking entry point delegates to the original one for it, so
+	// its field map is byte-identical by construction rather than by test.
+	fields, err := orgdoc.RenderWithOptions(
+		renderType(entry.NoteType), entry.Title, entry.Body, readCardOptions(entry))
 	if err != nil {
-		if _, ok := err.(*orgdoc.ClozeMarkerMissingError); ok {
-			// REQ-019 / AC-025: skip, create no note, continue processing.
+		code, skip := renderError(err)
+		if skip {
+			// REQ-019 / AC-025, and SPEC-ANKICARD-003 REQ-ML-002: skip, create
+			// no note, continue processing.
 			return &protocol.Result{Key: &key, Action: protocol.ActionSkipped, NoteID: entry.NoteID},
-				[]protocol.Error{{Code: protocol.CodeClozeMarkerMissing, Message: err.Error(), Key: &key}}
+				[]protocol.Error{{Code: code, Message: err.Error(), Key: &key}}
 		}
 		return &protocol.Result{Key: &key, Action: protocol.ActionFailed, NoteID: entry.NoteID},
-			[]protocol.Error{{Code: protocol.CodeOrgParseError, Message: err.Error(), Key: &key}}
+			[]protocol.Error{{Code: code, Message: err.Error(), Key: &key}}
 	}
 
 	// The media pass runs HERE — after rendering, BEFORE hashing

@@ -306,19 +306,43 @@ func TestHashCallSiteTakesFourArguments(t *testing.T) {
 	_ = hashing.Hash("imoogi-Cloze", map[string]string{"Text": "x"}, "Inbox", []string{"a"})
 }
 
-// applyHashProbeOptions sets the entry's three card-option fields when the
-// probe wants them, and is the ONE place TestHashIsUnchangedByCardOptions
-// needs to change as the wire contract grows.
+// applyHashProbeOptions sets the entry's card-option fields when the probe
+// wants them, and is the ONE place TestHashIsUnchangedByCardOptions needs to
+// change as the wire contract grows.
 //
-// The options set here are deliberately VALID and non-conflicting, so the
-// entry passes the gate and reaches the add branch: the probe is about the
-// hash the registry records, and a rejected entry records none.
+// The option set here is deliberately VALID and non-conflicting, so the entry
+// passes the gate and reaches the add branch: the probe is about the hash the
+// registry records, and a rejected entry records none.
+//
+// It must ALSO be an option with no RENDERING meaning, and that is the
+// requirement SPEC-ANKICARD-003 introduced. The probe's claim is that setting a
+// card option leaves the recorded hash alone; an option that changes the
+// rendered field value changes the hash through it, because the rendered value
+// is one of the four hash inputs and always was.
+//
+// `direction` and `incremental` can no longer serve. That SPEC made them
+// render: they wrap the heading's title and its answer list in cloze markers,
+// so the Text field genuinely differs and the hash differs with it — correctly,
+// since a note whose options changed SHOULD be reported as updated. Worse for
+// this probe, REQ-ML-002 rejects a multiline entry whose body carries no answer
+// list, and this entry's body is a bare sentence, so the run never reached the
+// add branch at all.
+//
+// `swift` is the remaining option with no rendering meaning: backlog card t15
+// owns the card kind it selects, and until that lands the validation gate reads
+// its value and nothing else consumes it. WHEN t15 GIVES SWIFT A RENDERING
+// MEANING, THIS PROBE NEEDS THE SAME TREATMENT AGAIN — and at that point no
+// card option will be rendering-free, so the probe will need a different shape
+// rather than a different option.
+//
+// What the probe still asserts is unchanged and still discriminating: a
+// card-option field carried on the entry does not reach `hashing.Hash` as an
+// input of its own. Its compile-time half, TestHashCallSiteTakesFourArguments
+// above, holds the same claim from the other side.
 func applyHashProbeOptions(entry *protocol.Entry, withOptions bool) {
 	if !withOptions {
 		return
 	}
-	direction := "->"
-	incremental := "t"
-	entry.Direction = &direction
-	entry.Incremental = &incremental
+	swift := "t"
+	entry.Swift = &swift
 }

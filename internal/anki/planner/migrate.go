@@ -205,12 +205,16 @@ func (r *runner) migrateOne(entry protocol.Entry, counterpart string) (*protocol
 	// under its stock mirror (renderType), because the two carry the same
 	// field names by REQ-C-001.2 — the counterpart is what the note is
 	// ADDED under, not a second output shape.
-	fields, err := orgdoc.Render(renderType(counterpart), entry.Title, entry.Body)
+	// The migration path passes the options too (SPEC-ANKICARD-003
+	// REQ-ML-010.2). `isClozeStyle` accepts stock `Cloze`, so a stock-Cloze
+	// heading can be a valid multiline entry; migrating it WITHOUT its options
+	// would write an unwrapped Text while the ordinary path computes a wrapped
+	// one, and the very next synchronization would report an update for
+	// content the user never changed.
+	fields, err := orgdoc.RenderWithOptions(
+		renderType(counterpart), entry.Title, entry.Body, readCardOptions(entry))
 	if err != nil {
-		code := protocol.CodeOrgParseError
-		if _, ok := err.(*orgdoc.ClozeMarkerMissingError); ok {
-			code = protocol.CodeClozeMarkerMissing
-		}
+		code, _ := renderError(err)
 		return skipped, []protocol.Error{{Code: code, Message: err.Error(), Key: &key}}
 	}
 

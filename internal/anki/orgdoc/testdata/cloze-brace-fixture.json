@@ -1,0 +1,47 @@
+[
+  {
+    "why": "text with no brace is returned untouched — the rule does not reach the ordinary path",
+    "in": "Volga",
+    "want": "Volga"
+  },
+  {
+    "why": "a run of two closing braces inside the content is separated",
+    "in": "a}}b",
+    "want": "a} }b"
+  },
+  {
+    "why": "a run at the very start is separated too",
+    "in": "}}x",
+    "want": "} }x"
+  },
+  {
+    "why": "a run of four is separated in one pass",
+    "in": "}}}}",
+    "want": "} } } } "
+  },
+  {
+    "why": "content ending in a single brace is padded, so the boundary with the closing `}}` does not form a third consecutive brace",
+    "in": "f(x}",
+    "want": "f(x} "
+  },
+  {
+    "why": "a bare closing brace is padded",
+    "in": "}",
+    "want": "} "
+  },
+  {
+    "why": "LaTeX: separated, then padded, because separation leaves a trailing brace behind",
+    "in": "\\sqrt{a^{2}}",
+    "want": "\\sqrt{a^{2} } "
+  },
+  {
+    "why": "an opening brace run is not a hazard — Anki's pattern closes on `}}`, not on `{{`",
+    "in": "{{x",
+    "want": "{{x"
+  },
+  {
+    "why": "a hand-written marker would be DESTROYED by this rule, which is why REQ-ML-006.1 declines to wrap a span already carrying one",
+    "in": "Tokyo is {{c4::big}}",
+    "want": "Tokyo is {{c4::big} } "
+  }
+]

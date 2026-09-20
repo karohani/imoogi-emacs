@@ -27,7 +27,8 @@
     "migration_add_failed"
     "card_option_invalid"
     "card_option_conflict"
-    "card_option_needs_cloze")
+    "card_option_needs_cloze"
+    "multiline_answer_missing")
   "The `Code...' string constants internal/anki/protocol/protocol.go
 declares today -- hardcoded here because this suite has no Go parser
 available.  The last four are the card-styling SPEC's own codes
