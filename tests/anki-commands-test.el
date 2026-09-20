@@ -57,6 +57,50 @@ imoogi-Cloze 가 된다.  빈칸을 만든다는 행위 자체가 \"이건 Cloze
       (imoogi-anki-cloze-region (car r) (cadr r)))
     (should (string-match-p "{{c2::둘째}}" (buffer-string)))))
 
+(ert-deftest imoogi-anki-cloze-region-separates-inner-double-brace ()
+  "선택 영역 안의 `}}' 는 `} }' 로 띄운다.
+
+Anki 의 cloze 정규식은 비탐욕(non-greedy)이라 첫 `}}' 에서 빈칸을 닫는다.
+영역 안에 `}}' 가 그대로 있으면 빈칸이 의도보다 일찍 끝나고 나머지가
+글자 그대로 카드에 남는다.  LaTeX 은 중괄호 사이 공백을 무시하므로 수식
+의미는 그대로다."
+  (imoogi-anki-test--with-org "* 제목\n\n앞 a}}b 뒤\n"
+    (let ((r (imoogi-anki-test--select "a}}b")))
+      (imoogi-anki-cloze-region (car r) (cadr r)))
+    (should (string-match-p (regexp-quote "{{c1::a} }b}}") (buffer-string)))))
+
+(ert-deftest imoogi-anki-cloze-region-separates-trailing-brace-from-marker ()
+  "선택이 `}' 로 끝나면 닫는 `}}' 앞에 공백을 넣는다.
+
+`\\sqrt{a^{2}}' 처럼 중괄호로 끝나는 수식은 안쪽 `}}' 를 띄우고 나면
+`\\sqrt{a^{2} }' 가 되는데, 그대로 감싸면 `...} }}}' 가 되어 Anki 가 다시
+한 글자 일찍 닫는다.  닫기 앞의 공백이 그 경계를 떼어 놓는다."
+  (imoogi-anki-test--with-org "* 제목\n\n공식은 $\\sqrt{a^{2}}$ 이다.\n"
+    (let ((r (imoogi-anki-test--select "\\sqrt{a^{2}}")))
+      (imoogi-anki-cloze-region (car r) (cadr r)))
+    (should (string-match-p (regexp-quote "{{c1::\\sqrt{a^{2} } }}") (buffer-string)))))
+
+(ert-deftest imoogi-anki-cloze-region-leaves-brace-free-text-untouched ()
+  "중괄호가 없는 영역은 공백 하나 더 붙지 않는다 -- 이스케이프가 일반
+경로를 건드리지 않는다는 회귀 방지."
+  (imoogi-anki-test--with-org "* 제목\n\n유럽에서 가장 긴 강은 볼가강이다.\n"
+    (let ((r (imoogi-anki-test--select "볼가강")))
+      (imoogi-anki-cloze-region (car r) (cadr r)))
+    (should (string-match-p (regexp-quote "{{c1::볼가강}}") (buffer-string)))))
+
+(ert-deftest imoogi-anki-cloze-region-falls-back-to-word-at-point ()
+  "영역을 잡지 않고 불러도 커서가 놓인 낱말이 빈칸이 된다.
+
+명령의 interactive 사양이 직접 경계를 고르므로, 대화형 호출과 같은
+경로를 거치도록 `call-interactively' 로 부른다."
+  (imoogi-anki-test--with-org "* 제목\n\n유럽에서 가장 긴 강은 Volga 이다.\n"
+    (goto-char (point-min))
+    (search-forward "Volga")
+    (goto-char (match-beginning 0))
+    (deactivate-mark)
+    (call-interactively #'imoogi-anki-cloze-region)
+    (should (string-match-p (regexp-quote "{{c1::Volga}}") (buffer-string)))))
+
 (ert-deftest imoogi-anki-set-deck-writes-file-level-when-file-has-none ()
   "파일에 #+PROPERTY: ANKI_DECK 이 아직 없으면 heading 이 아니라 파일 맨 위에
 쓴다 -- 파일 하나가 보통 덱 하나라, 첫 카드의 덱이 파일 전체의 기본 덱이

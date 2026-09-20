@@ -198,8 +198,25 @@ heading 마다 같은 덱을 되풀이해 달 필요가 없어진다.  파일 �
         (setq highest (max highest (string-to-number (match-string 1)))))
       (1+ highest))))
 
+(defun imoogi-anki--cloze-safe-text (text)
+  "TEXT 를 빈칸 안에 넣어도 안전한 형태로 돌려준다.
+
+Anki 의 cloze 정규식은 비탐욕(non-greedy)이라 여는 `{{cN::' 뒤 처음
+나오는 `}}' 에서 빈칸을 닫는다.  그래서 영역 안에 `}}' 가 그대로 있으면
+빈칸이 의도보다 일찍 끝나고 나머지가 글자 그대로 카드에 남는다.
+
+연속한 중괄호를 한 칸씩 띄워 그 조합이 아예 생기지 않게 한다 -- `}}}}'
+처럼 세 개 이상 이어진 경우도 한 번에 처리된다.  LaTeX 은 중괄호 사이
+공백을 무시하므로 수식의 의미는 그대로다."
+  (replace-regexp-in-string
+   "}\\{2,\\}"
+   (lambda (run) (mapconcat #'string run " "))
+   text t t))
+
 (defun imoogi-anki-cloze-region (beg end &optional number)
   "선택 영역 BEG..END 를 `{{cN::...}}' 로 감싼다.
+
+영역을 잡지 않고 불러도 된다 -- 그때는 커서가 놓인 낱말이 대상이 된다.
 
 N 은 이 heading 안에서 아직 안 쓴 다음 번호다.  접두 인자로 번호를 직접
 주면(`C-u 1') 그 번호를 쓴다 — 여러 빈칸을 한 카드에서 동시에 보이게
@@ -209,14 +226,28 @@ N 은 이 heading 안에서 아직 안 쓴 다음 번호다.  접두 인자로 �
 ANKI_NOTE_TYPE 이 아직 없으면 Cloze 로 지정해 준다 (프로퍼티를 따로 달게
 시키지 않는다).  이미 다른 타입(Basic)으로 표시돼 있으면 덮어쓰지 않고
 알려만 준다 — 그 경우 동기화하면 {{cN::}} 가 Basic 카드에 글자 그대로
-들어가므로, 의도한 게 아니면 `imoogi-anki-mark-cloze' 로 바꾸면 된다."
-  (interactive "r\nP")
-  (unless (use-region-p)
-    (user-error "imoogi: 빈칸으로 만들 영역을 먼저 선택하세요"))
+들어가므로, 의도한 게 아니면 `imoogi-anki-mark-cloze' 로 바꾸면 된다.
+
+영역 안의 연속한 중괄호는 한 칸씩 띄우고, 영역이 `}' 로 끝나면 닫는
+`}}' 앞에도 공백을 넣는다 -- 둘 다 Anki 가 빈칸을 한 글자 일찍 닫는
+것을 막기 위해서다 (`imoogi-anki--cloze-safe-text')."
+  (interactive
+   (let ((bounds (if (use-region-p)
+                     (cons (region-beginning) (region-end))
+                   ;; 영역이 없으면 커서가 놓인 낱말을 빈칸으로 만든다 --
+                   ;; 낱말 하나를 가리는 것이 가장 흔한 쓰임이라 드래그를
+                   ;; 요구하지 않는다.  낱말 위가 아니면 그때만 알려 준다.
+                   (or (bounds-of-thing-at-point 'word)
+                       (user-error "imoogi: 빈칸으로 만들 영역을 선택하거나 낱말 위에 커서를 두세요")))))
+     (list (car bounds) (cdr bounds) current-prefix-arg)))
   (let* ((n (if number (prefix-numeric-value number) (imoogi-anki--next-cloze-number)))
-         (text (buffer-substring-no-properties beg end)))
+         (text (imoogi-anki--cloze-safe-text
+                (buffer-substring-no-properties beg end)))
+         ;; 영역이 `}' 로 끝나면 닫는 `}}' 와 맞붙어 경계에서 다시 `}}' 가
+         ;; 생긴다.  공백 하나가 그 둘을 떼어 놓는다.
+         (pad (if (string-suffix-p "}" text) " " "")))
     (delete-region beg end)
-    (insert (format "{{c%d::%s}}" n text))
+    (insert (format "{{c%d::%s%s}}" n text pad))
     (save-excursion
       (imoogi-anki--at-heading)
       (let ((type (org-entry-get (point) "ANKI_NOTE_TYPE")))
