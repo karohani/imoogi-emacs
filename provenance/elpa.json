@@ -2505,6 +2505,149 @@
       ]
     },
     {
+      "id": "elpa/emacsql",
+      "kind": "elisp-source",
+      "version": "4.4.1",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/magit/emacsql",
+        "commit": "d811bbefcb5e27841af55cae53aa939ba720de77"
+      },
+      "workflow": "emacs --batch -Q -l scripts/vendor.el",
+      "files": [
+        {
+          "path": "vendor/elpa/emacsql-4.4.1.signed",
+          "sha256": "160dbbe73661b0666647498b0e6cc5db709127d70d9881aa4611b2dfaedecb67",
+          "size": 156
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/README.md",
+          "sha256": "c80f7fbdd9ca4aad76bf8d7f9715a9c87552f5573a99e4f63eb4cbd808065651",
+          "size": 14516
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/default.mk",
+          "sha256": "5981d6d4c4c4b21d24c11f1b661ef4400c2bf366b44dc42032edc2fc99232be4",
+          "size": 1041
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql-autoloads.el",
+          "sha256": "eedeb55aecc84c594a3fa71021c50df50b1f0823bf6d86583499f97fdc7b716a",
+          "size": 1780
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql-compiler.el",
+          "sha256": "2afb2616c1681b153875d95e9762ffa984cec4bdc6ff49e2df034c86dfb00cb0",
+          "size": 22156
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql-compiler.elc",
+          "sha256": "f6e8d3524a94b697efaeec065dba230f918728c0786932e69afedd2b9f6f5728",
+          "size": 22979
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql-mysql.el",
+          "sha256": "ff74795f7e31a0ca40c3cf5ac8b0e8c3bdd7db8de9b879d64cbde1268006c82b",
+          "size": 6270
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql-mysql.elc",
+          "sha256": "2a9ebeef34da8083f6fcad2ee92c6297d462b0bdf4483ad3181f2023bda98536",
+          "size": 7023
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql-pg.el",
+          "sha256": "d1d071a48316a4814ce4b8b2d3ecdb890b89e6ec7f1a2fbedcf6faf69b9f41d5",
+          "size": 2998
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql-pg.elc",
+          "sha256": "721d92ce316a2d1f1a425a25de337cf2d47af5f9bef60b860f9e5ab1ce71e420",
+          "size": 4570
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql-pkg.el",
+          "sha256": "2b09954d6fdcd4cce78cfa02d6e5fbb73c7e936914b5421841ecac29bb8a3c81",
+          "size": 428
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql-psql.el",
+          "sha256": "0a79e177340bdf5b02109e63242302ded1a7fe3b21b97918f2014aeac9e7c41c",
+          "size": 5869
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql-psql.elc",
+          "sha256": "86724fddbc3634cf0b242597b85e72e909b667425b33fc034882d6b94345b75f",
+          "size": 6476
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql-sqlite-builtin.el",
+          "sha256": "eae645ee77f5cfed0f20ef2f9a89a94df9779fb6a6854c068b25732ca8cb52d6",
+          "size": 3353
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql-sqlite-builtin.elc",
+          "sha256": "7238921fa306a02e7ad80a27fd7aa7ec168687a8388c6f76327fe08bc152d471",
+          "size": 4128
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql-sqlite-module.el",
+          "sha256": "2806e4a8c5d8846386edf46daaaedb9499527dd1de3d4595d2c2c8dda41daec7",
+          "size": 3733
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql-sqlite-module.elc",
+          "sha256": "caec986e5bcbabd5d109c7335e51886d8e9ed052bb7289c972f424e6a7041a16",
+          "size": 4179
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql-sqlite.el",
+          "sha256": "ca90b380fa9b4e987e74de4f4ca33b94a4ef0d174a93cde59c35be10b821cbae",
+          "size": 13177
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql-sqlite.elc",
+          "sha256": "1dd94e4e7c6d0d1784a144e2c63b0cd6ed714bb99f17c77582cd578924142912",
+          "size": 11868
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql.el",
+          "sha256": "685bf6995c38ef658ee752101b7f976f27c74e88271c8ea7ac2e560e7e4b1379",
+          "size": 14832
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/emacsql.elc",
+          "sha256": "ae94f6b6fe689adcbb3b2b8f0b205859f7ad4bf60b067b6a277cf742ae31944a",
+          "size": 16045
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/test/.nosearch",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size": 0
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/test/emacsql-compiler-tests.el",
+          "sha256": "02cd2253ebf5e8c8a6885f3923dd6dff9ca2b6a4bd7e75b1f7417a32aea2ac77",
+          "size": 10013
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/test/emacsql-compiler-tests.elc",
+          "sha256": "db189364801545da3a5b3a79c06c1d3591816faece2ae7360b21e87b4f7aa9f7",
+          "size": 31240
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/test/emacsql-external-tests.el",
+          "sha256": "568e84e777a1f780fa2c1093df9e2ea7f1bf7625684bd89372b1f87c60f03032",
+          "size": 6381
+        },
+        {
+          "path": "vendor/elpa/emacsql-4.4.1/test/emacsql-external-tests.elc",
+          "sha256": "b4f0184bbecd6505ae6b9df83f3954d0c0c0e52ab2f6e751120aa397f4a4a67c",
+          "size": 11658
+        }
+      ]
+    },
+    {
       "id": "elpa/embark",
       "kind": "elisp-source",
       "version": "1.2",
@@ -5402,6 +5545,39 @@
       ]
     },
     {
+      "id": "elpa/memoize",
+      "kind": "elisp-source",
+      "version": "20200103.2036",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/skeeto/emacs-memoize",
+        "commit": "51b075935ca7070f62fae1d69fe0ff7d8fa56fdd"
+      },
+      "workflow": "emacs --batch -Q -l scripts/vendor.el",
+      "files": [
+        {
+          "path": "vendor/elpa/memoize-20200103.2036/memoize-autoloads.el",
+          "sha256": "250c703c109476b6649e3244dda15a3fcf23782becd752767b0a81e79d7ab083",
+          "size": 689
+        },
+        {
+          "path": "vendor/elpa/memoize-20200103.2036/memoize-pkg.el",
+          "sha256": "b1a2dea6e86683d6cd0f83ae62fe2c241e8785f13ffdfe71d005a3d4a14b10b5",
+          "size": 387
+        },
+        {
+          "path": "vendor/elpa/memoize-20200103.2036/memoize.el",
+          "sha256": "44932bf6f1f12cfc7994031045605deea5416a28567e00e3242a1caf474c0ed5",
+          "size": 7957
+        },
+        {
+          "path": "vendor/elpa/memoize-20200103.2036/memoize.elc",
+          "sha256": "2962aa3db4b20c627653602e5e3488208aede87761b3770cc6bf2845dfc68070",
+          "size": 4299
+        }
+      ]
+    },
+    {
       "id": "elpa/nerd-icons",
       "kind": "elisp-source",
       "version": "20260613.1537",
@@ -5971,6 +6147,189 @@
           "path": "vendor/elpa/org-appear-20240716.1413/org-appear.elc",
           "sha256": "ae37546d23f9fa4d786052eb198f2f11126112a4c85de8cf3c5d70f1eaf1f2d8",
           "size": 17942
+        }
+      ]
+    },
+    {
+      "id": "elpa/org-roam",
+      "kind": "elisp-source",
+      "version": "20260425.1623",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/org-roam/org-roam",
+        "commit": "c54c523dec175695645399705606ea19056a3053"
+      },
+      "workflow": "emacs --batch -Q -l scripts/vendor.el",
+      "files": [
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/dir",
+          "sha256": "dc45c2797d76b592a4a5cc1258f545e9da2a04019d634c52546b3007044ea833",
+          "size": 605
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-autoloads.el",
+          "sha256": "3bdc765908d5501ee240658222f9f1069d3c0040335377b5d85edd8f5522dbf5",
+          "size": 12459
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-capture.el",
+          "sha256": "380dca0c0a31fcf8455c67fd1a9503cf7997113217288b5f9d8d4f1870c66fc8",
+          "size": 39150
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-capture.elc",
+          "sha256": "4cf6a0a8549d3da7dffd86ab87f6c721f8d0c896eacd8f0a27bd3ccaf5db2fd4",
+          "size": 34102
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-compat.el",
+          "sha256": "a52e9d5e229b5a207d06aaaabf2ad5864186f98d590564799d9f59fd2d45caad",
+          "size": 11682
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-compat.elc",
+          "sha256": "a994bb66b3942f601b45e2fdda5f779dd8edb0ed06f96829df8eeac8a38439b3",
+          "size": 7937
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-dailies.el",
+          "sha256": "d5ab1baabe8fc3aa303580afa9d36e17a327017436cad24858c5c8742d635d6c",
+          "size": 16357
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-dailies.elc",
+          "sha256": "3783c94c61ab91dfc9d6c3aaf9de94c6764818067d52fa8b7ff5c7c4819f6b32",
+          "size": 12224
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-db.el",
+          "sha256": "fad279f0dae9a338cfef57b378fde9a981a02c6638d8f4adbf2d34a6735517a5",
+          "size": 29979
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-db.elc",
+          "sha256": "3e6a03ca3ef1ace3c44402e14ec72dec460c8bc523a3a1a9d84925ad17709133",
+          "size": 29601
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-export.el",
+          "sha256": "3619dcb3d6afd13023340835566c27fc9e8521ad72b25103640a023ebfc71dcd",
+          "size": 2715
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-export.elc",
+          "sha256": "62dbb0c4027ba7c2c4880ecf6db69f3ddb0bae66932ba3827bbcadf264507d76",
+          "size": 996
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-graph.el",
+          "sha256": "e0d7d76f3aadc8ce5b2f12b853569e1a34b51ed763f51dc7d2df2ff379f7d03a",
+          "size": 12655
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-graph.elc",
+          "sha256": "48e9cc980d07d95e1d28c0bbd60b88cc13f5a8db046840e443ffb0d2cb50e070",
+          "size": 10695
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-id.el",
+          "sha256": "414897cc0ef46077b2177e9a3680c9ac7dacabf9a5a3065fcfd0b234e08e721b",
+          "size": 3552
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-id.elc",
+          "sha256": "4fdfe31c2bafd4105bc22e769ea9475fd5e98785643bb38e454fe05507f2a665",
+          "size": 2650
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-log.el",
+          "sha256": "4769b4c4ef4e85de244f93ca5dad0716e4f20e466ac06f41d9f93cd92db177c9",
+          "size": 1674
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-log.elc",
+          "sha256": "7338a9c9e7bd7da9ef7c675469af3129e4e2d4a086872cbd887d2fb8bfd5bbbc",
+          "size": 938
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-migrate.el",
+          "sha256": "84f14b9181d48d0a90bf0a1137f934bb33381e7fae062ca90a6c9b3661efd742",
+          "size": 6430
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-migrate.elc",
+          "sha256": "5f261bceb1f24e9f5fc74c717859504cdf3741292cc2c11efbdad498e6d735e7",
+          "size": 4466
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-mode.el",
+          "sha256": "f55016d70343944a8c785a8db922a1097e4d9f370fa15ebec46773eeb59e3a80",
+          "size": 29500
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-mode.elc",
+          "sha256": "f5b8d5bb1e8ebb917a94c5d1e669a7b5aef55203ae625b4bf3591a3ac47e0eec",
+          "size": 47858
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-node.el",
+          "sha256": "b3e03ee33e579a2a455ff87bbd282d8d32cb18474333077e9208a5119f47ef05",
+          "size": 49586
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-node.elc",
+          "sha256": "f89415f8eeda00112f2c73a74d2bbde181726534562be8a40aaf89c4dc74eefe",
+          "size": 64070
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-overlay.el",
+          "sha256": "603e8cdf49219a8940c8d5abc72d28898c1a28b713bca174b21b432e8b902f33",
+          "size": 3422
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-overlay.elc",
+          "sha256": "a25d134c9605bc584c1bb128bde0240c9024952614fe3d81b13952c2953729de",
+          "size": 5061
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-pkg.el",
+          "sha256": "5697ddcbe1ed569b8a138efb5e261088c5424faf125c971f83f5927aacca918b",
+          "size": 570
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-protocol.el",
+          "sha256": "feb45f63d21d21a5b3e8eb41643ef91ab5b8c217da6c91bbf63902e6f392b09c",
+          "size": 8851
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-protocol.elc",
+          "sha256": "5a9eaedd34e1b51917dfedbd78f88d0f2f24b333bf3be87219dcd75f53b2c97f",
+          "size": 4887
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-utils.el",
+          "sha256": "40dec81fc6fe6de424954a8d3d5c5120bf24d12225ca9811071d8ffce4bd7826",
+          "size": 17544
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam-utils.elc",
+          "sha256": "2c919aadbabbe0d0d9306df30806111cd39f50e2862d743f1dfc20b040073f1e",
+          "size": 13704
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam.el",
+          "sha256": "de34db1bd4f5c16828baba155fab5dc73119445811d59a24d64626f46f73a6b5",
+          "size": 14157
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam.elc",
+          "sha256": "46b2268ab250e60fcface35aac4a4e028b99265098a6ceb93e594df1ee837d93",
+          "size": 9650
+        },
+        {
+          "path": "vendor/elpa/org-roam-20260425.1623/org-roam.info",
+          "sha256": "227f8ab0f1aa06cea632db928ed5f0dbb525ab1c9cfa1bf81fcc1be33c2a946e",
+          "size": 92726
         }
       ]
     },
