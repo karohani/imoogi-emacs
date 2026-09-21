@@ -51,7 +51,7 @@
                     "15-markdown" "16-elisp" "17-lsp" "18-languages"
                     "19-folding" "20-terminal" "21-native-compile" "22-tabs"
                     "24-anki" "25-flashcards" "26-project-notes" "27-gptel"
-                    "28-clipboard"))
+                    "28-clipboard" "29-org-roam"))
         (original (symbol-function 'load))
         observed)
     (cl-letf (((symbol-function 'load)

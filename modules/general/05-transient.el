@@ -38,6 +38,7 @@
     (imoogi-transient-git . "현재 저장소의 상태·이력·차이를 Magit으로 확인합니다.")
     (imoogi-transient-code . "현재 코드의 심볼, 구조, 정의와 참조를 단계별로 탐색합니다.")
     (imoogi-org-agenda-transient . "Org 일정과 TODO를 조회·편집하고 미리보기·내보내기를 실행합니다.")
+    (imoogi-org-roam-transient . "중앙 노트의 탐색·캡처·옮기기·백링크·일일 노트를 관리합니다.")
     (imoogi-transient-lsp . "언어 서버 연결과 진단·코드 탐색 기능을 제어합니다.")
     (imoogi-transient-tab . "탭을 만들고 전환하며 이름과 배치를 관리합니다.")
     (imoogi-anki-transient . "현재 Org 문서를 Anki 노트로 표시하고 동기화합니다.")

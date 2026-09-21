@@ -37,6 +37,8 @@
     exec-path-from-shell buffer-terminator persist-text-scale
     ;; 14-org
     org-appear
+    ;; 29-org-roam (대량 노드 completion 캐시 포함)
+    org-roam memoize
     ;; 15-markdown (markdown-mode 는 obsidian 의존성)
     markdown-toc edit-indirect
     ;; 16-elisp
