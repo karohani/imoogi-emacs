@@ -1307,7 +1307,10 @@ The directory is renamed as one unit; no file inside it is deleted."
         (when (and (file-in-directory-p file old-root)
                    (buffer-modified-p buffer))
           (user-error "먼저 저장하거나 닫아야 하는 변경 버퍼가 있습니다: %s" file))))
-    (rename-file old-root new-root)
+    ;; A trailing slash makes `rename-file' treat the destination as an
+    ;; existing directory and nest OLD-ROOT inside it.  Pass the directory
+    ;; name without that marker, while retaining NEW-ROOT normalized below.
+    (rename-file old-root (directory-file-name new-root))
     (dolist (buffer (buffer-list))
       (when-let* ((file (buffer-file-name buffer)))
         (when (file-in-directory-p file old-root)
