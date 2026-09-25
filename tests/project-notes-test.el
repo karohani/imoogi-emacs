@@ -489,7 +489,44 @@
   (imoogi-project-notes-test--isolated
     (let ((directory (imoogi-project-notes-setup root nil "260925.01")))
       (should (string-suffix-p "/260925.01-source/" directory))
-      (should (file-exists-p (expand-file-name "project.org" directory)))))
+      (should (file-exists-p (expand-file-name "project.org" directory))))))
+
+(ert-deftest imoogi-project-notes-preset-round-trips-in-metadata ()
+  (imoogi-project-notes-test--isolated
+    (let* ((directory (imoogi-project-notes-setup root nil "260925.01"))
+           (metadata (imoogi-project-notes--read-metadata-file
+                      (expand-file-name ".imoogi-project.json" directory)))
+           (preset (imoogi-project-notes--artifact-preset-from-json
+                    (alist-get 'artifact_preset metadata))))
+      (should (equal (mapcar #'car preset)
+                     '(spec investigation decision meeting runbook)))
+      (should (equal (nth 1 (car preset)) "스펙")))))
+
+(ert-deftest imoogi-project-notes-study-preset-is-separate ()
+  (imoogi-project-notes-test--isolated
+    (let* ((directory (imoogi-project-notes-setup-study
+                       "Operating Systems" nil "26.01" "2026-01-15"))
+           (metadata (imoogi-project-notes--read-metadata-file
+                      (expand-file-name ".imoogi-project.json" directory)))
+           (preset (imoogi-project-notes--artifact-preset-from-json
+                    (alist-get 'artifact_preset metadata))))
+      (should (equal (mapcar #'car preset) '(concept flashcard question))))))
+
+(ert-deftest imoogi-project-notes-decision-tree-recommends-spec ()
+  (let ((answers '(nil nil t)))
+    (cl-letf (((symbol-function 'yes-or-no-p)
+               (lambda (&rest _prompt) (pop answers))))
+      (should (eq (imoogi-project-notes--artifact-kind-from-decision-tree
+                   `((artifact-preset
+                      . ,(imoogi-project-notes--default-artifact-preset
+                          'development))))
+                  'spec)))))
+
+(ert-deftest imoogi-project-notes-artifact-prefix-is-path-safe ()
+  (should (imoogi-project-notes--valid-artifact-prefix-p "investigation"))
+  (should (imoogi-project-notes--valid-artifact-prefix-p "spec.v2"))
+  (should-not (imoogi-project-notes--valid-artifact-prefix-p "../escape"))
+  (should-not (imoogi-project-notes--valid-artifact-prefix-p "nested/name")))
 
 (ert-deftest imoogi-project-notes-doctor-asks-and-renames-invalid-folder ()
   (imoogi-project-notes-test--isolated
@@ -511,7 +548,7 @@
           (should (= (plist-get result :skipped) 0))))
       (should-not (file-exists-p old))
       (should (file-exists-p new))
-      (should (file-exists-p (expand-file-name "project.org" new)))))))
+      (should (file-exists-p (expand-file-name "project.org" new))))))
 
 (ert-deftest imoogi-project-notes-doctor-rejects-duplicate-scoped-id ()
   (imoogi-project-notes-test--isolated

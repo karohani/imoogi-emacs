@@ -108,6 +108,67 @@ a navigation file.  Changing this option does not migrate existing projects."
     (note "빈 문서" "note" "** 내용\n"))
   "Artifact templates selectable from a project task.")
 
+(defconst imoogi-project-notes--default-artifact-presets
+  '((development
+     (spec "스펙" "spec"
+           "** 문제와 목표\n\n** 요구사항\n\n** 구현 방안\n\n** 완료 조건\n\n** 검증 방법\n")
+     (investigation "문제 분석" "investigation"
+                    "** 증상\n\n** 재현 방법\n\n** 관찰한 증거\n\n** 원인\n\n** 해결과 검증\n")
+     (decision "결정" "decision"
+               "** 배경\n\n** 검토한 대안\n\n** 선택\n\n** 이유\n\n** 영향과 남는 제약\n")
+     (meeting "회의" "meeting"
+              "** 참석자와 목적\n\n** 논의 내용\n\n** 결정 사항\n\n** 후속 작업\n")
+     (runbook "운영 절차" "runbook"
+              "** 목적\n\n** 사전 조건\n\n** 절차\n\n** 확인 방법\n\n** 실패 시 복구\n"))
+    (study
+     (concept "개념 노트" "concept"
+              "** 핵심 개념\n\n** 예시\n\n** 연결된 개념\n\n** 헷갈리는 점\n")
+     (flashcard "암기 카드" "flashcard"
+                "** 앞면\n\n** 뒷면\n\n** 기억 단서\n")
+     (question "문제 카드" "question"
+               "** 문제\n\n** 풀이\n\n** 오답 원인\n\n** 다시 볼 점\n")))
+  "Built-in artifact presets copied into each project's metadata.")
+
+(defun imoogi-project-notes--default-artifact-preset (kind)
+  "Return a mutable default artifact preset for KIND."
+  (copy-tree (or (alist-get kind imoogi-project-notes--default-artifact-presets)
+                 (alist-get 'development imoogi-project-notes--default-artifact-presets))))
+
+(defun imoogi-project-notes--artifact-preset-to-json (preset)
+  "Convert runtime PRESET specs to JSON-safe alists."
+  (mapcar (lambda (spec)
+            `((kind . ,(symbol-name (nth 0 spec)))
+              (label . ,(nth 1 spec))
+              (prefix . ,(nth 2 spec))
+              (sections . ,(nth 3 spec))))
+          preset))
+
+(defun imoogi-project-notes--valid-artifact-prefix-p (prefix)
+  "Return non-nil when PREFIX is one safe filename component."
+  (and (stringp prefix)
+       (string-match-p "\\`[[:alnum:]_+=.@-]+\\'" prefix)))
+
+(defun imoogi-project-notes--artifact-preset-from-json (value)
+  "Convert JSON-safe PRESET VALUE to runtime specs."
+  (when (or (listp value) (vectorp value))
+    (let ((value (if (vectorp value) (append value nil) value)))
+      (cl-loop for spec in value
+             for kind = (imoogi-project-notes--alist-string 'kind spec)
+             for label = (imoogi-project-notes--alist-string 'label spec)
+             for prefix = (imoogi-project-notes--alist-string 'prefix spec)
+             for sections = (imoogi-project-notes--alist-string 'sections spec)
+             when (and kind label prefix sections
+                        (imoogi-project-notes--valid-artifact-prefix-p prefix))
+             collect (list (intern kind) label prefix sections)))))
+
+(defun imoogi-project-notes--entry-artifact-preset (entry)
+  "Return ENTRY's artifact preset, falling back for legacy metadata."
+  (or (alist-get 'artifact-preset entry)
+      (imoogi-project-notes--default-artifact-preset
+       (if (eq (imoogi-project-notes--entry-type entry) 'study)
+           'study
+         'development))))
+
 (defun imoogi-project-notes--registry-file ()
   "Return the project notes registry path."
   (locate-user-emacs-file ".cache/project-notes.json"))
@@ -276,7 +337,11 @@ When NOERROR is non-nil, return nil and warn instead of signaling."
       (journal-file . ,(funcall resolve 'journal))
       (todo-storage . ,(or (imoogi-project-notes--alist-string
                             'todo_storage metadata)
-                           "project")))))
+                           "project"))
+      (artifact-preset . ,(or (imoogi-project-notes--artifact-preset-from-json
+                               (alist-get 'artifact_preset metadata))
+                              (imoogi-project-notes--default-artifact-preset
+                               (if (string= type "study") 'study 'development)))))))
 
 (defun imoogi-project-notes--current-metadata-entry ()
   "Return an entry derived from the nearest folder metadata, if any."
@@ -841,7 +906,9 @@ remain independent sequences."
       (tasks . ,(funcall relative 'tasks-file))
       (journal . ,(funcall relative 'journal-file))
       (todo_storage . ,(imoogi-project-notes--alist-string
-                         'todo-storage entry)))))
+                         'todo-storage entry))
+      (artifact_preset . ,(imoogi-project-notes--artifact-preset-to-json
+                           (imoogi-project-notes--entry-artifact-preset entry))))))
 
 (defun imoogi-project-notes--ensure-metadata (entry created-at)
   "Create ENTRY's folder metadata with CREATED-AT, preserving existing data."
@@ -931,7 +998,7 @@ This startup path intentionally avoids writing string-backed agenda storage."
     ("START_DATE" . ,(or start-date (format-time-string "%Y-%m-%d")))))
 
 (defun imoogi-project-notes--entry (key source-root notes-dir todo-storage
-                                        &optional type name study-id)
+                                        &optional type name study-id artifact-preset)
   "Build a registry entry."
   (let* ((study-p (eq type 'study))
          (project-file (expand-file-name (if study-p "study.org" "project.org")
@@ -951,7 +1018,10 @@ This startup path intentionally avoids writing string-backed agenda storage."
       (project-file . ,project-file)
       (tasks-file . ,tasks-file)
       (journal-file . ,journal-file)
-      (todo-storage . ,(symbol-name todo-storage)))))
+      (todo-storage . ,(symbol-name todo-storage))
+      (artifact-preset . ,(or artifact-preset
+                               (imoogi-project-notes--default-artifact-preset
+                                (if study-p 'study 'development)))))))
 
 (defun imoogi-project-notes--entry-type (entry)
   "Return ENTRY's persisted type, defaulting legacy entries to project."
@@ -1133,7 +1203,7 @@ only CURRENT-BUFFER-ONLY operations in the explicitly unlocked buffer."
             (error "Project notes setup did not create a registry entry")))))
 
 ;;;###autoload
-(defun imoogi-project-notes-setup (&optional root directory numbering)
+(defun imoogi-project-notes-setup (&optional root directory numbering preset-kind)
   "Create or register project notes for source ROOT.
 With interactive prefix argument, choose DIRECTORY manually.  Otherwise
 NUMBERING names a new folder using the project numbering convention.  Existing
@@ -1148,8 +1218,13 @@ files are never overwritten."
                            (imoogi-project-notes--find-entry-by-key
                             (imoogi-project-notes--identity-key root)))))
           (numbering (unless (or directory existing)
-                       (read-string "프로젝트 번호 (예: 260925.01 또는 2609): "))))
-     (list root directory numbering)))
+                       (read-string "프로젝트 번호 (예: 260925.01 또는 2609): ")))
+          (preset-kind (unless existing
+                         (intern (completing-read
+                                  "프로젝트 산출물 preset: "
+                                  '("development" "study") nil t nil nil
+                                  "development")))))
+     (list root directory numbering preset-kind)))
   (let* ((root (imoogi-project-notes--validate-source-root
                 (or root (imoogi-project-notes--project-root))))
          (key (imoogi-project-notes--identity-key root))
@@ -1169,7 +1244,11 @@ files are never overwritten."
                     (if (member imoogi-project-notes-todo-storage '(project central))
                         imoogi-project-notes-todo-storage
                       'project)))
-         (entry (imoogi-project-notes--entry key root notes-dir storage 'project)))
+         (entry (imoogi-project-notes--entry
+                 key root notes-dir storage 'project nil nil
+                 (or (alist-get 'artifact-preset existing)
+                     (imoogi-project-notes--default-artifact-preset
+                      (or preset-kind 'development))))))
     (imoogi-project-notes--setup-files entry project-name)
     (imoogi-project-notes--ensure-metadata entry (format-time-string "%Y-%m-%d"))
     (imoogi-project-notes--save-entry entry)
@@ -1268,6 +1347,58 @@ step back to its `project-notes' parent so renames cannot become nested."
         parent
       configured)))
 
+(defun imoogi-project-notes--edit-artifact-preset (entry)
+  "Interactively edit and return ENTRY's copied artifact preset."
+  (let ((preset (copy-tree (imoogi-project-notes--entry-artifact-preset entry))))
+    (setq preset
+          (mapcar
+           (lambda (spec)
+             (let ((prefix (read-string (format "%s 파일명 prefix: " (nth 0 spec))
+                                        (nth 2 spec))))
+               (unless (imoogi-project-notes--valid-artifact-prefix-p prefix)
+                 (user-error "파일명 prefix는 파일명 문자만 사용할 수 있습니다: %s" prefix))
+               (list (nth 0 spec)
+                     (read-string (format "%s 표시 이름: " (nth 0 spec)) (nth 1 spec))
+                     prefix
+                     (read-string (format "%s 섹션 템플릿: " (nth 0 spec)) (nth 3 spec)))))
+           preset))
+    (while (y-or-n-p "새 산출물 종류를 추가할까요? ")
+      (let ((kind (intern (read-string "종류 식별자: "))))
+        (let ((prefix (read-string "파일명 prefix: ")))
+          (unless (imoogi-project-notes--valid-artifact-prefix-p prefix)
+            (user-error "파일명 prefix는 파일명 문자만 사용할 수 있습니다: %s" prefix))
+          (setq preset
+                (append preset
+                        (list (list kind
+                                    (read-string "표시 이름: ")
+                                    prefix
+                                    (read-string "섹션 템플릿: "))))))))
+    (setf (alist-get 'artifact-preset entry) preset)
+    entry))
+
+(defun imoogi-project-notes--save-artifact-preset-metadata (entry)
+  "Persist ENTRY's artifact preset without changing existing metadata."
+  (let* ((directory (imoogi-project-notes--alist-string 'notes-dir entry))
+         (file (imoogi-project-notes--metadata-file directory))
+         (metadata (if (file-readable-p file)
+                       (imoogi-project-notes--read-metadata-file file)
+                     (imoogi-project-notes--metadata-data
+                      entry (format-time-string "%Y-%m-%d")))))
+    (setf (alist-get 'artifact_preset metadata)
+          (imoogi-project-notes--artifact-preset-to-json
+           (imoogi-project-notes--entry-artifact-preset entry)))
+    (let ((json-encoding-pretty-print t))
+      (with-temp-file file
+        (insert (json-encode metadata) "\n")))))
+
+(defun imoogi-project-notes--metadata-has-artifact-preset-p (entry)
+  "Return non-nil when ENTRY metadata explicitly stores a preset."
+  (let ((file (imoogi-project-notes--metadata-file
+               (imoogi-project-notes--alist-string 'notes-dir entry))))
+    (and (file-readable-p file)
+         (alist-get 'artifact_preset
+                    (imoogi-project-notes--read-metadata-file file)))))
+
 ;;;###autoload
 (defun imoogi-project-notes-setup-doctor ()
   "Inspect project-notes folders and ask how to rename each invalid one.
@@ -1293,7 +1424,8 @@ and Treemacs roots are updated; files are never deleted or overwritten."
                 (if (not (imoogi-project-notes--folder-name-valid-p answer))
                     (user-error "프로젝트 폴더명 형식이 올바르지 않습니다: %s" answer)
                   (let* ((old-root (file-name-as-directory directory))
-                         (new-root (expand-file-name (file-name-as-directory answer) base))
+                         (new-root (file-name-as-directory
+                                    (expand-file-name answer base)))
                          (answer-id (imoogi-project-notes--folder-id-key answer))
                          (duplicate-id
                           (when answer-id
@@ -1320,10 +1452,29 @@ and Treemacs roots are updated; files are never deleted or overwritten."
                        entry old-root new-root)
                       (when entry
                         (imoogi-project-notes--save-entry entry))
-                      (setq changed (1+ changed)))))))))
+                      (setq changed (1+ changed)))))))))))
     (message "imoogi: project-notes 점검 완료 — 변경 %d개, 건너뜀 %d개 (파일 삭제 없음)"
              changed skipped)
-    (list :changed changed :skipped skipped)))))
+    (when (called-interactively-p 'interactive)
+      (dolist (entry (imoogi-project-notes--read-registry))
+        (unless (imoogi-project-notes--metadata-has-artifact-preset-p entry)
+          (let ((kind (intern (completing-read
+                               "기존 프로젝트 preset: "
+                               '("development" "study") nil t nil nil
+                               (if (eq (imoogi-project-notes--entry-type entry) 'study)
+                                   "study"
+                                 "development")))))
+            (setf (alist-get 'artifact-preset entry)
+                  (imoogi-project-notes--default-artifact-preset kind))
+            (imoogi-project-notes--save-artifact-preset-metadata entry)
+            (imoogi-project-notes--save-entry entry)))
+        (when (y-or-n-p
+               (format "프로젝트 %s의 산출물 preset을 수정할까요? "
+                       (imoogi-project-notes--entry-name entry)))
+          (imoogi-project-notes--edit-artifact-preset entry)
+          (imoogi-project-notes--save-artifact-preset-metadata entry)
+          (imoogi-project-notes--save-entry entry))))
+    (list :changed changed :skipped skipped)))
 
 (defun imoogi-project-notes--open-study-workspace (entry)
   "Open the Perspective and Treemacs workspace represented by study ENTRY."
@@ -1382,7 +1533,8 @@ optional programmatic overrides.  Existing files are never overwritten."
                 imoogi-project-notes-directory))
            key entries))
          (entry (imoogi-project-notes--entry
-                 key notes-dir notes-dir 'project 'study study-name study-id)))
+                 key notes-dir notes-dir 'project 'study study-name study-id
+                 (imoogi-project-notes--default-artifact-preset 'study))))
     (imoogi-project-notes--setup-study-files entry study-name start-date)
     (imoogi-project-notes--ensure-metadata entry start-date)
     (imoogi-project-notes--save-entry entry)
@@ -2129,10 +2281,56 @@ When CATEGORY is non-nil, apply it as a global category filter."
   (imoogi-project-notes--run-agenda
    "전체 프로젝트 Dashboard" (imoogi-project-notes--agenda-files)))
 
-(defun imoogi-project-notes--artifact-spec (kind)
-  "Return the artifact template specification for KIND."
-  (or (assq kind imoogi-project-notes--artifact-types)
-      (user-error "알 수 없는 산출물 종류: %s" kind)))
+(defun imoogi-project-notes--artifact-spec (kind &optional entry)
+  "Return the artifact template specification for KIND and ENTRY."
+  (let ((spec (or (assq kind (imoogi-project-notes--entry-artifact-preset entry))
+                  (assq kind imoogi-project-notes--artifact-types))))
+    (if (and spec (imoogi-project-notes--valid-artifact-prefix-p (nth 2 spec)))
+        spec
+      (user-error "알 수 없는 산출물 종류 또는 잘못된 파일명 prefix: %s" kind))))
+
+(defun imoogi-project-notes--artifact-kind-from-decision-tree (&optional entry)
+  "Recommend an artifact kind by asking about the current work."
+  (let ((preset (imoogi-project-notes--entry-artifact-preset entry)))
+    (cond
+     ((and (assq 'concept preset)
+           (yes-or-no-p "개념을 설명하고 연결 관계를 정리하나요? "))
+      'concept)
+     ((and (assq 'flashcard preset)
+           (yes-or-no-p "반복 암기할 앞면과 뒷면을 만드나요? "))
+      'flashcard)
+     ((and (assq 'question preset)
+           (yes-or-no-p "문제와 풀이를 기록하나요? "))
+      'question)
+     ((and (assq 'runbook preset)
+           (yes-or-no-p "반복해서 실행할 절차나 운영 작업인가요? "))
+      'runbook)
+     ((and (assq 'investigation preset)
+           (yes-or-no-p "특정 사건의 원인이나 증거를 분석하나요? "))
+      'investigation)
+     ((and (assq 'spec preset)
+           (yes-or-no-p "요구사항을 구현 가능한 계획과 완료 조건으로 만들까요? "))
+      'spec)
+     ((and (assq 'decision preset)
+           (yes-or-no-p "대안 중 중요한 선택과 근거를 남기나요? "))
+      'decision)
+     ((and (assq 'meeting preset)
+           (yes-or-no-p "회의 내용과 후속 작업을 기록하나요? "))
+      'meeting)
+     (t
+      (let* ((choice (completing-read
+                      "산출물 종류를 직접 선택: "
+                      (mapcar (lambda (spec)
+                                (cons (format "%s (%s)" (nth 1 spec) (nth 0 spec))
+                                      (nth 0 spec)))
+                              preset)
+                      nil t))
+             (selected (assoc choice
+                              (mapcar (lambda (spec)
+                                        (cons (format "%s (%s)" (nth 1 spec) (nth 0 spec))
+                                              (nth 0 spec)))
+                                      preset))))
+        (or (cdr selected) (caar preset)))))))
 
 (defun imoogi-project-notes--unique-artifact-file (directory prefix title)
   "Return a new artifact path below DIRECTORY for PREFIX and TITLE."
@@ -2163,7 +2361,7 @@ When CATEGORY is non-nil, apply it as a global category filter."
         (insert "\n산출물:\n" link "\n")))))
 
 ;;;###autoload
-(defun imoogi-project-notes-create-artifact (kind title)
+(defun imoogi-project-notes-create-artifact (kind title &optional entry)
   "Create a KIND artifact named TITLE and link it to the current TODO.
 The command assigns stable Org IDs to both sides, saves the task link, and
 opens the new file below the project's artifacts directory."
@@ -2172,20 +2370,19 @@ opens the new file below the project's artifacts directory."
      (unless (derived-mode-p 'org-mode)
        (user-error "Org TODO heading에서 실행하세요"))
      (org-back-to-heading t)
-     (let* ((labels (mapcar (lambda (spec)
-                              (cons (nth 1 spec) (car spec)))
-                            imoogi-project-notes--artifact-types))
-            (kind (cdr (assoc (completing-read "산출물 종류: " labels nil t)
-                              labels)))
+    (let* ((entry (or (imoogi-project-notes--current-entry)
+                      (imoogi-project-notes--select-entry "산출물 프로젝트: ")))
+           (kind (imoogi-project-notes--artifact-kind-from-decision-tree entry))
             (default-title (org-get-heading t t t t)))
-       (list kind (read-string "산출물 제목: " default-title)))))
+       (list kind (read-string "산출물 제목: " default-title) entry))))
   (unless (derived-mode-p 'org-mode)
     (user-error "Org TODO heading에서 실행하세요"))
   (org-back-to-heading t)
-  (let ((entry (or (imoogi-project-notes--current-entry)
+  (let ((entry (or entry
+                   (imoogi-project-notes--current-entry)
                    (imoogi-project-notes--select-entry "산출물 프로젝트: "))))
     (imoogi-project-notes--ensure-entry-mutable entry "산출물 생성")
-    (let* ((spec (imoogi-project-notes--artifact-spec kind))
+    (let* ((spec (imoogi-project-notes--artifact-spec kind entry))
            (task-title (org-get-heading t t t t))
            (task-id (org-id-get-create))
            (artifact-id (org-id-new))
