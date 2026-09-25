@@ -72,6 +72,17 @@ a navigation file.  Changing this option does not migrate existing projects."
 (defconst imoogi-project-notes--metadata-file-name ".imoogi-project.json"
   "File that identifies the kind and layout of a project-notes directory.")
 
+(defconst imoogi-project-notes--folder-name-regexp
+  "\\`\\(?:[0-9]\\{4\\}\\.[0-9]+\\|[0-9]\\{2\\}\\.[0-9][0-9]\\|[0-9]\\{6\\}\\.[0-9][0-9]\\|\\(?:[0-9]\\{4\\}\\(?:\\.[0-9]+\\)?\\|[0-9]\\{2\\}\\.[0-9][0-9]\\|[0-9]\\{6\\}\\.[0-9][0-9]\\)-[[:alnum:]_.-]+\\)\\'"
+  "Regexp for accepted project-notes folder names.")
+
+(defun imoogi-project-notes--doctor-suggested-name (name)
+  "Return a PC-friendly suggestion for invalid folder NAME."
+  (if (string-match "\\`\\([0-9]\\{6\\}\\)-\\(.+\\)\\'" name)
+      (format "%s-%s" (substring (match-string 1 name) 0 4)
+              (match-string 2 name))
+    name))
+
 (defconst imoogi-project-notes--documents
   '((domain . ("domain.org" . "도메인 모델"))
     (architecture . ("architecture.org" . "아키텍처"))
@@ -602,6 +613,16 @@ remain distinct through their `instance-id'."
          (and dir (file-in-directory-p expanded dir))))
      (or entries (imoogi-project-notes--read-registry)))))
 
+(defun imoogi-project-notes--find-entry-by-notes-directory
+    (directory &optional entries)
+  "Return the registry entry whose notes directory is DIRECTORY."
+  (let ((directory (file-truename directory)))
+    (cl-find-if
+     (lambda (entry)
+       (let ((notes-dir (imoogi-project-notes--alist-string 'notes-dir entry)))
+         (and notes-dir (equal directory (file-truename notes-dir)))))
+     (or entries (imoogi-project-notes--read-registry)))))
+
 (defun imoogi-project-notes--current-entry ()
   "Return the registry entry for the current source or notes buffer."
   (let ((entries (imoogi-project-notes--all-entries)))
@@ -717,6 +738,36 @@ provided so a portable study note cannot reuse an existing identifier."
           (format "%s-%s" dated-slug (substring (secure-hash 'sha1 key) 0 10)))
          base)
       plain)))
+
+(defun imoogi-project-notes--folder-name-valid-p (name)
+  "Return non-nil when NAME follows the project numbering convention."
+  (and (stringp name)
+       (string-match-p imoogi-project-notes--folder-name-regexp name)))
+
+(defun imoogi-project-notes--folder-id-key (name)
+  "Return NAME's scoped numeric ID, or nil when it has no dotted ID.
+The date/month prefix is part of the scope, so `26.01' and `260925.01'
+remain independent sequences."
+  (when (and (stringp name)
+             (string-match
+              "\\`\\([0-9]+\\.[0-9]+\\)\\(?:-[[:alnum:]_.-]+\\)?\\'"
+              name))
+    (match-string 1 name)))
+
+(defun imoogi-project-notes--numbered-notes-directory (number root)
+  "Return a notes directory named from NUMBER and source ROOT."
+  (when (or (string-empty-p (string-trim number))
+            (string-match-p "[/\\\\]" number))
+    (user-error "프로젝트 번호를 입력하세요 (예: 260925.01 또는 2609)"))
+  (let* ((slug (imoogi-project-notes--slug
+                (file-name-nondirectory (directory-file-name root))))
+         (name (if (string-match-p "-" number)
+                   number
+                 (format "%s-%s" number slug))))
+    (unless (imoogi-project-notes--folder-name-valid-p name)
+      (user-error "프로젝트 번호 형식이 올바르지 않습니다: %s" name))
+    (expand-file-name (file-name-as-directory name)
+                      imoogi-project-notes-directory)))
 
 (defun imoogi-project-notes--replace-template-values (text values)
   "Replace {{KEY}} placeholders in TEXT using VALUES."
@@ -1082,34 +1133,43 @@ only CURRENT-BUFFER-ONLY operations in the explicitly unlocked buffer."
             (error "Project notes setup did not create a registry entry")))))
 
 ;;;###autoload
-(defun imoogi-project-notes-setup (&optional root directory)
+(defun imoogi-project-notes-setup (&optional root directory numbering)
   "Create or register project notes for source ROOT.
-With interactive prefix argument, choose DIRECTORY manually.  Existing files are
-never overwritten."
+With interactive prefix argument, choose DIRECTORY manually.  Otherwise
+NUMBERING names a new folder using the project numbering convention.  Existing
+files are never overwritten."
   (interactive
    (let* ((root (imoogi-project-notes--project-root))
           (directory (when current-prefix-arg
                        (read-directory-name "프로젝트 노트 폴더: "
-                                            imoogi-project-notes-directory nil nil))))
-     (list root directory)))
+                                            imoogi-project-notes-directory nil nil)))
+          (existing (and (not directory)
+                         (ignore-errors
+                           (imoogi-project-notes--find-entry-by-key
+                            (imoogi-project-notes--identity-key root)))))
+          (numbering (unless (or directory existing)
+                       (read-string "프로젝트 번호 (예: 260925.01 또는 2609): "))))
+     (list root directory numbering)))
   (let* ((root (imoogi-project-notes--validate-source-root
                 (or root (imoogi-project-notes--project-root))))
          (key (imoogi-project-notes--identity-key root))
          (entries (imoogi-project-notes--read-registry))
          (existing (imoogi-project-notes--find-entry-by-key key entries))
+         (project-name (file-name-nondirectory (directory-file-name root)))
          (notes-dir (imoogi-project-notes--validate-notes-directory
                      (or directory
                          (imoogi-project-notes--alist-string 'notes-dir existing)
-                         (imoogi-project-notes--default-notes-directory
-                          root key entries))
+                         (and numbering
+                              (imoogi-project-notes--numbered-notes-directory
+                               numbering root))
+                         (imoogi-project-notes--default-notes-directory root key entries))
                      key entries))
          (storage (if existing
                       (imoogi-project-notes--entry-todo-storage existing)
                     (if (member imoogi-project-notes-todo-storage '(project central))
                         imoogi-project-notes-todo-storage
                       'project)))
-         (entry (imoogi-project-notes--entry key root notes-dir storage 'project))
-         (project-name (file-name-nondirectory (directory-file-name root))))
+         (entry (imoogi-project-notes--entry key root notes-dir storage 'project)))
     (imoogi-project-notes--setup-files entry project-name)
     (imoogi-project-notes--ensure-metadata entry (format-time-string "%Y-%m-%d"))
     (imoogi-project-notes--save-entry entry)
@@ -1117,6 +1177,153 @@ never overwritten."
      (imoogi-project-notes--alist-string 'tasks-file entry))
     (message "imoogi: 작업 폴더 %s → 문서 폴더 %s" root notes-dir)
     notes-dir))
+
+(defun imoogi-project-notes--replace-treemacs-root (old-root new-root)
+  "Replace OLD-ROOT with NEW-ROOT in existing Treemacs workspaces.
+Never remove a workspace; only replace the project path in workspaces that
+already contain OLD-ROOT."
+  (when (and (fboundp 'treemacs-workspaces)
+             (fboundp 'treemacs-workspace->projects)
+             (fboundp 'treemacs-project->path)
+             (fboundp 'treemacs-do-remove-project-from-workspace)
+             (fboundp 'treemacs-do-add-project-to-workspace))
+    (let ((old-path (directory-file-name (expand-file-name old-root))))
+      (dolist (workspace (treemacs-workspaces))
+        (dolist (project (cl-remove-if-not
+                          (lambda (candidate)
+                            (equal old-path
+                                   (directory-file-name
+                                    (expand-file-name
+                                     (treemacs-project->path candidate)))))
+                          (treemacs-workspace->projects workspace)))
+          ;; Treemacs mutates live buffers and can run user hooks.  A stale
+          ;; workspace must never prevent the doctor from finishing.
+          (condition-case err
+              (with-timeout
+                  (1 (user-error "Treemacs 갱신 시간이 초과되었습니다"))
+                (let ((treemacs-override-workspace workspace))
+                  (treemacs-do-remove-project-from-workspace
+                   project :ignore-last-project-restriction)
+                  (treemacs-do-add-project-to-workspace
+                   new-root
+                   (file-name-nondirectory (directory-file-name new-root)))))
+            (error
+             (display-warning
+              'imoogi
+              (format "Treemacs 프로젝트 경로를 갱신하지 못했습니다: %s"
+                      (error-message-string err))
+              :warning))))))))
+
+(defun imoogi-project-notes--rename-entry-directory (entry old-root new-root)
+  "Rename ENTRY's notes folder and update local references.
+The directory is renamed as one unit; no file inside it is deleted."
+  (let ((old-root (file-name-as-directory (expand-file-name old-root)))
+        (new-root (file-name-as-directory (expand-file-name new-root)))
+        (old-tasks (and entry (imoogi-project-notes--alist-string
+                               'tasks-file entry))))
+    (when (file-exists-p new-root)
+      (user-error "새 프로젝트 폴더가 이미 존재합니다: %s" new-root))
+    (dolist (buffer (buffer-list))
+      (when-let* ((file (buffer-file-name buffer)))
+        (when (and (file-in-directory-p file old-root)
+                   (buffer-modified-p buffer))
+          (user-error "먼저 저장하거나 닫아야 하는 변경 버퍼가 있습니다: %s" file))))
+    (rename-file old-root new-root)
+    (dolist (buffer (buffer-list))
+      (when-let* ((file (buffer-file-name buffer)))
+        (when (file-in-directory-p file old-root)
+          (set-visited-file-name
+           (expand-file-name (file-relative-name file old-root) new-root)
+           t t))))
+    (when entry
+      (dolist (key '(project-file tasks-file journal-file))
+        (let ((file (imoogi-project-notes--alist-string key entry)))
+          (when (file-in-directory-p file old-root)
+            (setf (alist-get key entry)
+                  (expand-file-name (file-relative-name file old-root) new-root)))))
+      (setf (alist-get 'notes-dir entry) new-root)
+      (when (and old-tasks (file-in-directory-p old-tasks old-root))
+        (imoogi-project-notes--replace-agenda-target
+         old-tasks (alist-get 'tasks-file entry)))
+      (when (boundp 'imoogi-project-perspective-alist)
+        (let ((mapping (assoc old-root imoogi-project-perspective-alist)))
+          (when mapping
+            (setcar mapping new-root)))))
+    (imoogi-project-notes--replace-treemacs-root old-root new-root)
+    entry))
+
+(defun imoogi-project-notes--doctor-base-directory ()
+  "Return the project-notes root used by the doctor.
+If a buffer-local or stale customization points at one project directory,
+step back to its `project-notes' parent so renames cannot become nested."
+  (let* ((configured (file-name-as-directory
+                      (expand-file-name imoogi-project-notes-directory)))
+         (name (file-name-nondirectory (directory-file-name configured)))
+         (parent (file-name-as-directory
+                  (file-name-directory (directory-file-name configured)))))
+    (if (and (imoogi-project-notes--folder-name-valid-p name)
+             (string= (file-name-nondirectory
+                       (directory-file-name parent))
+                      "project-notes"))
+        parent
+      configured)))
+
+;;;###autoload
+(defun imoogi-project-notes-setup-doctor ()
+  "Inspect project-notes folders and ask how to rename each invalid one.
+Each answer is handled independently.  Empty input skips that folder.  The
+folder is renamed as a whole and its registry, buffers, Perspective mapping,
+and Treemacs roots are updated; files are never deleted or overwritten."
+  (interactive)
+  (let ((base (imoogi-project-notes--doctor-base-directory))
+        (changed 0)
+        (skipped 0))
+    (unless (file-directory-p base)
+      (user-error "프로젝트 노트 폴더가 없습니다: %s" base))
+    (dolist (directory (directory-files base t "^[^.].*" t))
+      (when (file-directory-p directory)
+        (let ((name (file-name-nondirectory (directory-file-name directory))))
+          (unless (imoogi-project-notes--folder-name-valid-p name)
+            (let* ((suggestion (imoogi-project-notes--doctor-suggested-name name))
+                   (answer (read-string
+                            (format "새 번호/폴더명 [%s] (빈칸은 건너뜀): " name)
+                            suggestion)))
+              (if (string-empty-p (string-trim answer))
+                  (setq skipped (1+ skipped))
+                (if (not (imoogi-project-notes--folder-name-valid-p answer))
+                    (user-error "프로젝트 폴더명 형식이 올바르지 않습니다: %s" answer)
+                  (let* ((old-root (file-name-as-directory directory))
+                         (new-root (expand-file-name (file-name-as-directory answer) base))
+                         (answer-id (imoogi-project-notes--folder-id-key answer))
+                         (duplicate-id
+                          (when answer-id
+                            (cl-find-if
+                             (lambda (candidate)
+                               (and (not (equal candidate name))
+                                    (equal answer-id
+                                           (imoogi-project-notes--folder-id-key candidate))))
+                             (mapcar (lambda (path)
+                                       (file-name-nondirectory
+                                        (directory-file-name path)))
+                                     (directory-files base t "^[^.].*" t)))))
+                         (entry (or (imoogi-project-notes--find-entry-by-notes-directory old-root)
+                                    (let ((metadata-file
+                                           (imoogi-project-notes--metadata-file old-root)))
+                                      (when (file-readable-p metadata-file)
+                                        (imoogi-project-notes--metadata-entry
+                                         metadata-file
+                                         (imoogi-project-notes--read-metadata-file metadata-file)))))))
+                    (if duplicate-id
+                        (user-error "ID %s가 이미 사용 중입니다: %s"
+                                    answer-id duplicate-id)
+                      (imoogi-project-notes--rename-entry-directory
+                       entry old-root new-root)
+                      (when entry
+                        (imoogi-project-notes--save-entry entry))
+                      (setq changed (1+ changed)))))))))
+    (message "imoogi: project-notes 점검 완료 — 변경 %d개, 건너뜀 %d개 (파일 삭제 없음)"
+             changed skipped)
+    (list :changed changed :skipped skipped)))))
 
 (defun imoogi-project-notes--open-study-workspace (entry)
   "Open the Perspective and Treemacs workspace represented by study ENTRY."
@@ -1826,8 +2033,9 @@ Agenda paths are changed and the original directory is removed."
     (princ "imoogi에서 프로젝트를 선택할 때 보이는 경로는 소스 작업 폴더입니다.\n")
     (princ "예: ~/workspace/imoogi-emacs/\n\n")
     (princ "Org 문서는 소스나 Git worktree 안에 만들지 않습니다. 기본 문서 위치는\n")
-    (princ "별도의 ~/project-notes/<시작일>-<프로젝트>/ 폴더입니다.\n")
-    (princ "예: ~/project-notes/260918-imoogi-emacs/project.org\n\n")
+    (princ "별도의 번호-프로젝트명 ~/project-notes/ 폴더입니다.\n")
+    (princ "예: ~/project-notes/260925.01-imoogi-emacs/project.org\n\n")
+    (princ "번호는 월간 2601.1, 연간 26.01, 일간 260925.01처럼 직접 입력합니다.\n")
     (princ "C-c h p m s  현재 소스 작업 폴더에 문서 폴더를 연결·생성\n")
     (princ "C-u C-c h p m s  문서가 저장될 폴더를 직접 지정\n")
     (princ "C-c h p m S  소스 폴더 없이 학습 노트와 작업공간 생성\n")

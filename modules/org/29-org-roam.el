@@ -3,6 +3,8 @@
 ;;; Code:
 (imoogi-require "29-org-roam" 'org-roam 'memoize)
 
+(require 'transient)
+
 (defvar imoogi-org-roam--cache-timer nil
   "Idle timer that refreshes node completion candidates.")
 
@@ -23,11 +25,16 @@
   (and (derived-mode-p 'org-mode)
        (or (org-at-heading-p) (org-region-active-p))))
 
+(defun imoogi-org-roam--enable-db-autosync-if-directory-exists ()
+  "Enable Org-roam autosync when the permanent notes directory exists."
+  (when (file-directory-p org-roam-directory)
+    (org-roam-db-autosync-mode 1)))
+
 (use-package org-roam
   :ensure t
   :after org
   :custom
-  (org-roam-directory (expand-file-name "~/notes/"))
+  (org-roam-directory (imoogi-org--permanent-directory))
   (org-roam-node-default-sort nil)
   :bind (("C-c n" . imoogi-org-roam-transient))
   :config
@@ -38,13 +45,12 @@
     (cancel-timer imoogi-org-roam--cache-timer))
   (setq imoogi-org-roam--cache-timer
         (run-with-idle-timer 60 t #'imoogi-org-roam-clear-completions-cache))
-  (org-roam-db-autosync-mode 1))
+  (imoogi-org-roam--enable-db-autosync-if-directory-exists))
 
-(with-eval-after-load 'imoogi-transient
-  (transient-define-prefix imoogi-org-roam-transient ()
-    "Work with central Org-roam notes."
-    :column-widths '(23 23 23)
-    [["탐색·연결"
+(transient-define-prefix imoogi-org-roam-transient ()
+  "Work with central Org-roam notes."
+  :column-widths '(23 23 23)
+  [["탐색·연결"
       ("f" "노트 찾기·만들기" org-roam-node-find)
       ("n" "노트 캡처" org-roam-capture)
       ("i" "노트 링크 삽입" org-roam-node-insert :inapt-if-not (lambda () (derived-mode-p 'org-mode)))
@@ -64,9 +70,9 @@
       ("D" "날짜로 일일 노트" org-roam-dailies-goto-date)
       ("s" "데이터베이스 동기화" org-roam-db-sync)
       ("c" "노드 후보 캐시 갱신" imoogi-org-roam-clear-completions-cache)
-      ("q" "종료" transient-quit-one)]])
+    ("q" "종료" transient-quit-one)]])
   (transient-append-suffix 'imoogi-org-agenda-transient "m"
-    '("r" "중앙 노트" imoogi-org-roam-transient)))
+    '("r" "중앙 노트" imoogi-org-roam-transient))
 
 (provide 'imoogi-org-roam)
 ;;; 29-org-roam.el ends here

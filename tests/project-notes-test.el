@@ -485,6 +485,50 @@
         (imoogi-project-notes--restore-agenda-files)
         (should (equal org-agenda-files (list tasks)))))))
 
+(ert-deftest imoogi-project-notes-setup-uses-explicit-numbering ()
+  (imoogi-project-notes-test--isolated
+    (let ((directory (imoogi-project-notes-setup root nil "260925.01")))
+      (should (string-suffix-p "/260925.01-source/" directory))
+      (should (file-exists-p (expand-file-name "project.org" directory)))))
+
+(ert-deftest imoogi-project-notes-doctor-asks-and-renames-invalid-folder ()
+  (imoogi-project-notes-test--isolated
+    (let* ((old (expand-file-name "260925-source/"
+                                 imoogi-project-notes-directory))
+           (new (expand-file-name "260925.01-source/"
+                                 imoogi-project-notes-directory)))
+      (imoogi-project-notes-test--write-metadata
+       old "dir:source" "project" root)
+      (dolist (file '("project.org" "tasks.org" "journal.org"))
+        (with-temp-file (expand-file-name file old)
+          (insert (format "* %s\n" file))))
+      (cl-letf (((symbol-function 'read-string)
+                 (lambda (&rest _prompt) "260925.01-source"))
+                ((symbol-function 'imoogi-project-notes--replace-treemacs-root)
+                 #'ignore))
+        (let ((result (imoogi-project-notes-setup-doctor)))
+          (should (= (plist-get result :changed) 1))
+          (should (= (plist-get result :skipped) 0))))
+      (should-not (file-exists-p old))
+      (should (file-exists-p new))
+      (should (file-exists-p (expand-file-name "project.org" new)))))))
+
+(ert-deftest imoogi-project-notes-doctor-rejects-duplicate-scoped-id ()
+  (imoogi-project-notes-test--isolated
+    (let* ((old (expand-file-name "260925-source/"
+                                 imoogi-project-notes-directory))
+           (duplicate (expand-file-name "260925.01-existing/"
+                                        imoogi-project-notes-directory)))
+      (make-directory duplicate t)
+      (imoogi-project-notes-test--write-metadata
+       old "dir:source" "project" root)
+      (cl-letf (((symbol-function 'read-string)
+                 (lambda (&rest _prompt) "260925.01-source")))
+        (should-error (imoogi-project-notes-setup-doctor)
+                      :type 'user-error))
+      (should (file-directory-p old))
+      (should (file-directory-p duplicate)))))
+
 (ert-deftest imoogi-project-notes-default-directory-collision-keeps-date-prefix ()
   (imoogi-project-notes-test--isolated
     (cl-letf (((symbol-function 'imoogi-project-notes--start-date)

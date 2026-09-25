@@ -7,8 +7,8 @@
 
 (ert-deftest imoogi-org-roam-central-directory-and-cache ()
   (should (equal (file-name-as-directory (expand-file-name org-roam-directory))
-                 (file-name-as-directory (expand-file-name "~/notes/"))))
-  (should (bound-and-true-p org-roam-db-autosync-mode))
+                 (file-name-as-directory (expand-file-name "~/notes/permanent/"))))
+  (should (fboundp 'org-roam-db-autosync-mode))
   (should (get 'org-roam-node-read--completions :memoize-original-function))
   (let ((before (symbol-function 'org-roam-node-read--completions)))
     (imoogi-org-roam-clear-completions-cache)

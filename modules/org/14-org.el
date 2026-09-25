@@ -12,6 +12,10 @@
   "Return imoogi's default Org directory."
   (expand-file-name "~/notes/"))
 
+(defun imoogi-org--permanent-directory ()
+  "Return the directory used for permanent Org-roam notes."
+  (expand-file-name "permanent/" (imoogi-org--default-directory)))
+
 (defun imoogi-org--default-agenda-file ()
   "Return imoogi's default agenda file."
   (expand-file-name "agenda.org" (imoogi-org--default-directory)))
@@ -79,11 +83,57 @@ Existing notes are preserved.  This command does not run Anki setup or sync."
   (let ((directory (imoogi-org--default-directory))
         (agenda-file (imoogi-org--default-agenda-file)))
     (make-directory directory t)
+    (make-directory (imoogi-org--permanent-directory) t)
     (imoogi-org--ensure-agenda-file agenda-file)
     (imoogi-org--register-agenda-directory directory)
     (setq org-directory directory)
     (message "imoogi: 기본 Org 폴더: %s, agenda 파일: %s" directory agenda-file)
     directory))
+
+;;;###autoload
+(defun imoogi-org-setup-doctor ()
+  "Repair the notes layout without deleting or overwriting any files.
+
+Ensure `~/notes/`, `~/notes/permanent/`, and `agenda.org` exist, then
+copy direct `.org` files from the notes root into `permanent/`.  The
+scratch and agenda files are excluded.  Existing destination files are
+left untouched, and every source file is preserved."
+  (interactive)
+  (let* ((directory (imoogi-org--default-directory))
+         (permanent (imoogi-org--permanent-directory))
+         (agenda-file (imoogi-org--default-agenda-file))
+         (copied 0)
+         (skipped 0)
+         (excluded 0)
+         (sources nil))
+    (make-directory directory t)
+    (make-directory permanent t)
+    (imoogi-org--ensure-agenda-file agenda-file)
+    (imoogi-org--register-agenda-directory directory)
+    (setq org-directory directory)
+    (dolist (source (directory-files directory t "\\.org\\'" t))
+      (let ((name (file-name-nondirectory source)))
+        (cond
+         ((member name '("agenda.org" "scratch.org"))
+          (setq excluded (1+ excluded)))
+         ((file-regular-p source)
+          (push source sources)))))
+    (dolist (source (nreverse sources))
+      (let ((destination (expand-file-name (file-name-nondirectory source)
+                                           permanent)))
+        (if (file-exists-p destination)
+            (setq skipped (1+ skipped))
+          (copy-file source destination nil nil t)
+          (setq copied (1+ copied)))))
+    (when (fboundp 'org-roam-db-sync)
+      (condition-case err
+          (org-roam-db-sync)
+        (error
+         (message "imoogi: org-roam DB 동기화 건너뜀: %s" (error-message-string err)))))
+    (message "imoogi: notes 구조 점검 완료 — 복사 %d개, 기존 대상 보존 %d개, 제외 %d개 (원본 삭제 없음)"
+             copied skipped excluded)
+    (list :directory directory :permanent permanent :agenda agenda-file
+          :copied copied :skipped skipped :excluded excluded)))
 
 ;;;###autoload
 (defun imoogi-org-agenda ()

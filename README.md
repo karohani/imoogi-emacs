@@ -412,22 +412,26 @@ Perspective의 파일/Dired 버퍼와 창 배치는 정상 종료 시 저장되�
 ### 프로젝트 기록 (`project-notes`)
 
 개인 메모는 `~/notes/`, 프로젝트 기록은 소스와 분리된
-`~/project-notes/<시작일>-<프로젝트>/`에 둔다. 프로젝트에서 `C-c h p m s`
-(`M-x imoogi-project-notes-setup`)를 실행하면 기본 문서와 자료 폴더를 만든다.
+`~/project-notes/` 아래에 둔다. 프로젝트에서 `C-c h p m s`
+(`M-x imoogi-project-notes-setup`)를 실행하면 프로젝트 번호를 입력받아
+기본 문서와 자료 폴더를 만든다. 예를 들어 `260925.01`은 2026년 9월 25일
+첫 번째 일일 목표이고, PC에서는 `260925.01-프로젝트명`처럼 표시된다.
 기존 파일은 덮어쓰지 않는다. `C-u M-x imoogi-project-notes-setup`으로
 프로젝트별 저장 폴더를 직접 지정할 수 있다.
 
 메뉴와 프로젝트 목록에서 선택하는 **프로젝트는 소스 작업 폴더**다. 예를 들어
-`~/workspace/imoogi-emacs/`를 선택하면 이 작업 폴더를 별도의
-`~/project-notes/260918-imoogi-emacs/` 같은 문서 폴더와 연결한다. 앞의 날짜는
-프로젝트 기록을 처음 만든 날이며, 폴더 이름 정렬로 시작 순서를 확인할 수 있다.
+`~/workspace/imoogi-emacs/`를 선택하면 이 작업 폴더를 별도의 번호가 붙은
+문서 폴더와 연결한다. 월간 프로젝트는 `2601.1`, 연간 프로젝트는 `26.01`,
+일간 목표는 `260925.01`처럼 번호를 입력한다. PC용 폴더명은 여기에 프로젝트명을
+붙인 형태를 사용한다.
 현재 연결 관계와 worktree 동작은 `C-c h p m h`의 내장 안내에서 확인할 수 있다.
 
 ```text
 ~/notes/
+  permanent/                 org-roam 영구 노트
   agenda.org                 개인 할 일 / 중앙 관리 선택 시 프로젝트 할 일
   scratch.org                분류 전 메모 (Scratch 명령에서 생성)
-~/project-notes/<YYMMDD>-<프로젝트>/
+~/project-notes/<번호>-<프로젝트명>/
   project.org                목적·범위·현재 상황·큰 작업 요약
   tasks.org                  실제 TODO와 완료 조건
   journal.org                작업 기록·worktree별 재개 지점
@@ -464,6 +468,12 @@ Perspective의 파일/Dired 버퍼와 창 배치는 정상 종료 시 저장되�
 | `u` | `imoogi-project-notes-unmount-device` | 변경 버퍼를 확인·저장한 뒤 장치 unmount |
 | `c` / `C` | 소스 재연결 / 연결 해제 | 외장 project note의 호스트별 소스 경로 관리 |
 | `e` | `imoogi-project-notes-force-edit-session` | 비활성 노트의 현재 버퍼만 이번 세션에 편집 |
+
+기존 폴더명이 번호 규약에 맞지 않으면 `M-x imoogi-project-notes-setup-doctor`를
+실행한다. Doctor는 잘못된 폴더를 하나씩 보여주고 새 번호 또는 PC용 폴더명을
+입력받는다. 입력한 폴더명은 `project-notes` 레지스트리, 열린 버퍼, Perspective,
+Treemacs workspace 경로에 함께 반영한다. 빈 입력은 해당 폴더를 건너뛰며, 파일
+내용은 삭제하거나 덮어쓰지 않는다.
 
 영속 Scratch는 메인 메뉴에서 **`C-c h n`**으로 바로 열 수도 있다.
 Scratch와 작업 기록은 일반 파일 버퍼이므로 `C-x C-s`로 저장한다.
@@ -656,11 +666,17 @@ OS 키보드 입력 언어는 변경하지 않는다.
 
 ### Org 기본 폴더 설정
 
-`M-x imoogi-org-setup`을 실행하면 홈 디렉터리에 `~/notes/`를 만들고
-Org 기본 폴더(`org-directory`)로 설정한다. 기존 폴더와 파일은 보존하며 여러 번 실행해도 된다.
+`M-x imoogi-org-setup`을 실행하면 홈 디렉터리에 `~/notes/`와 영구 노트용
+`~/notes/permanent/`를 만들고 Org 기본 폴더(`org-directory`)로 설정한다.
+기존 폴더와 파일은 보존하며 여러 번 실행해도 된다.
 재시작 후에도 기본 Org 폴더는 `~/notes/`다. 폴더 생성은 이 명령을 실행할 때만 수행한다.
 
-Org-roam도 `~/notes/`를 중앙 노트 폴더로 사용한다. `C-c n` 또는
+기존 설정이 이 구조와 다르면 `M-x imoogi-org-setup-doctor`를 실행한다.
+notes 바로 아래의 기존 `.org` 파일을
+`permanent/`로 복사하고 `agenda.org`와 `scratch.org`는 그대로 둔다.
+원본은 삭제하지 않으며, 같은 이름의 대상 파일도 덮어쓰지 않는다.
+
+Org-roam은 `~/notes/permanent/`를 영구 노트 폴더로 사용한다. `C-c n` 또는
 `C-c h o r`로 중앙 노트 Transient를 연다. `f`는 노트 찾기·만들기,
 `n`은 캡처, `i`는 링크 삽입, `r`은 현재 제목 또는 선택 영역을 다른
 노트로 옮기기(`org-roam-refile`), `b`는 백링크 보기다. 별칭(`a/A`),

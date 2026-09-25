@@ -17,6 +17,67 @@
   (locate-user-emacs-file ".cache/perspective-active.el")
   "File used to persist the Perspective active at the previous exit.")
 
+(defvar imoogi-perspective-treemacs-file
+  (locate-user-emacs-file ".cache/perspective-treemacs.el")
+  "File recording which Perspectives had a visible Treemacs window.")
+
+(defvar imoogi-perspective--treemacs-visible nil
+  "Perspective names whose Treemacs window should be restored after startup.")
+
+(defun imoogi-perspective--treemacs-visible-p ()
+  "Return non-nil if a Treemacs buffer is visible on the selected frame."
+  (cl-some (lambda (window)
+             (with-current-buffer (window-buffer window)
+               (derived-mode-p 'treemacs-mode)))
+           (window-list)))
+
+(defun imoogi-perspective--remember-treemacs-visibility ()
+  "Remember whether the Perspective being left displays Treemacs."
+  (when-let ((name (persp-current-name)))
+    (setq imoogi-perspective--treemacs-visible
+          (delete name imoogi-perspective--treemacs-visible))
+    (when (imoogi-perspective--treemacs-visible-p)
+      (push name imoogi-perspective--treemacs-visible))))
+
+(defun imoogi-perspective--treemacs-visible-names ()
+  "Return names of Perspectives with a visible Treemacs window."
+  (cl-loop for name in (persp-names)
+           when (with-perspective name
+                  (imoogi-perspective--treemacs-visible-p))
+           collect name))
+
+(defun imoogi-perspective--restore-treemacs ()
+  "Replace a saved Treemacs placeholder in the current Perspective."
+  (when (and (member (persp-current-name)
+                     imoogi-perspective--treemacs-visible)
+             (not (imoogi-perspective--treemacs-visible-p)))
+    (let ((placeholder
+           (cl-find-if
+            (lambda (window)
+              (and (eq (window-parameter window 'window-side) 'left)
+                   (window-dedicated-p window)
+                   (string-prefix-p "*scratch*"
+                                    (buffer-name (window-buffer window)))))
+            (window-list)))
+          (editor-window (selected-window)))
+      (unwind-protect
+          (condition-case err
+              (progn
+                (when (window-live-p placeholder)
+                  (let ((ignore-window-parameters t))
+                    (delete-window placeholder)))
+                (when (fboundp 'imoogi-treemacs-follow-perspective-maybe)
+                  (imoogi-treemacs-follow-perspective-maybe))
+                (treemacs-select-window))
+            (error
+             (display-warning
+              'imoogi-projects
+              (format "Treemacs restore failed: %s"
+                      (error-message-string err))
+              :warning)))
+        (when (window-live-p editor-window)
+          (select-window editor-window))))))
+
 (defun imoogi-project--perspective-root ()
   "Return the project root mapped to the current Perspective, if any."
   (when (and (fboundp 'persp-current-name)
@@ -186,7 +247,16 @@ perspective 의 `persp-new' 는 interactive 가 아니라 메뉴에 직접 붙�
   (when (file-readable-p imoogi-perspective-state-file)
     (condition-case err
         (progn
-          (persp-state-load imoogi-perspective-state-file)
+          (let ((imoogi-perspective--treemacs-visible nil))
+            (persp-state-load imoogi-perspective-state-file))
+          (setq imoogi-perspective--treemacs-visible
+                (when (file-readable-p imoogi-perspective-treemacs-file)
+                  (with-temp-buffer
+                    (insert-file-contents imoogi-perspective-treemacs-file)
+                    (let ((names (read (current-buffer))))
+                      (when (and (listp names)
+                                 (cl-every #'stringp names))
+                        names)))))
           (when (file-readable-p imoogi-perspective-active-file)
             (let ((active
                    (with-temp-buffer
@@ -194,7 +264,8 @@ perspective 의 `persp-new' 는 interactive 가 아니라 메뉴에 직접 붙�
                      (read (current-buffer)))))
               (when (and (stringp active)
                          (member active (persp-names)))
-                (persp-switch active)))))
+                (persp-switch active))))
+          (imoogi-perspective--restore-treemacs))
       (error
        (display-warning
         'imoogi-projects
@@ -211,7 +282,10 @@ perspective 의 `persp-new' 는 interactive 가 아니라 메뉴에 직접 붙�
           (make-directory (file-name-directory imoogi-perspective-state-file) t)
           (persp-state-save imoogi-perspective-state-file)
           (with-temp-file imoogi-perspective-active-file
-            (prin1 (persp-current-name) (current-buffer))))
+            (prin1 (persp-current-name) (current-buffer)))
+          (with-temp-file imoogi-perspective-treemacs-file
+            (prin1 (imoogi-perspective--treemacs-visible-names)
+                   (current-buffer))))
       (error
        (display-warning
         'imoogi-projects
@@ -260,6 +334,9 @@ perspective 의 `persp-new' 는 interactive 가 아니라 메뉴에 직접 붙�
     (define-key map [header-line down-mouse-1] nil))
 
   (add-hook 'emacs-startup-hook #'imoogi-perspective-state-restore -50)
+  (add-hook 'persp-before-switch-hook
+            #'imoogi-perspective--remember-treemacs-visibility)
+  (add-hook 'persp-switch-hook #'imoogi-perspective--restore-treemacs)
   (add-hook 'kill-emacs-hook #'imoogi-perspective-state-save))
 
 (provide 'imoogi-projects)

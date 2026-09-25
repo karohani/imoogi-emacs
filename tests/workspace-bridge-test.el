@@ -292,6 +292,10 @@
   (should (equal imoogi-perspective-active-file
                  (locate-user-emacs-file ".cache/perspective-active.el"))))
 
+(ert-deftest imoogi-perspective-state-paths-include-treemacs-visibility-file ()
+  (should (equal imoogi-perspective-treemacs-file
+                 (locate-user-emacs-file ".cache/perspective-treemacs.el"))))
+
 (ert-deftest imoogi-perspective-restore-missing-file-is-nonfatal ()
   (should (fboundp 'imoogi-perspective-state-restore))
   (let ((imoogi-perspective-state-file
@@ -319,13 +323,17 @@
   (let* ((dir (make-temp-file "imoogi-persp-state-" t))
          (imoogi-perspective-state-file (expand-file-name ".cache/perspective-state.el" dir))
          (imoogi-perspective-active-file (expand-file-name ".cache/perspective-active.el" dir))
+         (imoogi-perspective-treemacs-file
+          (expand-file-name ".cache/perspective-treemacs.el" dir))
          (saved-file nil))
     (cl-letf (((symbol-function 'persp-current-name)
                (lambda () "active-project"))
               ((symbol-function 'persp-state-save)
                (lambda (file)
                  (setq saved-file file)
-                 (with-temp-file file (insert "state")))))
+                 (with-temp-file file (insert "state"))))
+              ((symbol-function 'imoogi-perspective--treemacs-visible-names)
+               (lambda () '("active-project"))))
       (imoogi-perspective-state-save)
       (should (file-directory-p (file-name-directory imoogi-perspective-state-file)))
       (should (equal saved-file imoogi-perspective-state-file))
@@ -333,7 +341,11 @@
       (should (equal (with-temp-buffer
                        (insert-file-contents imoogi-perspective-active-file)
                        (read (current-buffer)))
-                     "active-project")))))
+                     "active-project"))
+      (should (equal (with-temp-buffer
+                       (insert-file-contents imoogi-perspective-treemacs-file)
+                       (read (current-buffer)))
+                     '("active-project"))))))
 
 (ert-deftest imoogi-perspective-state-restore-switches-to-last-active-perspective ()
   (let* ((dir (make-temp-file "imoogi-persp-state-" t))
@@ -351,6 +363,54 @@
                (lambda (name) (setq switched name))))
       (imoogi-perspective-state-restore)
       (should (equal switched "active-project")))))
+
+(ert-deftest imoogi-perspective-state-restore-reloads-treemacs-visibility ()
+  (let* ((dir (make-temp-file "imoogi-persp-state-" t))
+         (imoogi-perspective-state-file (expand-file-name "state.el" dir))
+         (imoogi-perspective-treemacs-file (expand-file-name "treemacs.el" dir))
+         (imoogi-perspective-active-file (expand-file-name "missing-active.el" dir))
+         (imoogi-perspective--treemacs-visible nil)
+         restored)
+    (with-temp-file imoogi-perspective-state-file (insert "state"))
+    (with-temp-file imoogi-perspective-treemacs-file
+      (prin1 '("imoogi-emacs") (current-buffer)))
+    (cl-letf (((symbol-function 'persp-state-load) #'ignore)
+              ((symbol-function 'imoogi-perspective--restore-treemacs)
+               (lambda () (setq restored imoogi-perspective--treemacs-visible))))
+      (imoogi-perspective-state-restore)
+      (should (equal restored '("imoogi-emacs"))))))
+
+(ert-deftest imoogi-perspective-remembers-when-treemacs-was-closed ()
+  (let ((imoogi-perspective--treemacs-visible '("imoogi-emacs")))
+    (cl-letf (((symbol-function 'persp-current-name)
+               (lambda () "imoogi-emacs"))
+              ((symbol-function 'imoogi-perspective--treemacs-visible-p)
+               (lambda () nil)))
+      (imoogi-perspective--remember-treemacs-visibility)
+      (should-not imoogi-perspective--treemacs-visible))))
+
+(ert-deftest imoogi-perspective-restores-treemacs-placeholder-after-restart ()
+  (let ((config (current-window-configuration))
+        (placeholder-buffer (get-buffer-create "*scratch* (imoogi-persp-test)"))
+        (imoogi-perspective--treemacs-visible '("imoogi-emacs"))
+        opened)
+    (unwind-protect
+        (progn
+          (delete-other-windows)
+          (let ((editor (selected-window))
+                (side (display-buffer-in-side-window
+                       placeholder-buffer '((side . left) (slot . 0)))))
+            (set-window-dedicated-p side t)
+            (cl-letf (((symbol-function 'persp-current-name)
+                       (lambda () "imoogi-emacs"))
+                      ((symbol-function 'treemacs-select-window)
+                       (lambda () (setq opened t))))
+              (imoogi-perspective--restore-treemacs))
+            (should opened)
+            (should-not (window-live-p side))
+            (should (eq (selected-window) editor))))
+      (set-window-configuration config)
+      (kill-buffer placeholder-buffer))))
 
 (ert-deftest imoogi-perspective-state-serialization-keeps-file-and-dired-buffers-only ()
   (require 'dired)
