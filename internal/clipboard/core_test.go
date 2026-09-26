@@ -76,7 +76,7 @@ func TestPublisherRejectsDirectoryBeforePublishing(t *testing.T) {
 	}
 }
 
-func TestPublisherPreservesOrderAndAvoidsOverwrite(t *testing.T) {
+func TestPublisherReusesIdenticalAssetWithoutOverwrite(t *testing.T) {
 	source := filepath.Join(t.TempDir(), "same.txt")
 	if err := os.WriteFile(source, []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
@@ -90,14 +90,17 @@ func TestPublisherPreservesOrderAndAvoidsOverwrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Assets[0].Path == second.Assets[0].Path {
-		t.Fatal("publisher overwrote existing file")
+	if first.Assets[0].Path != second.Assets[0].Path {
+		t.Fatalf("publisher did not reuse existing file: %q != %q", first.Assets[0].Path, second.Assets[0].Path)
 	}
 	if first.Assets[0].SHA256 != second.Assets[0].SHA256 {
 		t.Fatal("hash changed")
 	}
 	if first.Assets[0].ID == second.Assets[0].ID {
 		t.Fatal("opaque asset id was reused")
+	}
+	if len(second.CreatedFiles) != 0 {
+		t.Fatalf("duplicate publish created files: %v", second.CreatedFiles)
 	}
 }
 

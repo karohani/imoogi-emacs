@@ -57,7 +57,9 @@ func (p Publisher) Publish(paths []string, root string) (PublishResult, error) {
 			return PublishResult{}, fmt.Errorf("publish %q: %w", source.path, err)
 		}
 		result.Assets = append(result.Assets, asset)
-		result.CreatedFiles = append(result.CreatedFiles, created)
+		if created != "" {
+			result.CreatedFiles = append(result.CreatedFiles, created)
+		}
 	}
 	return result, nil
 }
@@ -103,6 +105,34 @@ func publishOne(source sourceFile, root string) (Asset, string, error) {
 	}
 	defer input.Close()
 
+	// Hash the source before allocating a destination so an identical asset
+	// already in the asset root can be linked without creating a duplicate.
+	sourceHash := sha256.New()
+	if _, err := io.Copy(sourceHash, input); err != nil {
+		return Asset{}, "", err
+	}
+	if _, err := input.Seek(0, io.SeekStart); err != nil {
+		return Asset{}, "", err
+	}
+	hashHex := hex.EncodeToString(sourceHash.Sum(nil))
+	if existing, err := findExistingAsset(root, source.size, hashHex); err != nil {
+		return Asset{}, "", err
+	} else if existing != "" {
+		id, err := randomHex(16)
+		if err != nil {
+			return Asset{}, "", err
+		}
+		return Asset{
+			ID:           id,
+			Source:       source.path,
+			Path:         existing,
+			RelativePath: filepath.Base(existing),
+			MIME:         mime.TypeByExtension(strings.ToLower(filepath.Ext(existing))),
+			SHA256:       hashHex,
+			Size:         source.size,
+		}, "", nil
+	}
+
 	base := sanitizedFilename(filepath.Base(source.path))
 	ext := filepath.Ext(base)
 	stem := strings.TrimSuffix(base, ext)
@@ -114,6 +144,16 @@ func publishOne(source sourceFile, root string) (Asset, string, error) {
 		destination := filepath.Join(root, name)
 		output, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 		if errors.Is(err, os.ErrExist) {
+			if existingHash, hashErr := fileSHA256(destination); hashErr == nil && existingHash == hashHex {
+				id, idErr := randomHex(16)
+				if idErr != nil {
+					return Asset{}, "", idErr
+				}
+				return Asset{ID: id, Source: source.path, Path: destination,
+					RelativePath: filepath.Base(destination),
+					MIME:         mime.TypeByExtension(strings.ToLower(ext)),
+					SHA256:       hashHex, Size: source.size}, "", nil
+			}
 			continue
 		}
 		if err != nil {
@@ -148,6 +188,46 @@ func publishOne(source sourceFile, root string) (Asset, string, error) {
 		}, destination, nil
 	}
 	return Asset{}, "", errors.New("cannot allocate collision-free destination")
+}
+
+func findExistingAsset(root string, size int64, wantHash string) (string, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return "", err
+	}
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			return "", err
+		}
+		if !info.Mode().IsRegular() || info.Size() != size {
+			continue
+		}
+		path := filepath.Join(root, entry.Name())
+		if existingHash, err := fileSHA256(path); err != nil {
+			return "", err
+		} else if existingHash == wantHash {
+			return path, nil
+		}
+	}
+	return "", nil
+}
+
+func fileSHA256(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	hash := sha256.New()
+	_, copyErr := io.Copy(hash, file)
+	closeErr := file.Close()
+	if copyErr != nil {
+		return "", copyErr
+	}
+	if closeErr != nil {
+		return "", closeErr
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func compensate(paths []string) []string {
