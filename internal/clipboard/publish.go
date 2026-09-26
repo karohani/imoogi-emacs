@@ -3,6 +3,7 @@ package clipboard
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,19 @@ import (
 	"path/filepath"
 	"strings"
 )
+
+const assetIndexFilename = ".imoogi-asset-index.json"
+
+type assetCacheEntry struct {
+	Size    int64  `json:"size"`
+	ModTime int64  `json:"mtime_ns"`
+	SHA256  string `json:"sha256"`
+}
+
+type assetCache struct {
+	Version int                        `json:"version"`
+	Files   map[string]assetCacheEntry `json:"files"`
+}
 
 type Publisher struct {
 	Limits          Limits
@@ -46,9 +60,13 @@ func (p Publisher) Publish(paths []string, root string) (PublishResult, error) {
 			return PublishResult{}, fmt.Errorf("%s: asset root is outside its owner", CodePathEscape)
 		}
 	}
+	cache, err := loadAssetCache(root)
+	if err != nil {
+		return PublishResult{}, fmt.Errorf("load asset cache: %w", err)
+	}
 	var result PublishResult
 	for _, source := range sources {
-		asset, created, err := publishOne(source, root)
+		asset, created, err := publishOne(source, root, &cache)
 		if err != nil {
 			result.Orphans = compensate(result.CreatedFiles)
 			if len(result.Orphans) != 0 {
@@ -60,6 +78,13 @@ func (p Publisher) Publish(paths []string, root string) (PublishResult, error) {
 		if created != "" {
 			result.CreatedFiles = append(result.CreatedFiles, created)
 		}
+	}
+	if err := saveAssetCache(root, cache); err != nil {
+		result.Orphans = compensate(result.CreatedFiles)
+		if len(result.Orphans) != 0 {
+			return result, fmt.Errorf("save asset cache: %w: %s", err, CodeNeedsReconciliation)
+		}
+		return PublishResult{}, fmt.Errorf("save asset cache: %w", err)
 	}
 	return result, nil
 }
@@ -98,7 +123,7 @@ func preflightSources(paths []string, limits Limits) ([]sourceFile, error) {
 	return sources, nil
 }
 
-func publishOne(source sourceFile, root string) (Asset, string, error) {
+func publishOne(source sourceFile, root string, cache *assetCache) (Asset, string, error) {
 	input, err := os.Open(source.path)
 	if err != nil {
 		return Asset{}, "", err
@@ -115,7 +140,7 @@ func publishOne(source sourceFile, root string) (Asset, string, error) {
 		return Asset{}, "", err
 	}
 	hashHex := hex.EncodeToString(sourceHash.Sum(nil))
-	if existing, err := findExistingAsset(root, source.size, hashHex); err != nil {
+	if existing, err := findExistingAsset(root, source.size, hashHex, cache); err != nil {
 		return Asset{}, "", err
 	} else if existing != "" {
 		id, err := randomHex(16)
@@ -149,6 +174,7 @@ func publishOne(source sourceFile, root string) (Asset, string, error) {
 				if idErr != nil {
 					return Asset{}, "", idErr
 				}
+				cache.record(destination, source.size, hashHex)
 				return Asset{ID: id, Source: source.path, Path: destination,
 					RelativePath: filepath.Base(destination),
 					MIME:         mime.TypeByExtension(strings.ToLower(ext)),
@@ -159,8 +185,7 @@ func publishOne(source sourceFile, root string) (Asset, string, error) {
 		if err != nil {
 			return Asset{}, "", err
 		}
-		hash := sha256.New()
-		written, copyErr := io.Copy(io.MultiWriter(output, hash), input)
+		written, copyErr := io.Copy(output, input)
 		closeErr := output.Close()
 		if copyErr != nil || closeErr != nil || written != source.size {
 			_ = os.Remove(destination)
@@ -177,25 +202,29 @@ func publishOne(source sourceFile, root string) (Asset, string, error) {
 			_ = os.Remove(destination)
 			return Asset{}, "", err
 		}
+		cache.record(destination, written, hashHex)
 		return Asset{
 			ID:           id,
 			Source:       source.path,
 			Path:         destination,
 			RelativePath: name,
 			MIME:         mime.TypeByExtension(strings.ToLower(ext)),
-			SHA256:       hex.EncodeToString(hash.Sum(nil)),
+			SHA256:       hashHex,
 			Size:         written,
 		}, destination, nil
 	}
 	return Asset{}, "", errors.New("cannot allocate collision-free destination")
 }
 
-func findExistingAsset(root string, size int64, wantHash string) (string, error) {
+func findExistingAsset(root string, size int64, wantHash string, cache *assetCache) (string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return "", err
 	}
 	for _, entry := range entries {
+		if entry.Name() == assetIndexFilename {
+			continue
+		}
 		info, err := entry.Info()
 		if err != nil {
 			return "", err
@@ -204,13 +233,73 @@ func findExistingAsset(root string, size int64, wantHash string) (string, error)
 			continue
 		}
 		path := filepath.Join(root, entry.Name())
-		if existingHash, err := fileSHA256(path); err != nil {
+		cached, ok := cache.Files[entry.Name()]
+		var existingHash string
+		if ok && cached.Size == info.Size() && cached.ModTime == info.ModTime().UnixNano() {
+			existingHash = cached.SHA256
+		} else if existingHash, err = fileSHA256(path); err != nil {
 			return "", err
-		} else if existingHash == wantHash {
+		} else {
+			cache.Files[entry.Name()] = assetCacheEntry{Size: info.Size(), ModTime: info.ModTime().UnixNano(), SHA256: existingHash}
+		}
+		if existingHash == wantHash {
 			return path, nil
 		}
 	}
 	return "", nil
+}
+
+func (c *assetCache) record(path string, size int64, hash string) {
+	if c.Files == nil {
+		c.Files = make(map[string]assetCacheEntry)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	c.Files[filepath.Base(path)] = assetCacheEntry{Size: size, ModTime: info.ModTime().UnixNano(), SHA256: hash}
+}
+
+func loadAssetCache(root string) (assetCache, error) {
+	cache := assetCache{Version: 1, Files: make(map[string]assetCacheEntry)}
+	data, err := os.ReadFile(filepath.Join(root, assetIndexFilename))
+	if errors.Is(err, os.ErrNotExist) {
+		return cache, nil
+	}
+	if err != nil {
+		return cache, err
+	}
+	if err := json.Unmarshal(data, &cache); err != nil {
+		return assetCache{Version: 1, Files: make(map[string]assetCacheEntry)}, nil
+	}
+	if cache.Files == nil {
+		cache.Files = make(map[string]assetCacheEntry)
+	}
+	return cache, nil
+}
+
+func saveAssetCache(root string, cache assetCache) error {
+	data, err := json.MarshalIndent(cache, "", "  ")
+	if err != nil {
+		return err
+	}
+	temporary, err := os.CreateTemp(root, assetIndexFilename+".tmp-*")
+	if err != nil {
+		return err
+	}
+	temporaryName := temporary.Name()
+	defer os.Remove(temporaryName)
+	if _, err := temporary.Write(data); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(temporaryName, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(temporaryName, filepath.Join(root, assetIndexFilename))
 }
 
 func fileSHA256(path string) (string, error) {

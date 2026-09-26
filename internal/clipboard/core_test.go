@@ -102,6 +102,22 @@ func TestPublisherReusesIdenticalAssetWithoutOverwrite(t *testing.T) {
 	if len(second.CreatedFiles) != 0 {
 		t.Fatalf("duplicate publish created files: %v", second.CreatedFiles)
 	}
+	if _, err := os.Stat(filepath.Join(destination, assetIndexFilename)); err != nil {
+		t.Fatalf("asset cache was not written: %v", err)
+	}
+	if err := os.WriteFile(source, []byte("world"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	third, err := (Publisher{}).Publish([]string{source}, destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third.Assets[0].Path == first.Assets[0].Path {
+		t.Fatal("changed source reused stale asset")
+	}
+	if len(third.CreatedFiles) != 1 {
+		t.Fatalf("changed source did not create asset: %v", third.CreatedFiles)
+	}
 }
 
 func TestStoreLifecycleAndToken(t *testing.T) {
