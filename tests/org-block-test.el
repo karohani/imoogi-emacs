@@ -11,6 +11,21 @@
 (ert-deftest imoogi-org-json-source-block-uses-json-mode ()
   (should (eq (org-src-get-lang-mode "json") 'js-json-mode)))
 
+(ert-deftest imoogi-org-mermaid-source-block-uses-mermaid-mode ()
+  (should (eq (org-src-get-lang-mode "mermaid") 'mermaid-mode))
+  (should (fboundp 'mermaid-mode)))
+
+(ert-deftest imoogi-org-babel-loads-shell-and-mermaid ()
+  (require 'ob)
+  (should (eq (alist-get 'shell org-babel-load-languages) t))
+  (should (eq (alist-get 'mermaid org-babel-load-languages) t))
+  ;; `ob-shell' registers sh/bash/zsh as executable aliases.
+  (should (fboundp 'org-babel-execute:sh))
+  (should (fboundp 'org-babel-execute:mermaid)))
+
+(ert-deftest imoogi-org-babel-keeps-evaluation-confirmation ()
+  (should org-confirm-babel-evaluate))
+
 (ert-deftest imoogi-org-block-source-template-has-language-field ()
   (should (equal (imoogi-org--block-template 'source)
                  "#+begin_src ${1:language}\n$0\n#+end_src")))

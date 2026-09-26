@@ -346,6 +346,9 @@ Window parameters stay in place, so Treemacs side-window layouts remain valid."
     ("a" "현재 Focus Agenda" imoogi-project-notes-agenda-current)
     ("A" "전체 Dashboard" imoogi-project-notes-agenda-all)
     ("r" "TODO 산출물 생성" imoogi-project-notes-create-artifact)]
+   ["번호·복구 --------------"
+    ("U" "상위 번호로 승격" imoogi-project-notes-raiseup)
+    ("T" "구조 doctor" imoogi-project-notes-setup-doctor)]
    ["준비 -----------------"
     ("s" "작업 폴더에 문서 연결" imoogi-project-notes-setup)
     ("S" "학습 노트·작업공간 생성" imoogi-project-notes-setup-study)

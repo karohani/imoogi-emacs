@@ -14,8 +14,8 @@
       "files": [
         {
           "path": "packages.lock",
-          "sha256": "7c953a064e5cedb8611fcd15463cff85507f0fad4c8db2a4a19734f82527eb8b",
-          "size": 5095
+          "sha256": "66b8b2be900ad964da771e2acce76ff13d500276f42118106acb67f6c5a01487",
+          "size": 5203
         }
       ]
     },
@@ -31,8 +31,8 @@
       "files": [
         {
           "path": "packages.el",
-          "sha256": "121351a112c2dbe1e604086951d0e6c55c947b87e563d12b3192ceb814514f33",
-          "size": 2784
+          "sha256": "657fde87c8919b1a8ea41da1471dfa8de9f158988386714867517577fa9a32ab",
+          "size": 2865
         }
       ]
     },

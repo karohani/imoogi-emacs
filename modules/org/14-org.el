@@ -4,7 +4,8 @@
 
 ;;; Code:
 
-(imoogi-require "14-org" 'org 'org-appear 'hl-line 'calendar 'transient)
+(imoogi-require "14-org" 'org 'org-appear 'hl-line 'calendar 'transient
+                'mermaid-mode 'ob-mermaid)
 
 (eval-when-compile (require 'transient))
 
@@ -13,6 +14,20 @@
 ;; `#+begin_src json' editing buffers.
 (with-eval-after-load 'org-src
   (add-to-list 'org-src-lang-modes '("json" . js-json)))
+
+;; `#+begin_src mermaid' already maps to `mermaid-mode' by name.  Enable
+;; Babel execution for shell (sh/bash/zsh, built-in `ob-shell') and mermaid
+;; (`ob-mermaid', renders via mmdc on PATH).  `org-confirm-babel-evaluate'
+;; stays at its default, so each execution still asks first.
+(defun imoogi-org--enable-babel-languages ()
+  "Add shell and mermaid to `org-babel-load-languages', keeping existing ones."
+  (let ((languages org-babel-load-languages))
+    (dolist (language '(shell mermaid))
+      (setf (alist-get language languages) t))
+    (org-babel-do-load-languages 'org-babel-load-languages languages)))
+
+(with-eval-after-load 'org
+  (imoogi-org--enable-babel-languages))
 
 (defun imoogi-org--default-directory ()
   "Return imoogi's default Org directory."

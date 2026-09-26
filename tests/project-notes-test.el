@@ -3,6 +3,76 @@
 (require 'ert)
 (require 'cl-lib)
 
+(ert-deftest imoogi-project-notes-number-id-parser-accepts-levels ()
+  (should (eq 'daily
+              (alist-get 'number-level
+                         (imoogi-project-notes--parse-number-id "260925.01"))))
+  (should (eq 'monthly
+              (alist-get 'number-level
+                         (imoogi-project-notes--parse-number-id "2609.01"))))
+  (should (eq 'yearly
+              (alist-get 'number-level
+                         (imoogi-project-notes--parse-number-id "26.01"))))
+  (should (eq 'lifetime
+              (alist-get 'number-level
+                         (imoogi-project-notes--parse-number-id "L001"))))
+  (should-not (imoogi-project-notes--parse-number-id "260925-01")))
+
+(ert-deftest imoogi-project-notes-number-id-formatter-enforces-bounds ()
+  (should (equal "2609.01"
+                 (imoogi-project-notes--format-number-id 'monthly "2609" 1)))
+  (should (equal "L007"
+                 (imoogi-project-notes--format-number-id 'lifetime "L" 7)))
+  (should-error
+   (imoogi-project-notes--format-number-id 'monthly "2609" 100)))
+
+(ert-deftest imoogi-project-notes-raiseup-preserves-dotted-folder-slug ()
+  (let* ((info (imoogi-project-notes--parse-folder-number
+                "260925.01-karohani-infra-manager"))
+         (old-id (alist-get 'number-id info))
+         (name "260925.01-karohani-infra-manager"))
+    (should (equal "-karohani-infra-manager"
+                   (substring name (length old-id))))))
+
+(ert-deftest imoogi-project-notes-metadata-validation-allows-optional-identity ()
+  (should
+   (imoogi-project-notes--valid-metadata-p
+    '((schema_version . 1) (type . "project") (key . "k") (name . "n")
+      (overview . "project.org") (tasks . "tasks.org")
+      (journal . "journal.org") (todo_storage . "project")
+      (note_id . "abc") (number_id . "260925.01")
+      (number_level . "daily") (source_root_kind . "source")
+      (workspace_role . "project")))))
+
+(ert-deftest imoogi-project-notes-entry-identity-is-retained-on-construction ()
+  (let ((entry (imoogi-project-notes--entry
+                "key" "/tmp/source" "/tmp/260925.01-note" 'project)))
+    (should (stringp (alist-get 'note-id entry)))
+    (should (equal "260925.01" (alist-get 'number-id entry)))
+    (should (equal "daily" (alist-get 'number-level entry)))))
+
+(ert-deftest imoogi-project-notes-local-metadata-reconciles-stale-registry ()
+  (imoogi-project-notes-test--isolated
+    (let* ((notes (expand-file-name "260925.01-note/"
+                                   imoogi-project-notes-directory))
+           (entry (imoogi-project-notes--entry
+                   "dir:source" root notes 'project)))
+      (make-directory notes t)
+      (imoogi-project-notes-test--write-metadata
+       notes "dir:source" "project" root)
+      (setf (alist-get 'notes-dir entry)
+            (expand-file-name "old-folder/" imoogi-project-notes-directory))
+      (imoogi-project-notes--write-registry (list entry))
+      (should
+       (cl-some (lambda (candidate)
+                  (equal (file-name-as-directory notes)
+                         (file-name-as-directory
+                          (alist-get 'notes-dir candidate))))
+                (imoogi-project-notes--all-entries))))))
+
+(ert-deftest imoogi-project-notes-treemacs-root-list-preserves-wrapper ()
+  (should (fboundp 'imoogi-treemacs-open-workspace-roots)))
+
 (defmacro imoogi-project-notes-test--isolated (&rest body)
   (declare (indent 0) (debug t))
   `(let* ((sandbox (file-truename (make-temp-file "imoogi-project-notes-" t)))
@@ -566,6 +636,42 @@
       (should (file-directory-p old))
       (should (file-directory-p duplicate)))))
 
+(ert-deftest imoogi-project-notes-rename-commit-failure-restores-directory ()
+  (imoogi-project-notes-test--isolated
+    (let* ((old (expand-file-name "260925.01-source/"
+                                 imoogi-project-notes-directory))
+           (new (expand-file-name "2609.01-source/"
+                                 imoogi-project-notes-directory))
+           (entry (imoogi-project-notes--entry
+                   "dir:source" root old 'project)))
+      (make-directory old t)
+      (with-temp-file (expand-file-name "payload.org" old)
+        (insert "payload"))
+      (should-error
+       (imoogi-project-notes--rename-entry-directory
+        entry old new (lambda (_entry) (error "commit failure"))))
+      (should (file-exists-p (expand-file-name "payload.org" old)))
+      (should-not (file-exists-p new)))))
+
+(ert-deftest imoogi-project-notes-rename-quit-restores-directory ()
+  "A user quit during the commit phase must restore the original folder."
+  (imoogi-project-notes-test--isolated
+    (let* ((old (expand-file-name "260925.01-source/"
+                                 imoogi-project-notes-directory))
+           (new (expand-file-name "2609.01-source/"
+                                 imoogi-project-notes-directory))
+           (entry (imoogi-project-notes--entry
+                   "dir:source" root old 'project)))
+      (make-directory old t)
+      (with-temp-file (expand-file-name "payload.org" old)
+        (insert "payload"))
+      (condition-case nil
+          (imoogi-project-notes--rename-entry-directory
+           entry old new (lambda (_entry) (signal 'quit nil)))
+        (quit nil))
+      (should (file-exists-p (expand-file-name "payload.org" old)))
+      (should-not (file-exists-p new)))))
+
 (ert-deftest imoogi-project-notes-default-directory-collision-keeps-date-prefix ()
   (imoogi-project-notes-test--isolated
     (cl-letf (((symbol-function 'imoogi-project-notes--start-date)
@@ -882,12 +988,21 @@
         (should (buffer-modified-p))))))
 
 (ert-deftest imoogi-project-notes-transient-commands-available ()
+  (should (commandp #'imoogi-project-notes-raiseup))
+  (should (commandp #'imoogi-project-notes-setup-doctor))
   (should (eq (plist-get (cdr (transient-get-suffix 'imoogi-transient-project "m")) :command)
               'imoogi-project-notes-transient))
   (dolist (key '("s" "S" "o" "t" "j" "l" "a" "A" "r" "d" "n" "h"
-                 "+" "L" "E" "R" "D" "x" "u" "c" "C" "e"))
+                 "+" "L" "E" "R" "D" "x" "u" "c" "C" "e" "U" "T"))
     (should (commandp (plist-get (cdr (transient-get-suffix 'imoogi-project-notes-transient key))
                                  :command)))))
+
+(ert-deftest imoogi-project-notes-doctor-suggests-valid-numbered-name ()
+  (should (equal "260925.01-karohani-infra-manager"
+                 (imoogi-project-notes--doctor-suggested-name
+                  "260925-karohani-infra-manager")))
+  (should (equal "2601.01-study"
+                 (imoogi-project-notes--doctor-suggested-name "2601-study"))))
 
 (ert-deftest imoogi-project-notes-artifact-links-task-both-ways ()
   (imoogi-project-notes-test--isolated

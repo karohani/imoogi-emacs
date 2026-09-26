@@ -1,5 +1,5 @@
 ;; imoogi-emacs packages.lock — vendor/elpa/ 에 동결된 패키지 버전
-;; 생성: emacs 30.2, 총 91 패키지
+;; 생성: emacs 30.2, 총 93 패키지
 ;; NAME                         VERSION                ARCHIVE
 ace-window                   0.10.0                 ?
 aggressive-indent            1.10.0                 ?
@@ -59,9 +59,11 @@ marginalia                   2.11                   ?
 markdown-mode                2.8                    ?
 markdown-toc                 20260131.1444          ?
 memoize                      20200103.2036          ?
+mermaid-mode                 20260607.15            ?
 nerd-icons                   20260613.1537          ?
 nginx-mode                   1.1.10                 ?
 nix-mode                     1.5.0                  ?
+ob-mermaid                   20260323.559           ?
 obsidian                     20250220.2245          ?
 orderless                    1.7                    ?
 org-appear                   20240716.1413          ?

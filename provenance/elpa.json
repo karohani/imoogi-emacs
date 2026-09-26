@@ -5578,6 +5578,39 @@
       ]
     },
     {
+      "id": "elpa/mermaid-mode",
+      "kind": "elisp-source",
+      "version": "20260607.15",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/abrochard/mermaid-mode",
+        "commit": "804dbcb1452e7496ae0c48e20362da6351227246"
+      },
+      "workflow": "emacs --batch -Q -l scripts/vendor.el",
+      "files": [
+        {
+          "path": "vendor/elpa/mermaid-mode-20260607.15/mermaid-mode-autoloads.el",
+          "sha256": "f85dff3da27ac3f8df7212cae83fb9dcc1af2e5bee2df6a764edd4f1cd1b9df1",
+          "size": 829
+        },
+        {
+          "path": "vendor/elpa/mermaid-mode-20260607.15/mermaid-mode-pkg.el",
+          "sha256": "1040e71f236b0c76cc4ffb7545a896040b7b25aea4652ed779e1c8796352fcc8",
+          "size": 350
+        },
+        {
+          "path": "vendor/elpa/mermaid-mode-20260607.15/mermaid-mode.el",
+          "sha256": "ef6ca0f63da7646fb79cead0558a953ab0842925d32171f2165880ac2f05eea3",
+          "size": 10270
+        },
+        {
+          "path": "vendor/elpa/mermaid-mode-20260607.15/mermaid-mode.elc",
+          "sha256": "e181ed50e23f1bfb242fab6d957720badb44a84390a7240ba05d7d8badd2aab6",
+          "size": 9626
+        }
+      ]
+    },
+    {
       "id": "elpa/nerd-icons",
       "kind": "elisp-source",
       "version": "20260613.1537",
@@ -6003,6 +6036,49 @@
           "path": "vendor/elpa/nix-mode-1.5.0/nix.elc",
           "sha256": "0511a3deb9726da3c45a106839d8eb6cc2ecdf691b03868a4d799a03f2af4ab7",
           "size": 9438
+        }
+      ]
+    },
+    {
+      "id": "elpa/ob-mermaid",
+      "kind": "elisp-source",
+      "version": "20260323.559",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/arnm/ob-mermaid",
+        "commit": "30c2da02e3d24dbec0d004d3c6dfe7b381500b05"
+      },
+      "workflow": "emacs --batch -Q -l scripts/vendor.el",
+      "files": [
+        {
+          "path": "vendor/elpa/ob-mermaid-20260323.559/ob-mermaid-autoloads.el",
+          "sha256": "c1c4e1f3c5388d62bfe322ff7f04da12d5f92cd731f4d1169399b8681c4d4ee0",
+          "size": 708
+        },
+        {
+          "path": "vendor/elpa/ob-mermaid-20260323.559/ob-mermaid-pkg.el",
+          "sha256": "3b07c5e6786a777657a766e059308da414862a4372c73767253eb2be86989e4b",
+          "size": 413
+        },
+        {
+          "path": "vendor/elpa/ob-mermaid-20260323.559/ob-mermaid.el",
+          "sha256": "049129857dba029d955ef42d5f16783fd9341e9b1e58325f1c89a7d082568484",
+          "size": 4713
+        },
+        {
+          "path": "vendor/elpa/ob-mermaid-20260323.559/ob-mermaid.elc",
+          "sha256": "1d45e49fbcdddf74288b9c012d496393d72d9addac6d85d655c40000c20ba014",
+          "size": 2488
+        },
+        {
+          "path": "vendor/elpa/ob-mermaid-20260323.559/test-init.el",
+          "sha256": "8d1e14cd0d0e80eb0a1f5e054e41abfd94e568041bd48cb4cccf9ab4755b0a70",
+          "size": 1883
+        },
+        {
+          "path": "vendor/elpa/ob-mermaid-20260323.559/test-init.elc",
+          "sha256": "8032bc162ffde82ae3e85828d7908d89e8b417577882c5fc33cef889c824acf3",
+          "size": 1111
         }
       ]
     },

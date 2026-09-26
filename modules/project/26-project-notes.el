@@ -3,7 +3,7 @@
 ;;; Code:
 
 (imoogi-require "26-project-notes" 'cl-lib 'json 'org 'org-agenda 'org-id
-                'project 'subr-x)
+                'project 'seq 'subr-x)
 
 (require 'cl-lib)
 (require 'json)
@@ -11,6 +11,7 @@
 (require 'org-agenda)
 (require 'org-id)
 (require 'project)
+(require 'seq)
 (require 'subr-x)
 
 (defgroup imoogi-project-notes nil
@@ -72,16 +73,100 @@ a navigation file.  Changing this option does not migrate existing projects."
 (defconst imoogi-project-notes--metadata-file-name ".imoogi-project.json"
   "File that identifies the kind and layout of a project-notes directory.")
 
+(defconst imoogi-project-notes--number-id-regexp
+  "\\(?:[0-9]\\{6\\}\\.[0-9][0-9]\\|[0-9]\\{4\\}\\.[0-9][0-9]\\|[0-9]\\{2\\}\\.[0-9][0-9]\\|L[0-9][0-9][0-9]\\)"
+  "Regexp matching a project-notes numbering id without folder slug.")
+
 (defconst imoogi-project-notes--folder-name-regexp
-  "\\`\\(?:[0-9]\\{4\\}\\.[0-9]+\\|[0-9]\\{2\\}\\.[0-9][0-9]\\|[0-9]\\{6\\}\\.[0-9][0-9]\\|\\(?:[0-9]\\{4\\}\\(?:\\.[0-9]+\\)?\\|[0-9]\\{2\\}\\.[0-9][0-9]\\|[0-9]\\{6\\}\\.[0-9][0-9]\\)-[[:alnum:]_.-]+\\)\\'"
+  (concat "\\`" imoogi-project-notes--number-id-regexp
+          "\\(?:-[[:alnum:]_.-]+\\)?\\'")
   "Regexp for accepted project-notes folder names.")
 
+(defconst imoogi-project-notes--number-level-order
+  '(daily monthly yearly lifetime)
+  "Supported project-notes numbering levels from narrow to broad.")
+
+(defun imoogi-project-notes--number-id-from-name (name)
+  "Return the visible numbering id prefix from folder NAME, or nil."
+  (when (and (stringp name)
+             (string-match
+              (concat "\\`\\(" imoogi-project-notes--number-id-regexp
+                      "\\)\\(?:-[[:alnum:]_.-]+\\)?\\'")
+              name))
+    (match-string 1 name)))
+
+(defun imoogi-project-notes--parse-number-id (number-id)
+  "Parse NUMBER-ID and return its structured alist, or nil.
+Recognized forms are daily YYMMDD.NN, monthly YYMM.NN, yearly YY.NN, and
+lifetime LNNN."
+  (when (stringp number-id)
+    (cond
+     ((string-match "\\`\\([0-9]\\{6\\}\\)\\.\\([0-9][0-9]\\)\\'" number-id)
+      `((number-id . ,number-id)
+        (number-level . daily)
+        (scope . ,(match-string 1 number-id))
+        (sequence . ,(string-to-number (match-string 2 number-id)))))
+     ((string-match "\\`\\([0-9]\\{4\\}\\)\\.\\([0-9][0-9]\\)\\'" number-id)
+      `((number-id . ,number-id)
+        (number-level . monthly)
+        (scope . ,(match-string 1 number-id))
+        (sequence . ,(string-to-number (match-string 2 number-id)))))
+     ((string-match "\\`\\([0-9]\\{2\\}\\)\\.\\([0-9][0-9]\\)\\'" number-id)
+      `((number-id . ,number-id)
+        (number-level . yearly)
+        (scope . ,(match-string 1 number-id))
+        (sequence . ,(string-to-number (match-string 2 number-id)))))
+     ((string-match "\\`L\\([0-9][0-9][0-9]\\)\\'" number-id)
+      `((number-id . ,number-id)
+        (number-level . lifetime)
+        (scope . "L")
+        (sequence . ,(string-to-number (match-string 1 number-id))))))))
+
+(defun imoogi-project-notes--parse-folder-number (name)
+  "Parse the visible project-notes number from folder NAME."
+  (when-let* ((number-id (imoogi-project-notes--number-id-from-name name)))
+    (imoogi-project-notes--parse-number-id number-id)))
+
+(defun imoogi-project-notes--format-number-id (level scope sequence)
+  "Return a NUMBER-ID for LEVEL, SCOPE, and SEQUENCE."
+  (unless (and (integerp sequence) (<= 1 sequence))
+    (user-error "번호 순서는 1 이상의 정수여야 합니다"))
+  (pcase level
+    ('daily
+     (unless (and (stringp scope)
+                  (string-match-p "\\`[0-9]\\{6\\}\\'" scope))
+       (user-error "일간 프로젝트 범위는 YYMMDD 형식이어야 합니다: %s" scope))
+     (when (> sequence 99)
+       (user-error "일간 프로젝트 순서는 99를 초과할 수 없습니다"))
+     (format "%s.%02d" scope sequence))
+    ('monthly
+     (unless (and (stringp scope)
+                  (string-match-p "\\`[0-9]\\{4\\}\\'" scope))
+       (user-error "월간 프로젝트 범위는 YYMM 형식이어야 합니다: %s" scope))
+     (when (> sequence 99)
+       (user-error "월간 프로젝트 순서는 99를 초과할 수 없습니다"))
+     (format "%s.%02d" scope sequence))
+    ('yearly
+     (unless (and (stringp scope)
+                  (string-match-p "\\`[0-9]\\{2\\}\\'" scope))
+       (user-error "연간 프로젝트 범위는 YY 형식이어야 합니다: %s" scope))
+     (when (> sequence 99)
+       (user-error "연간 프로젝트 순서는 99를 초과할 수 없습니다"))
+     (format "%s.%02d" scope sequence))
+    ('lifetime
+     (when (> sequence 999)
+       (user-error "평생 프로젝트 순서는 999를 초과할 수 없습니다"))
+     (format "L%03d" sequence))
+    (_ (user-error "알 수 없는 프로젝트 번호 수준입니다: %s" level))))
+
 (defun imoogi-project-notes--doctor-suggested-name (name)
-  "Return a PC-friendly suggestion for invalid folder NAME."
-  (if (string-match "\\`\\([0-9]\\{6\\}\\)-\\(.+\\)\\'" name)
-      (format "%s-%s" (substring (match-string 1 name) 0 4)
-              (match-string 2 name))
-    name))
+  "Return a valid numbered suggestion for invalid folder NAME."
+  (cond
+   ((string-match "\\`\\([0-9]\\{6\\}\\)-\\(.+\\)\\'" name)
+    (format "%s.01-%s" (match-string 1 name) (match-string 2 name)))
+   ((string-match "\\`\\([0-9]\\{4\\}\\|[0-9]\\{2\\}\\)-\\(.+\\)\\'" name)
+    (format "%s.01-%s" (match-string 1 name) (match-string 2 name)))
+   (t name)))
 
 (defconst imoogi-project-notes--documents
   '((domain . ("domain.org" . "도메인 모델"))
@@ -177,6 +262,99 @@ a navigation file.  Changing this option does not migrate existing projects."
   "Return the host-local mounted roots registry path."
   (locate-user-emacs-file ".cache/project-notes-mounted-roots.json"))
 
+(defun imoogi-project-notes--repair-marker-file ()
+  "Return the path of the pending session-repair marker."
+  (locate-user-emacs-file "imoogi-project-notes/repair-pending.json"))
+
+(defun imoogi-project-notes--write-repair-marker
+    (entry old-root new-root failures)
+  "Persist a recoverable session projection marker for ENTRY.
+FAILURES describes projections that could not be updated.  Never overwrite an
+existing marker: the doctor must repair the older projection first."
+  (let ((file (imoogi-project-notes--repair-marker-file)))
+    (when (file-exists-p file)
+      (user-error "보류 중인 project-notes 복구가 있습니다: %s" file))
+    (make-directory (file-name-directory file) t)
+    (let ((json-encoding-pretty-print t))
+      (with-temp-file file
+        (insert (json-encode
+                `((note_id . ,(imoogi-project-notes--entry-note-id entry))
+                  (old_path . ,old-root)
+                  (new_path . ,new-root)
+                  (failed_projections . ,failures)
+                  (expected_workspaces .
+                   ,(vconcat
+                     (delete-dups
+                      (delq nil (mapcar #'car failures)))))
+                  (created_at . ,(format-time-string "%Y-%m-%dT%H:%M:%S%z"))))
+                "\n")))))
+
+(defun imoogi-project-notes--consume-repair-marker ()
+  "Repair the projection recorded in the pending marker, if any.
+Return non-nil when a marker was consumed successfully."
+  (let ((file (imoogi-project-notes--repair-marker-file)))
+    (when (file-readable-p file)
+      (let* ((json-object-type 'alist)
+             (json-key-type 'symbol)
+             (json-array-type 'list)
+             (marker (json-read-file file))
+             (old-root (alist-get 'old_path marker))
+             (new-root (alist-get 'new_path marker))
+             (expected-workspaces
+              (delete-dups
+               (cl-remove-if-not #'stringp
+                                 (append (alist-get 'expected_workspaces marker)
+                                         nil)))))
+        (unless expected-workspaces
+          (user-error "project-notes 복구 marker에 workspace 정보가 없습니다"))
+        (unless (and old-root new-root (file-directory-p new-root))
+          (user-error "project-notes 복구 marker의 경로가 유효하지 않습니다: %s" file))
+        (unless (and (fboundp 'treemacs-workspaces)
+                     (fboundp 'treemacs-workspace->projects)
+                     (fboundp 'treemacs-project->path)
+                     (fboundp 'treemacs-do-remove-project-from-workspace)
+                     (fboundp 'treemacs-do-add-project-to-workspace))
+          (require 'treemacs-workspaces nil t))
+        (unless (and (fboundp 'treemacs-workspaces)
+                     (fboundp 'treemacs-workspace->projects)
+                     (fboundp 'treemacs-project->path)
+                     (fboundp 'treemacs-do-remove-project-from-workspace)
+                     (fboundp 'treemacs-do-add-project-to-workspace))
+          (user-error "Treemacs가 로드되지 않아 project-notes 복구를 수행할 수 없습니다"))
+        (let ((workspaces (treemacs-workspaces)))
+          (unless (cl-every (lambda (name)
+                              (cl-some (lambda (workspace)
+                                         (equal name
+                                                (treemacs-workspace->name workspace)))
+                                       workspaces))
+                            expected-workspaces)
+            (user-error "복구 대상 Treemacs workspace가 없어 marker를 보존합니다")))
+        (let ((failures
+               (imoogi-project-notes--replace-treemacs-root old-root new-root)))
+          (if failures
+              (user-error "Treemacs 복구가 아직 끝나지 않았습니다: %S" failures)
+            (let ((workspaces (treemacs-workspaces)))
+              (unless
+                  (cl-every
+                   (lambda (name)
+                     (let ((workspace
+                            (cl-find name workspaces
+                                     :key #'treemacs-workspace->name
+                                     :test #'equal)))
+                       (and workspace
+                            (cl-some
+                             (lambda (project)
+                               (equal (directory-file-name
+                                       (expand-file-name
+                                        (treemacs-project->path project)))
+                                      (directory-file-name
+                                       (expand-file-name new-root))))
+                             (treemacs-workspace->projects workspace))))
+                   expected-workspaces)
+                (user-error "Treemacs 복구 결과를 확인하지 못해 marker를 보존합니다")))
+            (delete-file file)
+            t)))))))
+
 (defun imoogi-project-notes--metadata-file (directory)
   "Return the metadata file below project-notes DIRECTORY."
   (expand-file-name imoogi-project-notes--metadata-file-name directory))
@@ -242,6 +420,60 @@ Git worktrees share the same key by using Git's common directory."
   (let ((value (alist-get key alist)))
     (and (stringp value) value)))
 
+(defun imoogi-project-notes--new-note-id ()
+  "Return a new portable note id."
+  (upcase (org-id-new)))
+
+(defun imoogi-project-notes--entry-note-id (entry &optional create)
+  "Return ENTRY's portable note id.
+When CREATE is non-nil, create and store a new id in ENTRY when absent."
+  (or (imoogi-project-notes--alist-string 'note-id entry)
+      (and create
+           (let ((note-id (imoogi-project-notes--new-note-id)))
+             (setf (alist-get 'note-id entry) note-id)
+             note-id))))
+
+(defun imoogi-project-notes--entry-derived-note-id (entry)
+  "Return ENTRY's persisted note id or a stable read-side legacy id."
+  (or (imoogi-project-notes--entry-note-id entry)
+      (concat "legacy:"
+              (secure-hash
+               'sha1
+               (concat (or (imoogi-project-notes--alist-string 'key entry) "")
+                       "\0"
+                       (or (imoogi-project-notes--alist-string
+                            'notes-dir entry)
+                           ""))))))
+
+(defun imoogi-project-notes--number-info-for-directory (directory)
+  "Return parsed numbering info for DIRECTORY's folder name."
+  (imoogi-project-notes--parse-folder-number
+   (file-name-nondirectory (directory-file-name directory))))
+
+(defun imoogi-project-notes--entry-number-info (entry)
+  "Return parsed numbering info for ENTRY from metadata or folder name."
+  (or (when-let* ((number-id
+                   (imoogi-project-notes--alist-string 'number-id entry)))
+        (imoogi-project-notes--parse-number-id number-id))
+      (when-let* ((directory
+                   (imoogi-project-notes--alist-string 'notes-dir entry)))
+        (imoogi-project-notes--number-info-for-directory directory))))
+
+(defun imoogi-project-notes--entry-ensure-derived-fields (entry &optional create-note-id)
+  "Populate optional identity and numbering fields on ENTRY."
+  (imoogi-project-notes--entry-note-id entry create-note-id)
+  (when-let* ((info (imoogi-project-notes--entry-number-info entry)))
+    (setf (alist-get 'number-id entry)
+          (alist-get 'number-id info))
+    (setf (alist-get 'number-level entry)
+          (symbol-name (alist-get 'number-level info))))
+  (unless (imoogi-project-notes--alist-string 'source-root-kind entry)
+    (setf (alist-get 'source-root-kind entry)
+          (if (eq (imoogi-project-notes--entry-type entry) 'study)
+              "notes"
+            "source")))
+  entry)
+
 (defun imoogi-project-notes--valid-entry-p (entry)
   "Return non-nil when ENTRY is safe plain registry data."
   (and (listp entry)
@@ -254,21 +486,41 @@ Git worktrees share the same key by using Git's common directory."
 
 (defun imoogi-project-notes--valid-metadata-p (metadata)
   "Return non-nil when METADATA describes a supported notes directory."
-  (and (listp metadata)
-       (equal (alist-get 'schema_version metadata) 1)
-       (member (imoogi-project-notes--alist-string 'type metadata)
-               '("project" "study"))
-       (imoogi-project-notes--alist-string 'key metadata)
-       (imoogi-project-notes--alist-string 'name metadata)
-       (imoogi-project-notes--alist-string 'overview metadata)
-       (imoogi-project-notes--alist-string 'tasks metadata)
-       (imoogi-project-notes--alist-string 'journal metadata)
-       (let ((storage (imoogi-project-notes--alist-string
-                       'todo_storage metadata)))
-         (or (null storage) (member storage '("project" "central"))))
-       (if (string= (imoogi-project-notes--alist-string 'type metadata) "study")
-           (imoogi-project-notes--alist-string 'study_id metadata)
-         t)))
+  (let* ((number-id (imoogi-project-notes--alist-string 'number_id metadata))
+         (number-level (imoogi-project-notes--alist-string 'number_level metadata))
+         (number-info (and number-id
+                           (imoogi-project-notes--parse-number-id number-id)))
+         (source-kind (imoogi-project-notes--alist-string
+                       'source_root_kind metadata))
+         (workspace-role (imoogi-project-notes--alist-string
+                          'workspace_role metadata)))
+    (and (listp metadata)
+         (equal (alist-get 'schema_version metadata) 1)
+         (member (imoogi-project-notes--alist-string 'type metadata)
+                 '("project" "study"))
+         (imoogi-project-notes--alist-string 'key metadata)
+         (imoogi-project-notes--alist-string 'name metadata)
+         (imoogi-project-notes--alist-string 'overview metadata)
+         (imoogi-project-notes--alist-string 'tasks metadata)
+         (imoogi-project-notes--alist-string 'journal metadata)
+         (let ((storage (imoogi-project-notes--alist-string
+                         'todo_storage metadata)))
+           (or (null storage) (member storage '("project" "central"))))
+         (let ((note-id (imoogi-project-notes--alist-string
+                         'note_id metadata)))
+           (or (null note-id) (not (string-empty-p note-id))))
+         (or (null number-id) number-info)
+         (or (null number-level)
+             (and number-info
+                  (string= number-level
+                           (symbol-name
+                            (alist-get 'number-level number-info)))))
+         (or (null source-kind) (member source-kind '("source" "notes")))
+         (or (null workspace-role)
+             (member workspace-role '("project" "study")))
+         (if (string= (imoogi-project-notes--alist-string 'type metadata) "study")
+             (imoogi-project-notes--alist-string 'study_id metadata)
+           t))))
 
 (defun imoogi-project-notes--read-metadata-file (file &optional noerror)
   "Read and validate project-notes metadata FILE.
@@ -308,6 +560,13 @@ When NOERROR is non-nil, return nil and warn instead of signaling."
   "Build a registry-compatible entry from METADATA stored in FILE."
   (let* ((root (file-name-directory file))
          (type (imoogi-project-notes--alist-string 'type metadata))
+         (number-id (or (imoogi-project-notes--alist-string
+                         'number_id metadata)
+                        (imoogi-project-notes--number-id-from-name
+                         (file-name-nondirectory
+                          (directory-file-name root)))))
+         (number-info (and number-id
+                           (imoogi-project-notes--parse-number-id number-id)))
          (resolve
           (lambda (key)
             (let* ((relative (imoogi-project-notes--alist-string key metadata))
@@ -322,9 +581,17 @@ When NOERROR is non-nil, return nil and warn instead of signaling."
                         (or (imoogi-project-notes--alist-string
                              'source_root metadata)
                             root))))
-    `((key . ,(imoogi-project-notes--alist-string 'key metadata))
+          `((key . ,(imoogi-project-notes--alist-string 'key metadata))
       (type . ,type)
       (name . ,(imoogi-project-notes--alist-string 'name metadata))
+      (note-id . ,(imoogi-project-notes--alist-string 'note_id metadata))
+      (number-id . ,(and number-info (alist-get 'number-id number-info)))
+      (number-level . ,(and number-info
+                            (symbol-name (alist-get 'number-level number-info))))
+      (source-root-kind . ,(imoogi-project-notes--alist-string
+                            'source_root_kind metadata))
+      (workspace-role . ,(imoogi-project-notes--alist-string
+                          'workspace_role metadata))
       ,@(when-let* ((study-id (imoogi-project-notes--alist-string
                                'study_id metadata)))
           `((study-id . ,study-id)))
@@ -529,8 +796,12 @@ return an empty state instead of signaling for malformed data."
 (defun imoogi-project-notes--decorate-local-entry (entry)
   "Return a copied local registry ENTRY with read-side identity fields."
   (let ((copy (copy-tree entry)))
+    (imoogi-project-notes--entry-ensure-derived-fields copy)
     (push '(origin . local) copy)
     (push (cons 'logical-key (alist-get 'key copy)) copy)
+    (push (cons 'logical-note-id
+                (imoogi-project-notes--entry-derived-note-id copy))
+          copy)
     (push (cons 'instance-id (concat "local:" (alist-get 'key copy))) copy)
     copy))
 
@@ -568,6 +839,10 @@ return an empty state instead of signaling for malformed data."
                 (study-p 'notes-directory)
                 (effective 'metadata)
                 (t 'missing))))
+    (imoogi-project-notes--entry-ensure-derived-fields copy)
+    (push (cons 'logical-note-id
+                (imoogi-project-notes--entry-derived-note-id copy))
+          copy)
     (push (cons 'effective-source-root
                 (and effective
                      (imoogi-project-notes--directory-file-name effective)))
@@ -625,13 +900,41 @@ Invalid metadata is warned about and skipped."
           :warning))))
     (nreverse entries)))
 
+(defun imoogi-project-notes--scan-local-metadata ()
+  "Return local metadata entries, including folders missing from the registry."
+  (let ((root (expand-file-name imoogi-project-notes-directory))
+        entries)
+    (when (file-directory-p root)
+      (dolist (file (directory-files-recursively
+                     root
+                     (concat "\\`"
+                             (regexp-quote
+                              imoogi-project-notes--metadata-file-name)
+                             "\\'")
+                     nil nil))
+        (when-let* ((metadata
+                     (imoogi-project-notes--read-metadata-file file 'noerror))
+                    (entry (ignore-errors
+                             (imoogi-project-notes--metadata-entry
+                              file metadata))))
+          (push (cons 'origin 'local) entry)
+          (push (cons 'instance-id
+                      (concat "local:"
+                              (or (alist-get 'key entry)
+                                  (imoogi-project-notes--entry-derived-note-id
+                                   entry))))
+                entry)
+          (push entry entries))))
+    (nreverse entries)))
+
 (defun imoogi-project-notes--all-entries ()
   "Return local and currently available mounted project-note entries.
 Local registry entries win when the same canonical notes directory is also
 found below a mounted root.  Equal logical keys on different mounted roots
 remain distinct through their `instance-id'."
-  (let* ((locals (mapcar #'imoogi-project-notes--decorate-local-entry
-                         (imoogi-project-notes--read-registry)))
+  (let* ((locals (append (imoogi-project-notes--scan-local-metadata)
+                         (mapcar #'imoogi-project-notes--decorate-local-entry
+                                 (imoogi-project-notes--read-registry))))
          (local-dirs
           (mapcar (lambda (entry)
                     (imoogi-project-notes--directory-file-name
@@ -663,6 +966,93 @@ remain distinct through their `instance-id'."
           (push entry result))))
     (nreverse result)))
 
+(defun imoogi-project-notes--root-number-id-entries (root origin &optional label)
+  "Return numbering id entries discovered directly below ROOT."
+  (let ((root (and root (file-name-as-directory (expand-file-name root))))
+        result)
+    (when (and root (file-directory-p root))
+      (dolist (directory (directory-files root t "^[^.].*" t))
+        (when (file-directory-p directory)
+          (let* ((name (file-name-nondirectory
+                        (directory-file-name directory)))
+                 (metadata-file (imoogi-project-notes--metadata-file directory))
+                 (metadata (and (file-readable-p metadata-file)
+                                (imoogi-project-notes--read-metadata-file
+                                 metadata-file 'noerror)))
+                 (metadata-entry
+                  (and metadata
+                       (ignore-errors
+                         (imoogi-project-notes--metadata-entry
+                          metadata-file metadata))))
+                 (number-id
+                  (or (and metadata-entry
+                           (imoogi-project-notes--alist-string
+                            'number-id metadata-entry))
+                      (imoogi-project-notes--number-id-from-name name)))
+                 (number-info (and number-id
+                                   (imoogi-project-notes--parse-number-id
+                                    number-id))))
+            (when number-info
+              (push `((number-id . ,(alist-get 'number-id number-info))
+                      (number-level . ,(symbol-name
+                                        (alist-get 'number-level number-info)))
+                      (directory . ,(imoogi-project-notes--directory-file-name
+                                     directory))
+                      (folder-name . ,name)
+                      (origin . ,origin)
+                      ,@(when label `((label . ,label)))
+                      ,@(when metadata-entry
+                          `((key . ,(alist-get 'key metadata-entry))
+                            (logical-note-id
+                             . ,(imoogi-project-notes--entry-derived-note-id
+                                 metadata-entry)))))
+                    result))))))
+    (nreverse result)))
+
+(defun imoogi-project-notes--all-number-id-entries (&optional additional-root)
+  "Return visible numbering ids from local, mounted, and ADDITIONAL-ROOT roots."
+  (let* ((mounted-state (imoogi-project-notes--read-mounted-state 'noerror))
+         (roots `((local ,imoogi-project-notes-directory nil)
+                  ,@(mapcar
+                     (lambda (root)
+                       `(mounted ,(alist-get 'path root)
+                                 ,(imoogi-project-notes--alist-string
+                                   'label root)))
+                     (cl-remove-if
+                      (lambda (root)
+                        (eq (alist-get 'enabled root) :json-false))
+                      (alist-get 'roots mounted-state)))
+                  ,@(when additional-root
+                      `((additional ,additional-root nil)))))
+         result)
+    (dolist (spec roots)
+      (setq result
+            (append result
+                    (imoogi-project-notes--root-number-id-entries
+                     (nth 1 spec) (car spec) (nth 2 spec)))))
+    (cl-remove-duplicates
+     result
+     :test (lambda (left right)
+             (and (equal (alist-get 'number-id left)
+                         (alist-get 'number-id right))
+                  (equal (alist-get 'directory left)
+                         (alist-get 'directory right)))))))
+
+(defun imoogi-project-notes--number-id-conflict (number-id &optional except-directory)
+  "Return an existing numbering entry for NUMBER-ID, ignoring EXCEPT-DIRECTORY."
+  (let ((except-directory (and except-directory
+                               (imoogi-project-notes--directory-file-name
+                                except-directory))))
+    (cl-find-if
+     (lambda (entry)
+       (and (string= number-id (alist-get 'number-id entry))
+            (not (and except-directory
+                      (string=
+                       except-directory
+                       (imoogi-project-notes--directory-file-name
+                        (alist-get 'directory entry)))))))
+     (imoogi-project-notes--all-number-id-entries))))
+
 (defun imoogi-project-notes--find-entry-by-key (key &optional entries)
   "Return registry entry matching KEY."
   (cl-find key (or entries (imoogi-project-notes--read-registry))
@@ -691,7 +1081,29 @@ remain distinct through their `instance-id'."
 (defun imoogi-project-notes--current-entry ()
   "Return the registry entry for the current source or notes buffer."
   (let ((entries (imoogi-project-notes--all-entries)))
-    (or (and imoogi-project-notes-entry-instance-id
+    (or (when-let* ((metadata-entry
+                     (imoogi-project-notes--current-metadata-entry)))
+          (let* ((note-id (imoogi-project-notes--entry-note-id metadata-entry))
+                 (metadata-dir
+                  (imoogi-project-notes--directory-file-name
+                   (alist-get 'notes-dir metadata-entry)))
+                 (candidates
+                  (if note-id
+                      (cl-remove-if-not
+                       (lambda (candidate)
+                         (string= note-id
+                                  (imoogi-project-notes--entry-note-id
+                                   candidate)))
+                       entries)
+                    entries)))
+            (or (cl-find metadata-dir candidates
+                         :key (lambda (candidate)
+                                (imoogi-project-notes--directory-file-name
+                                 (alist-get 'notes-dir candidate)))
+                         :test #'string=)
+                (and note-id (= (length candidates) 1) (car candidates))
+                metadata-entry)))
+        (and imoogi-project-notes-entry-instance-id
              (cl-find imoogi-project-notes-entry-instance-id entries
                       :key (lambda (entry) (alist-get 'instance-id entry))
                       :test #'string=))
@@ -701,11 +1113,6 @@ remain distinct through their `instance-id'."
               entries))
         (and buffer-file-name
              (imoogi-project-notes--find-entry-by-notes-file buffer-file-name entries))
-        (when-let* ((metadata-entry
-                     (imoogi-project-notes--current-metadata-entry)))
-          (or (imoogi-project-notes--find-entry-by-key
-               (imoogi-project-notes--alist-string 'key metadata-entry) entries)
-              metadata-entry))
         (when-let* ((project (project-current nil)))
           (imoogi-project-notes--find-entry-by-key
            (imoogi-project-notes--identity-key (project-root project))
@@ -813,11 +1220,7 @@ provided so a portable study note cannot reuse an existing identifier."
   "Return NAME's scoped numeric ID, or nil when it has no dotted ID.
 The date/month prefix is part of the scope, so `26.01' and `260925.01'
 remain independent sequences."
-  (when (and (stringp name)
-             (string-match
-              "\\`\\([0-9]+\\.[0-9]+\\)\\(?:-[[:alnum:]_.-]+\\)?\\'"
-              name))
-    (match-string 1 name)))
+  (imoogi-project-notes--number-id-from-name name))
 
 (defun imoogi-project-notes--numbered-notes-directory (number root)
   "Return a notes directory named from NUMBER and source ROOT."
@@ -887,6 +1290,7 @@ remain independent sequences."
 
 (defun imoogi-project-notes--metadata-data (entry created-at)
   "Return folder metadata for ENTRY created at CREATED-AT."
+  (imoogi-project-notes--entry-ensure-derived-fields entry 'create-note-id)
   (let* ((type (imoogi-project-notes--entry-type entry))
          (root (imoogi-project-notes--alist-string 'notes-dir entry))
          (relative (lambda (key)
@@ -896,6 +1300,15 @@ remain independent sequences."
       (type . ,(symbol-name type))
       (key . ,(imoogi-project-notes--alist-string 'key entry))
       (name . ,(imoogi-project-notes--entry-name entry))
+      (note_id . ,(imoogi-project-notes--entry-note-id entry 'create-note-id))
+      ,@(when-let* ((number-id (imoogi-project-notes--alist-string
+                                'number-id entry)))
+          `((number_id . ,number-id)
+            (number_level . ,(imoogi-project-notes--alist-string
+                              'number-level entry))))
+      (source_root_kind . ,(imoogi-project-notes--alist-string
+                            'source-root-kind entry))
+      (workspace_role . ,(symbol-name type))
       ,@(when (eq type 'study)
           `((study_id . ,(imoogi-project-notes--alist-string 'study-id entry))))
       ,@(when (eq type 'project)
@@ -910,6 +1323,39 @@ remain independent sequences."
       (artifact_preset . ,(imoogi-project-notes--artifact-preset-to-json
                            (imoogi-project-notes--entry-artifact-preset entry))))))
 
+(defun imoogi-project-notes--metadata-merge-derived-fields (metadata expected)
+  "Return METADATA with missing optional derived keys copied from EXPECTED."
+  (let ((copy (copy-tree metadata))
+        (changed nil))
+    (dolist (key '(note_id number_id number_level source_root_kind workspace_role))
+      (when (assq key expected)
+        (let ((value (alist-get key expected)))
+          (if (or (and (eq key 'note_id) (assq key copy))
+                  (equal value (alist-get key copy)))
+              nil
+            (setf (alist-get key copy) value)
+            (setq changed t)))))
+    (cons copy changed)))
+
+(defun imoogi-project-notes--rewrite-metadata-derived-fields (entry created-at)
+  "Rewrite ENTRY's derived metadata fields while preserving unknown fields."
+  (let* ((directory (imoogi-project-notes--alist-string 'notes-dir entry))
+         (file (imoogi-project-notes--metadata-file directory))
+         (expected (imoogi-project-notes--metadata-data entry created-at))
+         (metadata (if (file-readable-p file)
+                       (imoogi-project-notes--read-metadata-file file)
+                     expected))
+         (copy (copy-tree metadata)))
+    (dolist (key '(number_id number_level source_root_kind workspace_role))
+      (setq copy (assq-delete-all key copy))
+      (when (assq key expected)
+        (push (cons key (alist-get key expected)) copy)))
+    (unless (assq 'note_id copy)
+      (push (cons 'note_id (alist-get 'note_id expected)) copy))
+    (let ((json-encoding-pretty-print t))
+      (with-temp-file file
+        (insert (json-encode copy) "\n")))))
+
 (defun imoogi-project-notes--ensure-metadata (entry created-at)
   "Create ENTRY's folder metadata with CREATED-AT, preserving existing data."
   (let* ((directory (imoogi-project-notes--alist-string 'notes-dir entry))
@@ -920,7 +1366,14 @@ remain independent sequences."
           (unless (and (equal (alist-get 'key actual) (alist-get 'key expected))
                        (equal (alist-get 'type actual) (alist-get 'type expected)))
             (user-error "노트 폴더의 기존 메타데이터가 다른 항목을 가리킵니다: %s"
-                        file)))
+                        file))
+          (pcase-let ((`(,merged . ,changed)
+                       (imoogi-project-notes--metadata-merge-derived-fields
+                        actual expected)))
+            (when changed
+              (let ((json-encoding-pretty-print t))
+                (with-temp-file file
+                  (insert (json-encode merged) "\n"))))))
       (let ((json-encoding-pretty-print t))
         (imoogi-project-notes--write-new-file
          file (concat (json-encode expected) "\n"))))))
@@ -1007,21 +1460,29 @@ This startup path intentionally avoids writing string-backed agenda storage."
                          (imoogi-project-notes--safe-ensure-central-agenda)
                        (expand-file-name "tasks.org" notes-dir)))
          (journal-file (expand-file-name (if study-p "logs/journal.org" "journal.org")
-                                         notes-dir)))
-    `((key . ,key)
-      (type . ,(symbol-name (or type 'project)))
-      (name . ,(or name
-                   (file-name-nondirectory (directory-file-name source-root))))
-      ,@(when study-id `((study-id . ,study-id)))
-      (source-root . ,(imoogi-project-notes--directory-file-name source-root))
-      (notes-dir . ,(imoogi-project-notes--directory-file-name notes-dir))
-      (project-file . ,project-file)
-      (tasks-file . ,tasks-file)
-      (journal-file . ,journal-file)
-      (todo-storage . ,(symbol-name todo-storage))
-      (artifact-preset . ,(or artifact-preset
-                               (imoogi-project-notes--default-artifact-preset
-                                (if study-p 'study 'development)))))))
+                                         notes-dir))
+         (entry
+          `((key . ,key)
+            (type . ,(symbol-name (or type 'project)))
+            (name . ,(or name
+                         (file-name-nondirectory
+                          (directory-file-name source-root))))
+            (note-id . nil)
+            (number-id . nil)
+            (number-level . nil)
+            (source-root-kind . nil)
+            (workspace-role . nil)
+            ,@(when study-id `((study-id . ,study-id)))
+            (source-root . ,(imoogi-project-notes--directory-file-name source-root))
+            (notes-dir . ,(imoogi-project-notes--directory-file-name notes-dir))
+            (project-file . ,project-file)
+            (tasks-file . ,tasks-file)
+            (journal-file . ,journal-file)
+            (todo-storage . ,(symbol-name todo-storage))
+            (artifact-preset . ,(or artifact-preset
+                                     (imoogi-project-notes--default-artifact-preset
+                                      (if study-p 'study 'development)))))))
+    (imoogi-project-notes--entry-ensure-derived-fields entry 'create-note-id)))
 
 (defun imoogi-project-notes--entry-type (entry)
   "Return ENTRY's persisted type, defaulting legacy entries to project."
@@ -1088,6 +1549,7 @@ This startup path intentionally avoids writing string-backed agenda storage."
 
 (defun imoogi-project-notes--save-entry (entry)
   "Persist ENTRY in the registry."
+  (imoogi-project-notes--entry-ensure-derived-fields entry 'create-note-id)
   (let* ((entries (imoogi-project-notes--read-registry))
          (key (alist-get 'key entry))
          (others (cl-remove key entries
@@ -1202,6 +1664,22 @@ only CURRENT-BUFFER-ONLY operations in the explicitly unlocked buffer."
         (or (imoogi-project-notes--find-entry-by-key key)
             (error "Project notes setup did not create a registry entry")))))
 
+(defun imoogi-project-notes--restore-workspace (entry)
+  "Restore Treemacs roots associated with ENTRY when available."
+  (when (fboundp 'imoogi-treemacs-open-workspace-roots)
+    (let* ((notes-root (imoogi-project-notes--alist-string 'notes-dir entry))
+           (source-root (and (not (equal (alist-get 'source-root-kind entry)
+                                         "notes"))
+                             (imoogi-project-notes--current-source-root entry)))
+           (roots (delq nil (list source-root notes-root)))
+           (name (or (and (fboundp 'imoogi-project-perspective-name)
+                          (imoogi-project-perspective-name
+                           (or source-root notes-root)))
+                     (imoogi-project-notes--alist-string 'name entry)
+                     "project-notes")))
+      (when roots
+        (imoogi-treemacs-open-workspace-roots roots name)))))
+
 ;;;###autoload
 (defun imoogi-project-notes-setup (&optional root directory numbering preset-kind)
   "Create or register project notes for source ROOT.
@@ -1239,6 +1717,13 @@ files are never overwritten."
                                numbering root))
                          (imoogi-project-notes--default-notes-directory root key entries))
                      key entries))
+         (metadata-note-id
+          (when-let* ((metadata-file
+                       (imoogi-project-notes--metadata-file notes-dir))
+                      (metadata (and (file-readable-p metadata-file)
+                                     (imoogi-project-notes--read-metadata-file
+                                      metadata-file 'noerror))))
+            (imoogi-project-notes--alist-string 'note_id metadata)))
          (storage (if existing
                       (imoogi-project-notes--entry-todo-storage existing)
                     (if (member imoogi-project-notes-todo-storage '(project central))
@@ -1249,11 +1734,15 @@ files are never overwritten."
                  (or (alist-get 'artifact-preset existing)
                      (imoogi-project-notes--default-artifact-preset
                       (or preset-kind 'development))))))
+    (when-let ((note-id (or metadata-note-id
+                            (imoogi-project-notes--entry-note-id existing))))
+      (setf (alist-get 'note-id entry) note-id))
     (imoogi-project-notes--setup-files entry project-name)
     (imoogi-project-notes--ensure-metadata entry (format-time-string "%Y-%m-%d"))
     (imoogi-project-notes--save-entry entry)
     (imoogi-project-notes--register-agenda-target
      (imoogi-project-notes--alist-string 'tasks-file entry))
+    (imoogi-project-notes--restore-workspace entry)
     (message "imoogi: 작업 폴더 %s → 문서 폴더 %s" root notes-dir)
     notes-dir))
 
@@ -1266,7 +1755,8 @@ already contain OLD-ROOT."
              (fboundp 'treemacs-project->path)
              (fboundp 'treemacs-do-remove-project-from-workspace)
              (fboundp 'treemacs-do-add-project-to-workspace))
-    (let ((old-path (directory-file-name (expand-file-name old-root))))
+    (let ((old-path (directory-file-name (expand-file-name old-root)))
+          (failures nil))
       (dolist (workspace (treemacs-workspaces))
         (dolist (project (cl-remove-if-not
                           (lambda (candidate)
@@ -1275,6 +1765,11 @@ already contain OLD-ROOT."
                                     (expand-file-name
                                      (treemacs-project->path candidate)))))
                           (treemacs-workspace->projects workspace)))
+          (let ((project-index (cl-position project
+                                             (treemacs-workspace->projects
+                                              workspace)))
+                (project-name (and (fboundp 'treemacs-project->name)
+                                   (treemacs-project->name project))))
           ;; Treemacs mutates live buffers and can run user hooks.  A stale
           ;; workspace must never prevent the doctor from finishing.
           (condition-case err
@@ -1283,56 +1778,261 @@ already contain OLD-ROOT."
                 (let ((treemacs-override-workspace workspace))
                   (treemacs-do-remove-project-from-workspace
                    project :ignore-last-project-restriction)
-                  (treemacs-do-add-project-to-workspace
-                   new-root
-                   (file-name-nondirectory (directory-file-name new-root)))))
+                  (pcase (treemacs-do-add-project-to-workspace
+                          new-root
+                          (or project-name
+                              (file-name-nondirectory
+                               (directory-file-name new-root))))
+                    (`(success ,new-project)
+                     ;; Reinsert the rebased project at its former position;
+                     ;; user labels and unrelated workspace members survive.
+                     (let ((projects
+                            (cl-remove new-project
+                                       (treemacs-workspace->projects workspace))))
+                       (setf (treemacs-workspace->projects workspace)
+                             (append (seq-take projects project-index)
+                                     (list new-project)
+                                     (nthcdr project-index projects)))
+                       (when (fboundp 'treemacs--persist)
+                         (treemacs--persist))))
+                    (`(duplicate-project ,_))
+                    (result
+                     ;; The filesystem has already moved OLD-ROOT, so adding
+                     ;; that nonexistent path cannot be a rollback.  Restore
+                     ;; the original project object and ordering in memory;
+                     ;; the repair marker will replay the path projection.
+                     (let ((projects
+                            (cl-remove project
+                                       (treemacs-workspace->projects workspace))))
+                     (setf (treemacs-project->path project)
+                           (directory-file-name old-root)
+                           (treemacs-workspace->projects workspace)
+                           (append (seq-take projects project-index)
+                                   (list project)
+                                   (nthcdr project-index projects)))
+                     (when (fboundp 'treemacs--persist)
+                       (treemacs--persist)))
+                     (user-error "Treemacs 프로젝트 경로 갱신 실패: %S" result)))))
             (error
+             ;; Removal happened before Treemacs can report add/timeout
+             ;; failures.  Restore the original project object and order in
+             ;; memory so a later doctor pass has a stable projection to
+             ;; replay; OLD-ROOT itself may already have been renamed.
+             (let ((projects
+                    (cl-remove-if
+                     (lambda (candidate)
+                       (or (eq candidate project)
+                           (equal (directory-file-name
+                                   (expand-file-name
+                                    (treemacs-project->path candidate)))
+                                  (directory-file-name
+                                   (expand-file-name new-root)))))
+                     (treemacs-workspace->projects workspace))))
+               (setf (treemacs-project->path project)
+                     (directory-file-name old-root)
+                     (treemacs-workspace->projects workspace)
+                     (append (seq-take projects project-index)
+                             (list project)
+                             (nthcdr project-index projects)))
+               (when (fboundp 'treemacs--persist)
+                 (treemacs--persist)))
+             (push (list (treemacs-workspace->name workspace)
+                         (error-message-string err))
+                   failures)
              (display-warning
               'imoogi
               (format "Treemacs 프로젝트 경로를 갱신하지 못했습니다: %s"
                       (error-message-string err))
-              :warning))))))))
+              :warning)))))))
+      (nreverse failures)))
 
-(defun imoogi-project-notes--rename-entry-directory (entry old-root new-root)
+(defun imoogi-project-notes--rollback-rename
+    (entry entry-before old-root new-root renamed buffer-files
+           agenda-before agenda-storage-file-before perspective-before
+           treemacs-before marker-file marker-created metadata-before
+           metadata-before-file registry-file registry-before
+           mounted-state-file mounted-state-before)
+  "Restore all state captured before a project-notes directory rename."
+  (when renamed
+    (when (file-directory-p new-root)
+      (rename-file new-root (directory-file-name old-root))))
+  (dolist (buffer-file buffer-files)
+    (when (buffer-live-p (car buffer-file))
+      (with-current-buffer (car buffer-file)
+        (when (buffer-file-name)
+          (set-visited-file-name (cdr buffer-file) t t)))))
+  (when entry
+    (dolist (cell entry-before)
+      (setf (alist-get (car cell) entry) (cdr cell))))
+  (when (boundp 'org-agenda-files)
+    (setq org-agenda-files agenda-before))
+  (when (and (stringp org-agenda-files)
+             agenda-storage-file-before)
+    (with-temp-file org-agenda-files
+      (insert agenda-storage-file-before)))
+  (when (boundp 'imoogi-project-perspective-alist)
+    (setq imoogi-project-perspective-alist perspective-before))
+  (dolist (workspace-state treemacs-before)
+    (let ((workspace (car workspace-state))
+          (projects (cdr workspace-state)))
+      (dolist (project-state projects)
+        (setf (treemacs-project->path (car project-state))
+              (cdr project-state)))
+      (setf (treemacs-workspace->projects workspace)
+            (mapcar #'car projects))))
+  (when (and treemacs-before (fboundp 'treemacs--persist))
+    (treemacs--persist))
+  (dolist (buffer-file buffer-files)
+    (when (and (buffer-live-p (car buffer-file)) entry)
+      (with-current-buffer (car buffer-file)
+        (imoogi-project-notes--set-buffer-context entry))))
+  (when (and marker-created (file-exists-p marker-file))
+    (delete-file marker-file))
+  (when (and metadata-before
+             (file-directory-p old-root))
+    (with-temp-file metadata-before-file
+      (insert metadata-before)))
+  (if registry-before
+      (with-temp-file registry-file (insert registry-before))
+    (when (file-exists-p registry-file)
+      (delete-file registry-file)))
+  (if mounted-state-before
+      (with-temp-file mounted-state-file (insert mounted-state-before))
+    (when (file-exists-p mounted-state-file)
+      (delete-file mounted-state-file))))
+
+(defun imoogi-project-notes--rename-entry-directory
+    (entry old-root new-root &optional commit allow-pending-repair)
   "Rename ENTRY's notes folder and update local references.
-The directory is renamed as one unit; no file inside it is deleted."
-  (let ((old-root (file-name-as-directory (expand-file-name old-root)))
-        (new-root (file-name-as-directory (expand-file-name new-root)))
-        (old-tasks (and entry (imoogi-project-notes--alist-string
-                               'tasks-file entry))))
+The optional COMMIT function runs after the directory and in-memory paths are
+updated.  Filesystem and metadata failures roll back; a Treemacs projection
+failure is recorded for the doctor to replay after the rename."
+  (let* ((old-root (file-name-as-directory (expand-file-name old-root)))
+         (new-root (file-name-as-directory (expand-file-name new-root)))
+         (old-tasks (and entry (imoogi-project-notes--alist-string
+                                'tasks-file entry)))
+         (entry-before (copy-tree entry))
+         (agenda-before (and (boundp 'org-agenda-files)
+                             (copy-tree org-agenda-files)))
+         (agenda-storage-file-before
+          (and (boundp 'org-agenda-files)
+               (stringp org-agenda-files)
+               (file-readable-p org-agenda-files)
+               (with-temp-buffer
+                 (insert-file-contents org-agenda-files)
+                 (buffer-string))))
+         (perspective-before (and (boundp 'imoogi-project-perspective-alist)
+                                  (copy-tree imoogi-project-perspective-alist)))
+         (treemacs-before
+          (when (and (fboundp 'treemacs-workspaces)
+                     (fboundp 'treemacs-workspace->projects)
+                     (fboundp 'treemacs-project->path))
+            (mapcar
+             (lambda (workspace)
+               (cons workspace
+                     (mapcar (lambda (project)
+                               (cons project (treemacs-project->path project)))
+                             (treemacs-workspace->projects workspace))))
+             (treemacs-workspaces))))
+         (metadata-before-file (imoogi-project-notes--metadata-file old-root))
+         (metadata-before
+          (and (file-readable-p metadata-before-file)
+               (with-temp-buffer
+                 (insert-file-contents metadata-before-file)
+                 (buffer-string))))
+         (registry-file (imoogi-project-notes--registry-file))
+         (registry-before
+          (and (file-readable-p registry-file)
+               (with-temp-buffer
+                 (insert-file-contents registry-file)
+                 (buffer-string))))
+         (mounted-state-file (imoogi-project-notes--mounted-roots-file))
+         (mounted-state-before
+          (and (file-readable-p mounted-state-file)
+               (with-temp-buffer
+                 (insert-file-contents mounted-state-file)
+                 (buffer-string))))
+         (buffer-files nil)
+         (renamed nil)
+         (marker-file (imoogi-project-notes--repair-marker-file))
+         (marker-created nil))
     (when (file-exists-p new-root)
       (user-error "새 프로젝트 폴더가 이미 존재합니다: %s" new-root))
+    (when (and (not allow-pending-repair)
+               (file-exists-p (imoogi-project-notes--repair-marker-file)))
+      (user-error "보류 중인 project-notes 복구를 먼저 doctor로 처리하세요"))
+    (when (and (fboundp 'imoogi-org--agenda-storage-buffer-modified-p)
+               (imoogi-org--agenda-storage-buffer-modified-p))
+      (user-error "먼저 agenda 파일 목록 버퍼를 저장하거나 닫으세요"))
     (dolist (buffer (buffer-list))
       (when-let* ((file (buffer-file-name buffer)))
         (when (and (file-in-directory-p file old-root)
                    (buffer-modified-p buffer))
           (user-error "먼저 저장하거나 닫아야 하는 변경 버퍼가 있습니다: %s" file))))
-    ;; A trailing slash makes `rename-file' treat the destination as an
-    ;; existing directory and nest OLD-ROOT inside it.  Pass the directory
-    ;; name without that marker, while retaining NEW-ROOT normalized below.
-    (rename-file old-root (directory-file-name new-root))
     (dolist (buffer (buffer-list))
       (when-let* ((file (buffer-file-name buffer)))
         (when (file-in-directory-p file old-root)
-          (set-visited-file-name
-           (expand-file-name (file-relative-name file old-root) new-root)
-           t t))))
-    (when entry
-      (dolist (key '(project-file tasks-file journal-file))
-        (let ((file (imoogi-project-notes--alist-string key entry)))
-          (when (file-in-directory-p file old-root)
-            (setf (alist-get key entry)
-                  (expand-file-name (file-relative-name file old-root) new-root)))))
-      (setf (alist-get 'notes-dir entry) new-root)
-      (when (and old-tasks (file-in-directory-p old-tasks old-root))
-        (imoogi-project-notes--replace-agenda-target
-         old-tasks (alist-get 'tasks-file entry)))
-      (when (boundp 'imoogi-project-perspective-alist)
-        (let ((mapping (assoc old-root imoogi-project-perspective-alist)))
-          (when mapping
-            (setcar mapping new-root)))))
-    (imoogi-project-notes--replace-treemacs-root old-root new-root)
-    entry))
+          (push (cons buffer file) buffer-files))))
+    ;; A trailing slash makes `rename-file' treat the destination as an
+    ;; existing directory and nest OLD-ROOT inside it.  Pass the directory
+    ;; name without that marker, while retaining NEW-ROOT normalized below.
+    (condition-case err
+        (progn
+          (rename-file old-root (directory-file-name new-root))
+          (setq renamed t)
+          (when entry
+            (dolist (key '(project-file tasks-file journal-file source-root
+                           effective-source-root))
+              (let ((file (imoogi-project-notes--alist-string key entry)))
+                (when (and file (file-in-directory-p file old-root))
+                  (setf (alist-get key entry)
+                        (expand-file-name
+                         (file-relative-name file old-root) new-root)))))
+            (setf (alist-get 'notes-dir entry) new-root))
+          (when commit
+            (funcall commit entry))
+          ;; Session projections are updated after the durable commit.  The
+          ;; Treemacs projection is the only one with a replayable doctor
+          ;; repair path; other projection errors remain hard failures.
+          (dolist (buffer-file buffer-files)
+            (with-current-buffer (car buffer-file)
+              (set-visited-file-name
+               (expand-file-name
+                (file-relative-name (cdr buffer-file) old-root) new-root)
+               t t)
+              (when entry
+                (imoogi-project-notes--set-buffer-context entry))))
+          (when (and old-tasks (file-in-directory-p old-tasks old-root))
+            (imoogi-project-notes--replace-agenda-target
+             old-tasks (alist-get 'tasks-file entry)))
+          (when (boundp 'imoogi-project-perspective-alist)
+            (let ((mapping (assoc old-root imoogi-project-perspective-alist)))
+              (when mapping
+                (setcar mapping new-root))))
+          (let ((projection-failures
+                 (imoogi-project-notes--replace-treemacs-root
+                  old-root new-root)))
+            (when projection-failures
+              (imoogi-project-notes--write-repair-marker
+               entry old-root new-root projection-failures)
+              (setq marker-created t)))
+          entry)
+      (quit
+       (imoogi-project-notes--rollback-rename
+        entry entry-before old-root new-root renamed buffer-files
+        agenda-before agenda-storage-file-before perspective-before
+        treemacs-before marker-file marker-created metadata-before
+        metadata-before-file registry-file registry-before
+        mounted-state-file mounted-state-before)
+       (signal (car err) (cdr err)))
+      (error
+       (imoogi-project-notes--rollback-rename
+        entry entry-before old-root new-root renamed buffer-files
+        agenda-before agenda-storage-file-before perspective-before
+        treemacs-before marker-file marker-created metadata-before
+        metadata-before-file registry-file registry-before
+        mounted-state-file mounted-state-before)
+       (signal (car err) (cdr err))))))
 
 (defun imoogi-project-notes--doctor-base-directory ()
   "Return the project-notes root used by the doctor.
@@ -1403,21 +2103,25 @@ step back to its `project-notes' parent so renames cannot become nested."
                     (imoogi-project-notes--read-metadata-file file)))))
 
 ;;;###autoload
-(defun imoogi-project-notes-setup-doctor ()
+(defun imoogi-project-notes-setup-doctor (&optional rename-valid)
   "Inspect project-notes folders and ask how to rename each invalid one.
 Each answer is handled independently.  Empty input skips that folder.  The
 folder is renamed as a whole and its registry, buffers, Perspective mapping,
-and Treemacs roots are updated; files are never deleted or overwritten."
-  (interactive)
+and Treemacs roots are updated; files are never deleted or overwritten.
+With a prefix argument, also offer repairs for folders that already match the
+numbering grammar."
+  (interactive "P")
   (let ((base (imoogi-project-notes--doctor-base-directory))
         (changed 0)
         (skipped 0))
     (unless (file-directory-p base)
       (user-error "프로젝트 노트 폴더가 없습니다: %s" base))
+    (imoogi-project-notes--consume-repair-marker)
     (dolist (directory (directory-files base t "^[^.].*" t))
       (when (file-directory-p directory)
         (let ((name (file-name-nondirectory (directory-file-name directory))))
-          (unless (imoogi-project-notes--folder-name-valid-p name)
+          (when (or rename-valid
+                    (not (imoogi-project-notes--folder-name-valid-p name)))
             (let* ((suggestion (imoogi-project-notes--doctor-suggested-name name))
                    (answer (read-string
                             (format "새 번호/폴더명 [%s] (빈칸은 건너뜀): " name)
@@ -1431,16 +2135,9 @@ and Treemacs roots are updated; files are never deleted or overwritten."
                                     (expand-file-name answer base)))
                          (answer-id (imoogi-project-notes--folder-id-key answer))
                          (duplicate-id
-                          (when answer-id
-                            (cl-find-if
-                             (lambda (candidate)
-                               (and (not (equal candidate name))
-                                    (equal answer-id
-                                           (imoogi-project-notes--folder-id-key candidate))))
-                             (mapcar (lambda (path)
-                                       (file-name-nondirectory
-                                        (directory-file-name path)))
-                                     (directory-files base t "^[^.].*" t)))))
+                          (and answer-id
+                               (imoogi-project-notes--number-id-conflict
+                                answer-id old-root)))
                          (entry (or (imoogi-project-notes--find-entry-by-notes-directory old-root)
                                     (let ((metadata-file
                                            (imoogi-project-notes--metadata-file old-root)))
@@ -1450,11 +2147,26 @@ and Treemacs roots are updated; files are never deleted or overwritten."
                                          (imoogi-project-notes--read-metadata-file metadata-file)))))))
                     (if duplicate-id
                         (user-error "ID %s가 이미 사용 중입니다: %s"
-                                    answer-id duplicate-id)
-                      (imoogi-project-notes--rename-entry-directory
-                       entry old-root new-root)
+                                    answer-id
+                                    (alist-get 'directory duplicate-id))
                       (when entry
-                        (imoogi-project-notes--save-entry entry))
+                        ;; The doctor's answer is authoritative for repaired
+                        ;; folder numbering; stale registry/metadata must not
+                        ;; be written back over it.
+                        (setf (alist-get 'number-id entry) answer-id
+                              (alist-get 'number-level entry)
+                              (symbol-name
+                               (alist-get 'number-level
+                               (imoogi-project-notes--parse-number-id
+                                           answer-id)))))
+                      (imoogi-project-notes--rename-entry-directory
+                       entry old-root new-root
+                       (lambda (committed-entry)
+                         (when committed-entry
+                           (imoogi-project-notes--rewrite-metadata-derived-fields
+                            committed-entry (format-time-string "%Y-%m-%d"))
+                           (imoogi-project-notes--save-entry committed-entry)))
+                       t)
                       (setq changed (1+ changed)))))))))))
     (message "imoogi: project-notes 점검 완료 — 변경 %d개, 건너뜀 %d개 (파일 삭제 없음)"
              changed skipped)
@@ -1535,9 +2247,19 @@ optional programmatic overrides.  Existing files are never overwritten."
                         (imoogi-project-notes--slug study-name))
                 imoogi-project-notes-directory))
            key entries))
+         (metadata-note-id
+          (when-let* ((metadata-file
+                       (imoogi-project-notes--metadata-file notes-dir))
+                      (metadata (and (file-readable-p metadata-file)
+                                     (imoogi-project-notes--read-metadata-file
+                                      metadata-file 'noerror))))
+            (imoogi-project-notes--alist-string 'note_id metadata)))
          (entry (imoogi-project-notes--entry
                  key notes-dir notes-dir 'project 'study study-name study-id
                  (imoogi-project-notes--default-artifact-preset 'study))))
+    (when-let ((note-id (or metadata-note-id
+                            (imoogi-project-notes--entry-note-id existing))))
+      (setf (alist-get 'note-id entry) note-id))
     (imoogi-project-notes--setup-study-files entry study-name start-date)
     (imoogi-project-notes--ensure-metadata entry start-date)
     (imoogi-project-notes--save-entry entry)
@@ -1554,7 +2276,8 @@ optional programmatic overrides.  Existing files are never overwritten."
   (let* ((entry (imoogi-project-notes--entry-or-setup))
          (source-root (imoogi-project-notes--current-source-root entry)))
     (imoogi-project-notes--find-file
-     entry (imoogi-project-notes--alist-string 'project-file entry) source-root)))
+     entry (imoogi-project-notes--alist-string 'project-file entry) source-root)
+    (imoogi-project-notes--restore-workspace entry)))
 
 ;;;###autoload
 (defun imoogi-project-notes-tasks ()
@@ -1563,7 +2286,95 @@ optional programmatic overrides.  Existing files are never overwritten."
   (let* ((entry (imoogi-project-notes--entry-or-setup))
          (source-root (imoogi-project-notes--current-source-root entry)))
     (imoogi-project-notes--find-file
-     entry (imoogi-project-notes--alist-string 'tasks-file entry) source-root)))
+     entry (imoogi-project-notes--alist-string 'tasks-file entry) source-root)
+    (imoogi-project-notes--restore-workspace entry)))
+
+;;;###autoload
+(defun imoogi-project-notes-raiseup ()
+  "Promote the current note directory to a broader numbering level.
+The directory is renamed in place after duplicate and path preflight checks."
+  (interactive)
+  (let* ((entry (imoogi-project-notes--entry-or-setup))
+         (old-root (imoogi-project-notes--alist-string 'notes-dir entry))
+         (info (or (imoogi-project-notes--entry-number-info entry)
+                   (user-error "현재 노트 폴더의 번호를 해석할 수 없습니다")))
+         (level (alist-get 'number-level info))
+         (levels (cdr (memq level imoogi-project-notes--number-level-order)))
+         (target-level
+          (progn
+            (when (null levels)
+              (user-error "이미 최상위 lifetime 수준입니다"))
+            (intern (completing-read
+                     "상위 번호 수준: "
+                     (mapcar #'symbol-name levels) nil t))))
+         (scope (pcase target-level
+                  ('monthly (substring (alist-get 'scope info) 0 4))
+                  ('yearly (substring (alist-get 'scope info) 0 2))
+                  ('lifetime "L")
+                  (_ (user-error "지원하지 않는 승격 수준입니다"))))
+         (visible (imoogi-project-notes--all-number-id-entries))
+         (existing (seq-filter
+                    (lambda (candidate)
+                      (eq (alist-get 'number-level
+                                     (imoogi-project-notes--parse-number-id
+                                      (alist-get 'number-id candidate)))
+                          target-level))
+                    visible))
+         (_ (message "현재 %s 수준 ID: %s"
+                     (symbol-name target-level)
+                     (if existing
+                         (mapconcat (lambda (candidate)
+                                     (alist-get 'number-id candidate))
+                                   existing ", ")
+                       "없음")))
+         (sequence (read-number "새 순서 번호: " 1))
+         (target-id (imoogi-project-notes--format-number-id
+                     target-level scope sequence))
+         (conflict (imoogi-project-notes--number-id-conflict
+                    target-id old-root))
+         (old-name (file-name-nondirectory (directory-file-name old-root)))
+         (old-id (alist-get 'number-id info))
+         (mounted-p (eq (alist-get 'origin entry) 'mounted))
+         (mounted-root-id (alist-get 'mounted-root-id entry))
+         (old-instance-id (alist-get 'instance-id entry))
+         (slug (when (and old-id
+                          (string-prefix-p old-id old-name))
+                 (substring old-name (length old-id))))
+         (new-name (concat target-id (or slug "")))
+         (new-root (expand-file-name new-name
+                                     (file-name-directory
+                                      (directory-file-name old-root)))))
+    (imoogi-project-notes--ensure-entry-mutable entry "상위 수준 승격")
+    (when conflict
+      (user-error "중복 번호 ID입니다: %s" target-id))
+    (when (file-exists-p new-root)
+      (user-error "새 프로젝트 폴더가 이미 존재합니다: %s" new-root))
+    (setf (alist-get 'number-id entry) target-id
+          (alist-get 'number-level entry) (symbol-name target-level))
+    (imoogi-project-notes--rename-entry-directory
+     entry old-root new-root
+     (lambda (committed-entry)
+       (imoogi-project-notes--ensure-metadata
+        committed-entry (format-time-string "%Y-%m-%d"))
+       (if mounted-p
+           (let ((new-instance-id
+                  (imoogi-project-notes--mounted-instance-id
+                   mounted-root-id
+                   (alist-get 'notes-dir committed-entry)))
+                 (state (imoogi-project-notes--read-mounted-state)))
+             (setf (alist-get 'instance-id committed-entry) new-instance-id)
+             (let ((overrides (copy-tree (alist-get 'source-overrides state)))
+                   (changed nil))
+               (dolist (override overrides)
+                 (when (equal (alist-get 'instance-id override) old-instance-id)
+                   (setf (alist-get 'instance-id override) new-instance-id)
+                   (setq changed t)))
+               (when changed
+                 (setf (alist-get 'source-overrides state) overrides)
+                 (imoogi-project-notes--write-mounted-state state))))
+         (imoogi-project-notes--save-entry committed-entry))))
+    (message "프로젝트 노트를 %s 수준으로 승격했습니다: %s" target-level new-name)
+    new-root))
 
 (defun imoogi-project-notes--worktree-heading (root)
   "Return journal heading text for source worktree ROOT."

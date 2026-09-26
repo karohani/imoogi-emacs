@@ -35,8 +35,8 @@
     avy helpful diff-hl bufferfile
     ;; 13-system
     exec-path-from-shell buffer-terminator persist-text-scale
-    ;; 14-org
-    org-appear
+    ;; 14-org (mermaid 블록 편집·실행; ob-shell 은 Org 내장)
+    org-appear mermaid-mode ob-mermaid
     ;; 29-org-roam (대량 노드 completion 캐시 포함)
     org-roam memoize
     ;; 15-markdown (markdown-mode 는 obsidian 의존성)

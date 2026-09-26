@@ -2,12 +2,13 @@
 
 ;;; Code:
 (imoogi-require "07-treemacs" 'treemacs 'treemacs-icons-dired
-                'treemacs-magit 'bookmark 'button 'cl-lib 'imenu 'subr-x)
+                'treemacs-magit 'bookmark 'button 'cl-lib 'imenu 'seq 'subr-x)
 
 (require 'bookmark)
 (require 'button)
 (require 'cl-lib)
 (require 'imenu)
+(require 'seq)
 (require 'subr-x)
 
 (defconst imoogi-treemacs-bookmarks-buffer-name "*Imoogi Bookmarks*"
@@ -474,26 +475,77 @@ never removed, so folders added later by the user remain part of the workspace."
         (`(duplicate-name ,existing) (setq workspace existing))
         (result (error "Treemacs workspace creation failed: %S" result))))
     (unless (imoogi-treemacs--workspace-has-p workspace root)
-      (let ((treemacs-override-workspace workspace))
-        (pcase (treemacs-do-add-project-to-workspace
-                root
-                (file-name-nondirectory (directory-file-name root)))
-          (`(success ,_project))
-          (`(duplicate-project ,_project))
-          (result (error "Treemacs project registration failed: %S" result)))))
+      (let* ((base-name (file-name-nondirectory (directory-file-name root)))
+             (name base-name)
+             (suffix 2))
+        (while (and (fboundp 'treemacs-project->name)
+                    (seq-some (lambda (project)
+                                (equal name (treemacs-project->name project)))
+                              (treemacs-workspace->projects workspace)))
+          (setq name (format "%s-%d" base-name suffix)
+                suffix (1+ suffix)))
+        (let ((treemacs-override-workspace workspace))
+          (pcase (treemacs-do-add-project-to-workspace root name)
+            (`(success ,_project))
+            (`(duplicate-project ,_project))
+            (result (error "Treemacs project registration failed: %S" result))))))
     workspace))
+
+(defun imoogi-treemacs--ensure-workspace-roots (roots perspective-name)
+  "Ensure ROOTS are present in PERSPECTIVE-NAME's managed workspace.
+ROOTS is an ordered list of existing directory paths.  Existing unrelated
+projects are preserved; tagged Treemacs failures are returned to the caller.
+The return value is the workspace object, or a cons of `failed' and the
+failure payload when a root cannot be registered."
+  (cl-block imoogi-treemacs--ensure-workspace-roots
+    (let ((workspace (imoogi-treemacs--ensure-project-workspace
+                      (car roots) perspective-name)))
+      (dolist (root (cdr roots) workspace)
+        (when (and (stringp root) (file-directory-p root)
+                   (not (imoogi-treemacs--workspace-has-p workspace root)))
+          (let* ((base-name (file-name-nondirectory (directory-file-name root)))
+                 (name base-name)
+                 (suffix 2)
+                 (treemacs-override-workspace workspace))
+            (while (and (fboundp 'treemacs-project->name)
+                        (seq-some (lambda (project)
+                                    (equal name (treemacs-project->name project)))
+                                  (treemacs-workspace->projects workspace)))
+              (setq name (format "%s-%d" base-name suffix)
+                    suffix (1+ suffix)))
+            (let ((result (treemacs-do-add-project-to-workspace root name)))
+              (pcase result
+              (`(success ,_project))
+              (`(duplicate-project ,_project))
+              (`(duplicate-name ,_project)
+               (cl-return-from imoogi-treemacs--ensure-workspace-roots
+                 (cons 'failed (cons root result))))
+              (_ (cl-return-from imoogi-treemacs--ensure-workspace-roots
+                 (cons 'failed (cons root result))))))))))))
+
+(defun imoogi-treemacs-open-workspace-roots (roots perspective-name)
+  "Open PERSPECTIVE-NAME's workspace and ensure each directory in ROOTS.
+Missing roots are skipped.  The editor window remains selected."
+  (require 'treemacs)
+  (let* ((roots (delete-dups
+                 (seq-filter #'file-directory-p (mapcar #'expand-file-name roots))))
+         (workspace (and roots
+                         (imoogi-treemacs--ensure-workspace-roots
+                          roots perspective-name))))
+    (when (and (consp workspace) (eq (car workspace) 'failed))
+      (user-error "Treemacs root registration failed: %S" workspace))
+    (when workspace
+      (unless (eq workspace (treemacs-current-workspace))
+        (treemacs-do-switch-workspace workspace))
+      workspace)))
 
 (defun imoogi-treemacs-open-project-workspace (root perspective-name)
   "Open ROOT in the Treemacs workspace for PERSPECTIVE-NAME.
 
 The editor window remains selected.  On first use the workspace contains only
 ROOT; folders the user adds later are preserved by Treemacs persistence."
-  (require 'treemacs)
-  (let* ((editor-window (imoogi-treemacs--editor-window))
-         (workspace
-          (imoogi-treemacs--ensure-project-workspace root perspective-name)))
-    (unless (eq workspace (treemacs-current-workspace))
-      (treemacs-do-switch-workspace workspace))
+  (let ((editor-window (imoogi-treemacs--editor-window)))
+    (imoogi-treemacs-open-workspace-roots (list root) perspective-name)
     (imoogi-treemacs-hide-tool-window)
     (treemacs-select-window)
     (when (window-live-p editor-window)
