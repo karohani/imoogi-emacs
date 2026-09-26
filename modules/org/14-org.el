@@ -8,6 +8,12 @@
 
 (eval-when-compile (require 'transient))
 
+;; Org Babel does not provide a JSON language alias.  Use the built-in
+;; `js-json-mode' (which is remapped to `json-ts-mode' when available) for
+;; `#+begin_src json' editing buffers.
+(with-eval-after-load 'org-src
+  (add-to-list 'org-src-lang-modes '("json" . js-json)))
+
 (defun imoogi-org--default-directory ()
   "Return imoogi's default Org directory."
   (expand-file-name "~/notes/"))
@@ -370,14 +376,108 @@ suppresses `text-scale-mode-hook', so local fitting alone is too early."
     (call-interactively #'org-export-dispatch))
    (t (user-error "Org 문서 또는 Agenda 화면에서 실행하세요"))))
 
+;;; Org block snippets and completion
+
+(defun imoogi-org--block-template (kind)
+  "Return the yasnippet template for Org block KIND."
+  (pcase kind
+    ('source "#+begin_src ${1:language}\n$0\n#+end_src")
+    ('example "#+begin_example\n$0\n#+end_example")
+    (_ (error "지원하지 않는 Org 블록: %s" kind))))
+
+(defun imoogi-org-insert-block (kind)
+  "Insert an Org block of KIND using yasnippet fields."
+  (interactive (list (intern (completing-read
+                              "Org 블록: " '("source" "example") nil t))))
+  (unless (derived-mode-p 'org-mode)
+    (user-error "Org 버퍼에서 실행하세요"))
+  (unless (require 'yasnippet nil t)
+    (user-error "yasnippet을 불러올 수 없습니다"))
+  (yas-expand-snippet (imoogi-org--block-template kind)))
+
+(defun imoogi-org-insert-source-block ()
+  "Insert an Org source block with a language field."
+  (interactive)
+  (imoogi-org-insert-block 'source))
+
+(defun imoogi-org-insert-example-block ()
+  "Insert an Org example block."
+  (interactive)
+  (imoogi-org-insert-block 'example))
+
+(defun imoogi-org--register-block-snippets ()
+  "Register the short Org block snippets used by `<s>' and `<e>'."
+  (when (fboundp 'yas-define-snippets)
+    (yas-define-snippets
+     'org-mode
+     `(("<s>" ,(imoogi-org--block-template 'source) "Org source block")
+       ("<e>" ,(imoogi-org--block-template 'example) "Org example block")))))
+
+(if (featurep 'yasnippet)
+    (imoogi-org--register-block-snippets)
+  (with-eval-after-load 'yasnippet
+    (imoogi-org--register-block-snippets)))
+
+(defun imoogi-org--block-completion-candidates ()
+  "Return completion candidates for the Org block shortcuts at point."
+  (when (derived-mode-p 'org-mode)
+    (let* ((point (point))
+           (line-start (line-beginning-position))
+           (start (save-excursion
+                    (when (search-backward "<" line-start t)
+                      (point))))
+           (end (if (and (< point (point-max))
+                        (eq (char-after point) ?>))
+                     (1+ point)
+                   point)))
+      (when (and start
+                 (string-match-p "\\`<\\(?:s\\|e\\)>?\\'"
+                                 (buffer-substring-no-properties start end)))
+        (list start end '("<s>" "<e>")
+              :exclusive 'no
+              :annotation-function
+              (lambda (candidate)
+                (if (equal candidate "<s>") "  source block" "  example block"))
+              :exit-function
+              (lambda (candidate status)
+                (when (and (eq status 'finished)
+                           (member candidate '("<s>" "<e>")))
+                  (when (search-backward candidate line-start t)
+                    (delete-region (point) (+ (point) (length candidate)))
+                    (imoogi-org-insert-block
+                     (if (equal candidate "<s>") 'source 'example))))))))))
+
+(defun imoogi-org--enable-block-completion ()
+  "Enable Org block shortcut completion and avoid pairing `<'."
+  (require 'elec-pair)
+  (let ((default (default-value 'electric-pair-inhibit-predicate)))
+    (setq-local electric-pair-inhibit-predicate
+                (lambda (char)
+                  (or (eq char ?<)
+                      (and default (funcall default char))))))
+  (add-hook 'completion-at-point-functions
+            #'imoogi-org--block-completion-candidates nil t))
+
+(add-hook 'org-mode-hook #'imoogi-org--enable-block-completion)
+
 (with-eval-after-load 'imoogi-transient
+  (transient-define-prefix imoogi-org-block-transient ()
+    "Org source and example block insertion."
+    :column-widths '(22 22)
+    [["블록 ----------------"
+      ("s" "source 블록" imoogi-org-insert-source-block)
+      ("e" "example 블록" imoogi-org-insert-example-block)]
+     ["기타 ----------------"
+      ("q" "종료" transient-quit-one)]])
+
   (transient-define-prefix imoogi-org-agenda-transient ()
     "Org agenda and planning commands."
     :column-widths '(20 20 20)
     [["조회 -------------"
       ("a" "일정 보기" imoogi-org-agenda-overview)
       ("t" "전체 TODO" org-todo-list)
-      ("m" "Agenda 메뉴" imoogi-org-agenda)]
+      ("m" "Agenda 메뉴" imoogi-org-agenda)
+      ("b" "Org 블록" imoogi-org-block-transient)]
      ["현재 제목 ---------"
       ("s" "일정 지정" org-schedule :inapt-if-not imoogi-org-agenda-heading-p)
       ("d" "마감일 지정" org-deadline :inapt-if-not imoogi-org-agenda-heading-p)
