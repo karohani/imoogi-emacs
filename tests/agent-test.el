@@ -326,5 +326,329 @@
                        "error:unreadable"))
         (should (= 0 connections))))))
 
+;;; Window-display fixtures (AC-AIPC-002 ~ 005, 009, 010) ---------------------
+
+(defun imoogi-agent-test--user-buffer ()
+  "Show a fresh user buffer A with point 10 in the only window; return it."
+  (delete-other-windows)
+  (let ((buffer (get-buffer-create "*imoogi-agent-test-user*")))
+    (with-current-buffer buffer
+      (erase-buffer)
+      (insert (make-string 40 ?a)))
+    (set-window-buffer (selected-window) buffer)
+    (set-buffer buffer)
+    (goto-char 10)
+    (set-window-point (selected-window) 10)
+    buffer))
+
+(defun imoogi-agent-test--assert-user-untouched (buffer window frame)
+  "Assert the user still sits in BUFFER at point 10 in WINDOW of FRAME."
+  (should (eq (selected-window) window))
+  (should (eq (selected-frame) frame))
+  (should (eq (window-buffer window) buffer))
+  (should (= 10 (window-point window)))
+  (should (= 10 (with-current-buffer buffer (point)))))
+
+(defun imoogi-agent-test--file-window (file)
+  "Return the window displaying the buffer that visits FILE, or nil."
+  (when-let* ((buffer (find-buffer-visiting file)))
+    (get-buffer-window buffer)))
+
+(defun imoogi-agent-test--kill-visiting (&rest files)
+  "Kill buffers visiting FILES without asking."
+  (dolist (file files)
+    (when-let* ((buffer (and (stringp file) (find-buffer-visiting file))))
+      (with-current-buffer buffer (set-buffer-modified-p nil))
+      (kill-buffer buffer))))
+
+(defun imoogi-agent-test--event-json (type payload)
+  "Return a JSON event of TYPE with PAYLOAD."
+  (imoogi-agent-test--json (imoogi-agent-test--base type payload)))
+
+;;; AC-AIPC-002 ---------------------------------------------------------------
+
+(ert-deftest imoogi-agent-ac02-open-file-keeps-focus ()
+  "AC-AIPC-002: open-file shows F in another window and never selects it."
+  (imoogi-agent-test--with-temp-files (file)
+    (setq file (imoogi-agent-test--write "hello\n" ".txt"))
+    (unwind-protect
+        (let* ((user (imoogi-agent-test--user-buffer))
+               (window (selected-window))
+               (frame (selected-frame))
+               (json (imoogi-agent-test--event-json "open-file" `((path . ,file)))))
+          (should (equal (car (imoogi-agent-test--receive-json json)) "ok"))
+          (let ((shown (imoogi-agent-test--file-window file)))
+            (should (windowp shown))
+            (should-not (eq shown window))
+            (imoogi-agent-test--assert-user-untouched user window frame)
+            (let ((count (length (window-list nil 'never))))
+              (should (equal (car (imoogi-agent-test--receive-json json)) "ok"))
+              (should (= count (length (window-list nil 'never))))
+              (should (eq shown (imoogi-agent-test--file-window file)))
+              (imoogi-agent-test--assert-user-untouched user window frame))))
+      (imoogi-agent-test--kill-visiting file)
+      (delete-other-windows))))
+
+;;; AC-AIPC-003 ---------------------------------------------------------------
+
+(ert-deftest imoogi-agent-ac03-goto-moves-only-target-window ()
+  "AC-AIPC-003: goto-location clamps line/column and moves only its window."
+  (imoogi-agent-test--with-temp-files (file)
+    (setq file (imoogi-agent-test--write
+                "line one\nline two\nline three\nline four\nline five\n" ".txt"))
+    (unwind-protect
+        (let* ((user (imoogi-agent-test--user-buffer))
+               (window (selected-window))
+               (frame (selected-frame))
+               (target (find-file-noselect file t))
+               (expect
+                (lambda (line column)
+                  (with-current-buffer target
+                    (save-excursion
+                      (goto-char (point-min))
+                      (forward-line (1- line))
+                      (if (eq column 'eol) (end-of-line) (move-to-column column))
+                      (point))))))
+          (dolist (case `((((line . 3) (column . 4)) ,(funcall expect 3 3))
+                          (((line . 3)) ,(funcall expect 3 0))
+                          (((line . 99)) ,(with-current-buffer target
+                                            (save-excursion
+                                              (goto-char (point-max))
+                                              (line-beginning-position))))
+                          (((line . 2) (column . 999)) ,(funcall expect 2 'eol))))
+            (should (equal (car (imoogi-agent-test--receive-json
+                                 (imoogi-agent-test--event-json
+                                  "goto-location" `((path . ,file) ,@(car case)))))
+                           "ok"))
+            (let ((shown (imoogi-agent-test--file-window file)))
+              (should (windowp shown))
+              (should-not (eq shown window))
+              (should (= (cadr case) (window-point shown))))
+            (imoogi-agent-test--assert-user-untouched user window frame)))
+      (imoogi-agent-test--kill-visiting file)
+      (delete-other-windows))))
+
+;;; AC-AIPC-004 ---------------------------------------------------------------
+
+(ert-deftest imoogi-agent-ac04-artifact-created-notice-and-display ()
+  "AC-AIPC-004: artifact notice uses the title or the file name."
+  (let* ((dir (make-temp-file "imoogi-aipc-test-dir-" t))
+         (file (expand-file-name "260927-104700-report.md" dir)))
+    (unwind-protect
+        (progn
+          (with-temp-file file (insert "# report\n"))
+          (let* ((user (imoogi-agent-test--user-buffer))
+                 (window (selected-window))
+                 (frame (selected-frame)))
+            (pcase-let ((`(,status ,messages ,log)
+                         (imoogi-agent-test--receive-json
+                          (imoogi-agent-test--event-json
+                           "artifact-created" `((path . ,file)
+                                                (artifactType . "report")
+                                                (title . "주간 보고"))))))
+              (should (equal status "ok"))
+              (should (= 1 (cl-count "Agent artifact created: 주간 보고" messages
+                                     :test #'equal)))
+              (should (string-match-p "report" (car log))))
+            (let ((shown (imoogi-agent-test--file-window file)))
+              (should (windowp shown))
+              (should-not (eq shown window)))
+            (imoogi-agent-test--assert-user-untouched user window frame)
+            (pcase-let ((`(,status ,messages ,_)
+                         (imoogi-agent-test--receive-json
+                          (imoogi-agent-test--event-json
+                           "artifact-created" `((path . ,file))))))
+              (should (equal status "ok"))
+              (should (= 1 (cl-count "Agent artifact created: 260927-104700-report.md"
+                                     messages :test #'equal))))
+            (imoogi-agent-test--assert-user-untouched user window frame)))
+      (imoogi-agent-test--kill-visiting file)
+      (delete-other-windows)
+      (delete-directory dir t))))
+
+;;; AC-AIPC-005 (c) -----------------------------------------------------------
+
+(ert-deftest imoogi-agent-ac05-task-finished-artifact-displayed ()
+  "AC-AIPC-005 (c): success with an artifact notifies and shows the file."
+  (imoogi-agent-test--with-temp-files (file)
+    (setq file (imoogi-agent-test--write "result\n" ".txt"))
+    (unwind-protect
+        (let* ((user (imoogi-agent-test--user-buffer))
+               (window (selected-window))
+               (frame (selected-frame)))
+          (pcase-let ((`(,status ,messages ,_)
+                       (imoogi-agent-test--receive-json
+                        (imoogi-agent-test--event-json
+                         "task-finished" `((status . "success") (artifact . ,file))))))
+            (should (equal status "ok"))
+            (should (= 1 (cl-count-if (lambda (l) (string-prefix-p "✓ Agent task finished" l))
+                                      messages))))
+          (let ((shown (imoogi-agent-test--file-window file)))
+            (should (windowp shown))
+            (should-not (eq shown window)))
+          (imoogi-agent-test--assert-user-untouched user window frame))
+      (imoogi-agent-test--kill-visiting file)
+      (delete-other-windows))))
+
+;;; AC-AIPC-009 ---------------------------------------------------------------
+
+(ert-deftest imoogi-agent-ac09-payload-path-policy ()
+  "AC-AIPC-009: payload paths must be absolute, local, existing regular files."
+  (require 'tramp)
+  (require 'tramp-sh)
+  (let* ((dir (make-temp-file "imoogi-aipc-test-dir-" t))
+         (f (expand-file-name "f.txt" dir))
+         (d (expand-file-name "d" dir))
+         (lf (expand-file-name "lf" dir))
+         (ld (expand-file-name "ld" dir))
+         (lx (expand-file-name "lx" dir))
+         (missing (expand-file-name "missing.txt" dir))
+         (connections 0))
+    (unwind-protect
+        (progn
+          (with-temp-file f (insert "file\n"))
+          (make-directory d)
+          (make-symbolic-link f lf)
+          (make-symbolic-link d ld)
+          (make-symbolic-link (expand-file-name "gone" dir) lx)
+          (imoogi-agent-test--user-buffer)
+          (cl-letf (((symbol-function 'tramp-maybe-open-connection)
+                     (lambda (&rest _) (cl-incf connections)
+                       (error "Remote connection attempted"))))
+            ;; (a) and (b) are accepted; (b) opens the resolved file.
+            (should (equal (car (imoogi-agent-test--receive-json
+                                 (imoogi-agent-test--event-json
+                                  "open-file" `((path . ,f)))))
+                           "ok"))
+            (should (windowp (imoogi-agent-test--file-window (file-truename f))))
+            (imoogi-agent-test--kill-visiting (file-truename f))
+            (imoogi-agent-test--user-buffer)
+            (should (equal (car (imoogi-agent-test--receive-json
+                                 (imoogi-agent-test--event-json
+                                  "open-file" `((path . ,lf)))))
+                           "ok"))
+            (let ((buffer (window-buffer (imoogi-agent-test--file-window (file-truename f)))))
+              (should (equal (buffer-file-name buffer) (file-truename f))))
+            (imoogi-agent-test--kill-visiting (file-truename f))
+            ;; (c)-(i) are rejected without any visible change.
+            (imoogi-agent-test--user-buffer)
+            (let ((layout (imoogi-agent-test--window-state))
+                  (buffers (buffer-list)))
+              (dolist (path (list (file-name-nondirectory f) missing d ld lx
+                                  "/dev/null" "/ssh:host:/etc/hosts"))
+                (should (equal (list path (car (imoogi-agent-test--receive-json
+                                                (imoogi-agent-test--event-json
+                                                 "open-file" `((path . ,path))))))
+                               (list path "error:bad-path"))))
+              ;; The same policy covers every payload path field.
+              (should (equal (car (imoogi-agent-test--receive-json
+                                   (imoogi-agent-test--event-json
+                                    "goto-location" `((path . ,missing) (line . 1)))))
+                             "error:bad-path"))
+              (should (equal (car (imoogi-agent-test--receive-json
+                                   (imoogi-agent-test--event-json
+                                    "artifact-created" `((path . ,missing)))))
+                             "error:bad-path"))
+              (pcase-let ((`(,status ,messages ,_)
+                           (imoogi-agent-test--receive-json
+                            (imoogi-agent-test--event-json
+                             "task-finished" `((status . "success")
+                                               (artifact . ,missing))))))
+                (should (equal status "error:bad-path"))
+                (should-not messages))
+              (should (equal layout (imoogi-agent-test--window-state)))
+              (should (equal (sort (mapcar #'buffer-name buffers) #'string<)
+                             (sort (mapcar #'buffer-name (buffer-list)) #'string<)))))
+          (should (= 0 connections)))
+      (imoogi-agent-test--kill-visiting (file-truename f))
+      (delete-other-windows)
+      (delete-directory dir t))))
+
+;;; AC-AIPC-010 ---------------------------------------------------------------
+
+(defvar imoogi-agent-test-unsafe nil
+  "A variable with no safe-local-variable property (unsafe as a local).")
+
+(ert-deftest imoogi-agent-ac10-never-waits-for-input ()
+  "AC-AIPC-010: indirect prompts are suppressed; project notes are untouched."
+  (let* ((dir (make-temp-file "imoogi-aipc-test-dir-" t))
+         (large (expand-file-name "large.txt" dir))
+         (locals (expand-file-name "locals.txt" dir))
+         (changed (expand-file-name "changed.txt" dir))
+         (inputs 0)
+         (notes-calls 0)
+         (large-file-warning-threshold 100)
+         (notes-counter (lambda (&rest _) (cl-incf notes-calls)))
+         (notes-functions nil))
+    (unwind-protect
+        (progn
+          (with-temp-file large (insert (make-string 1000 ?l)))
+          (with-temp-file locals
+            (insert "-*- imoogi-agent-test-unsafe: 1; eval: (message \"x\") -*-\nbody\n"))
+          (with-temp-file changed (insert "old\n"))
+          (let ((buffer (find-file-noselect (file-truename changed) t)))
+            (with-current-buffer buffer (set-buffer-modified-p nil)))
+          (with-temp-file changed (insert "new content on disk\n"))
+          (set-file-times changed (time-add (current-time) 10))
+          (mapatoms (lambda (symbol)
+                      (when (and (fboundp symbol)
+                                 (string-prefix-p "imoogi-project-notes-" (symbol-name symbol))
+                                 (functionp (symbol-function symbol)))
+                        (push symbol notes-functions))))
+          (dolist (symbol notes-functions)
+            (advice-add symbol :before notes-counter))
+          (unwind-protect
+              (cl-letf (((symbol-function 'read-string)
+                         (lambda (&rest _) (cl-incf inputs) (error "Input requested")))
+                        ((symbol-function 'read-from-minibuffer)
+                         (lambda (&rest _) (cl-incf inputs) (error "Input requested")))
+                        ((symbol-function 'y-or-n-p)
+                         (lambda (&rest _) (cl-incf inputs) (error "Input requested")))
+                        ((symbol-function 'yes-or-no-p)
+                         (lambda (&rest _) (cl-incf inputs) (error "Input requested")))
+                        ((symbol-function 'read-key)
+                         (lambda (&rest _) (cl-incf inputs) (error "Input requested")))
+                        ((symbol-function 'read-char)
+                         (lambda (&rest _) (cl-incf inputs) (error "Input requested")))
+                        ((symbol-function 'read-event)
+                         (lambda (&rest _) (cl-incf inputs) (error "Input requested"))))
+                (dolist (file (list large locals changed))
+                  (imoogi-agent-test--user-buffer)
+                  (pcase-let ((`(,status ,messages ,_)
+                               (imoogi-agent-test--receive-json
+                                (imoogi-agent-test--event-json
+                                 "open-file" `((path . ,file))))))
+                    (should (equal (list file status) (list file "ok")))
+                    (should-not (member "x" messages)))
+                  (should (equal (list file (car (imoogi-agent-test--receive-json
+                                                  (imoogi-agent-test--event-json
+                                                   "goto-location"
+                                                   `((path . ,file) (line . 1))))))
+                                 (list file "ok"))))
+                ;; Remaining event types, for the project-notes call count.
+                (dolist (event `(("message" ((text . "hi")))
+                                 ("artifact-created" ((path . ,large)))
+                                 ("task-finished" ((status . "failed")))))
+                  (should (equal (car (imoogi-agent-test--receive-json
+                                       (imoogi-agent-test--event-json
+                                        (car event) (cadr event))))
+                                 "ok"))))
+            (dolist (symbol notes-functions)
+              (advice-remove symbol notes-counter)))
+          (should (= 0 inputs))
+          (should (= 0 notes-calls))
+          (should-not (with-current-buffer (find-buffer-visiting (file-truename locals))
+                        (local-variable-p 'imoogi-agent-test-unsafe)))
+          (with-temp-buffer
+            (insert-file-contents
+             (expand-file-name "modules/development/30-agent.el" imoogi-test-root))
+            (should-not (search-forward "26-project-notes" nil t))
+            (goto-char (point-min))
+            (should-not (search-forward "imoogi-project-notes" nil t))))
+      (imoogi-agent-test--kill-visiting (file-truename large) (file-truename locals)
+                                        (file-truename changed))
+      (delete-other-windows)
+      (delete-directory dir t))))
+
 (provide 'imoogi-agent-test)
 ;;; agent-test.el ends here

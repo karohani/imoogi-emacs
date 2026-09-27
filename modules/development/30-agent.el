@@ -139,8 +139,32 @@ that the first violation in that order is the one reported."
         ;; `payload' must be a JSON object: an alist, or nil for {}.
         (unless (and (assq 'payload event) (listp payload))
           (imoogi-agent--reject "bad-field"))
-        (append (list :type type :project project :session session)
-                (imoogi-agent--validate-payload type payload))))))
+        (imoogi-agent--resolve-paths
+         (append (list :type type :project project :session session)
+                 (imoogi-agent--validate-payload type payload)))))))
+
+(defun imoogi-agent--resolve-path (path)
+  "Return the real path of the payload PATH or reject with bad-path.
+PATH must be absolute and local, and after resolving symbolic links it must
+name an existing regular file (not a directory, device, FIFO, socket, or
+dangling link). The remote test never opens a connection, and it runs
+again on the resolved name so a link cannot lead onto a remote file."
+  (unless (and (file-name-absolute-p path) (not (file-remote-p path)))
+    (imoogi-agent--reject "bad-path"))
+  (let ((true (file-truename path)))
+    (unless (and (not (file-remote-p true)) (file-regular-p true))
+      (imoogi-agent--reject "bad-path"))
+    true))
+
+(defun imoogi-agent--resolve-paths (event)
+  "Replace every payload path in the plist EVENT by its checked real path.
+The original name is kept under :name for notices."
+  (dolist (key '(:path :artifact))
+    (when-let* ((path (plist-get event key)))
+      (setq event (plist-put event key (imoogi-agent--resolve-path path)))
+      (unless (plist-get event :name)
+        (setq event (plist-put event :name (file-name-nondirectory path))))))
+  event)
 
 (defun imoogi-agent--validate-payload (type payload)
   "Validate PAYLOAD of TYPE and return its fields as a plist."
@@ -202,27 +226,97 @@ a rejection reason."
           (goto-char (point-max))
           (insert line "\n"))))))
 
+;;; Display
+
+(defconst imoogi-agent--display-action
+  '((display-buffer-reuse-window
+     display-buffer-use-some-window
+     display-buffer-pop-up-window)
+    (inhibit-same-window . t)
+    (reusable-frames . visible))
+  "`display-buffer' action for agent files (plan.md D-5).
+The selected window is never a candidate, so the user's window, frame, and
+point stay where they are; a file shown only in the selected window is
+shown once more elsewhere.")
+
+(defun imoogi-agent--visit (file)
+  "Return a buffer visiting FILE without asking the user anything.
+The causes of indirect prompts are removed: no large-file warning, no
+changed-on-disk question (NOWARN), only safe file-local variables, and no
+`eval' local variable."
+  (let ((large-file-warning-threshold nil)
+        (enable-local-variables :safe)
+        (enable-local-eval nil))
+    (find-file-noselect file t)))
+
+(defun imoogi-agent--display (file &optional line column)
+  "Show FILE in a window other than the selected one without selecting it.
+When LINE is non-nil, move that window's point to LINE and COLUMN (both
+1-based); a line past the end clamps to the line holding `point-max' and
+a column past the end of the line clamps to the line end."
+  (let* ((buffer (imoogi-agent--visit file))
+         (window (display-buffer buffer imoogi-agent--display-action)))
+    (when (and line (window-live-p window))
+      (set-window-point
+       window
+       (with-current-buffer buffer
+         (save-excursion
+           (save-restriction
+             (widen)
+             (goto-char (point-min))
+             (if (>= line (line-number-at-pos (point-max)))
+                 (goto-char (point-max))
+               (forward-line (1- line)))
+             (move-to-column (1- (min column most-positive-fixnum)))
+             (point))))))
+    window))
+
 ;;; Dispatch
+
+(defun imoogi-agent--notice-for-finish (event)
+  "Return the echo-area notice for the task-finished EVENT."
+  (let ((summary (plist-get event :summary)))
+    (concat (if (equal (plist-get event :status) "success")
+                "✓ Agent task finished"
+              "✗ Agent task failed")
+            (if (and summary (not (string-empty-p summary)))
+                (concat ": " summary)
+              ""))))
 
 (defun imoogi-agent-dispatch (event)
   "Carry out the validated, normalized EVENT plist.
-Return a detail string for the log line."
+Handlers that show a file display it first and notify last, so the notice
+is the final message of the call. Return a detail string for the log."
   (pcase (plist-get event :type)
     ("message"
      (imoogi-agent--notify (plist-get event :text))
      (plist-get event :text))
+    ("open-file"
+     (imoogi-agent--display (plist-get event :path))
+     (plist-get event :path))
+    ("goto-location"
+     (imoogi-agent--display (plist-get event :path)
+                            (plist-get event :line)
+                            (plist-get event :column))
+     (format "%s:%d:%d" (plist-get event :path)
+             (plist-get event :line) (plist-get event :column)))
+    ("artifact-created"
+     (imoogi-agent--display (plist-get event :path))
+     (imoogi-agent--notify (concat "Agent artifact created: "
+                                   (or (plist-get event :title)
+                                       (plist-get event :name))))
+     (string-join (delq nil (list (plist-get event :artifact-type)
+                                  (plist-get event :title)
+                                  (plist-get event :path)))
+                  " "))
     ("task-finished"
-     (let* ((summary (plist-get event :summary))
-            (notice (concat (if (equal (plist-get event :status) "success")
-                                "✓ Agent task finished"
-                              "✗ Agent task failed")
-                            (if (and summary (not (string-empty-p summary)))
-                                (concat ": " summary)
-                              ""))))
-       (imoogi-agent--notify notice)
-       (concat (plist-get event :status)
-               (if summary (concat " " summary) ""))))
-    (type (error "Event type %s is not handled yet" type))))
+     (when-let* ((artifact (plist-get event :artifact)))
+       (imoogi-agent--display artifact))
+     (imoogi-agent--notify (imoogi-agent--notice-for-finish event))
+     (string-join (delq nil (list (plist-get event :status)
+                                  (plist-get event :summary)
+                                  (plist-get event :artifact)))
+                  " "))))
 
 ;;; Entry points
 
