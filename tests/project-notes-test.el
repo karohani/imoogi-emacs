@@ -376,6 +376,61 @@
         (should (equal (imoogi-project-notes--agenda-files)
                        (list (expand-file-name "tasks.org" notes))))))))
 
+(ert-deftest imoogi-project-notes-mounted-root-status-uses-marker ()
+  (imoogi-project-notes-test--isolated
+    (let* ((external (expand-file-name "external/" sandbox))
+           (root `((id . "root-a") (path . ,external) (label . "USB")
+                   (enabled . t)))
+           (marker (expand-file-name ".imoogi-mounted-root.json" external)))
+      (should (eq (imoogi-project-notes--mounted-root-status root)
+                  'disconnected))
+      (make-directory external t)
+      (should (eq (imoogi-project-notes--mounted-root-status root)
+                  'unverified))
+      (imoogi-project-notes--write-mounted-root-marker root)
+      (should (file-exists-p marker))
+      (should (eq (imoogi-project-notes--mounted-root-status root)
+                  'connected))
+      (should (eq (imoogi-project-notes--mounted-root-status
+                   (cons '(id . "root-b") root))
+                  'foreign)))))
+
+(ert-deftest imoogi-project-notes-mounted-root-writable-confirms-unverified ()
+  (imoogi-project-notes-test--isolated
+    (let* ((external (expand-file-name "external/" sandbox))
+           (root `((id . "root-a") (path . ,external) (label . "USB")
+                   (enabled . t))))
+      (should-error (imoogi-project-notes--ensure-mounted-root-writable root)
+                    :type 'user-error)
+      (make-directory external t)
+      (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) nil)))
+        (should-error (imoogi-project-notes--ensure-mounted-root-writable root)
+                      :type 'user-error))
+      (should (eq (imoogi-project-notes--mounted-root-status root) 'unverified))
+      (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
+        (imoogi-project-notes--ensure-mounted-root-writable root))
+      (should (eq (imoogi-project-notes--mounted-root-status root) 'connected))
+      (should-error (imoogi-project-notes--ensure-mounted-root-writable
+                     (cons '(id . "root-b") root))
+                    :type 'user-error)
+      (should-error (imoogi-project-notes--ensure-mounted-root-writable
+                     (cons '(enabled . :json-false) root))
+                    :type 'user-error))))
+
+(ert-deftest imoogi-project-notes-mounted-root-add-writes-marker-while-other-unplugged ()
+  (imoogi-project-notes-test--isolated
+    (let ((external (expand-file-name "external/" sandbox))
+          (unplugged (expand-file-name "unplugged/" sandbox)))
+      (make-directory external t)
+      (imoogi-project-notes--write-mounted-state
+       `((version . 1)
+         (roots . (((id . "gone") (path . ,unplugged) (label . "Gone")
+                    (enabled . t))))
+         (source-overrides . nil)))
+      (let ((root (imoogi-project-notes-mounted-root-add external "Portable")))
+        (should (eq (imoogi-project-notes--mounted-root-status root)
+                    'connected))))))
+
 (ert-deftest imoogi-project-notes-mounted-root-lifecycle-preserves-files ()
   (imoogi-project-notes-test--isolated
     (let* ((external (expand-file-name "external/" sandbox))
@@ -771,7 +826,11 @@
     (make-directory (expand-file-name "25.99-old/" imoogi-project-notes-directory) t)
     (should (equal (imoogi-project-notes--next-study-id "26") "26.08"))))
 
-(ert-deftest imoogi-project-notes-prefix-creates-study-under-mounted-root ()
+(defun imoogi-project-notes-test--pick-mounted (_prompt collection &rest _)
+  "Completing-read stub choosing the first mounted candidate in COLLECTION."
+  (car (cl-find-if #'cdr collection)))
+
+(ert-deftest imoogi-project-notes-location-chooser-creates-study-under-mounted-root ()
   (imoogi-project-notes-test--isolated
     (let* ((external (file-name-as-directory
                       (expand-file-name "external/" sandbox)))
@@ -781,33 +840,132 @@
            (mounted `((id . ,(imoogi-project-notes--mounted-root-id canonical))
                       (path . ,canonical)
                       (label . "Portable")
-                      (enabled . t))))
+                      (enabled . t)))
+           confirmed)
       (make-directory (expand-file-name "26.03-existing/" external) t)
       (make-directory (expand-file-name "26.07-local/"
                                         imoogi-project-notes-directory) t)
       (imoogi-project-notes--write-mounted-state
        `((version . 1) (roots . (,mounted)) (source-overrides . nil)))
-      (let ((current-prefix-arg '(4)) selected-default)
+      (cl-letf (((symbol-function 'read-string)
+                 (lambda (&rest _) "Cognitive Science"))
+                ((symbol-function 'completing-read)
+                 #'imoogi-project-notes-test--pick-mounted)
+                ;; The root predates markers, so choosing it migrates it once.
+                ((symbol-function 'y-or-n-p)
+                 (lambda (&rest _) (setq confirmed t)))
+                ((symbol-function 'imoogi-project-notes--open-study-workspace)
+                 #'ignore))
+        (call-interactively #'imoogi-project-notes-setup-study))
+      (should confirmed)
+      (should (eq (imoogi-project-notes--mounted-root-status mounted) 'connected))
+      (should (file-exists-p
+               (expand-file-name "26.08-cognitive-science/study.org" external)))
+      (should (file-exists-p
+               (expand-file-name "26.08-cognitive-science/.imoogi-project.json"
+                                 external)))
+      (should-not (imoogi-project-notes--read-registry)))))
+
+(ert-deftest imoogi-project-notes-location-chooser-skipped-without-attached-root ()
+  (imoogi-project-notes-test--isolated
+    (imoogi-project-notes--write-mounted-state
+     `((version . 1)
+       (roots . (((id . "gone")
+                  (path . ,(expand-file-name "unplugged/" sandbox))
+                  (label . "Gone") (enabled . t))))
+       (source-overrides . nil)))
+    (cl-letf (((symbol-function 'read-string)
+               (lambda (&rest _) "Networks"))
+              ((symbol-function 'completing-read)
+               (lambda (&rest _) (ert-fail "location should not be asked")))
+              ((symbol-function 'imoogi-project-notes--open-study-workspace)
+               #'ignore))
+      (let ((directory (call-interactively
+                        #'imoogi-project-notes-setup-study)))
+        (should (file-in-directory-p directory
+                                     imoogi-project-notes-directory))))))
+
+(ert-deftest imoogi-project-notes-location-chooser-creates-project-under-mounted-root ()
+  (imoogi-project-notes-test--isolated
+    (let* ((external (expand-file-name "external/" sandbox))
+           (_ (make-directory external t))
+           (canonical (imoogi-project-notes--canonical-directory external))
+           (mounted `((id . ,(imoogi-project-notes--mounted-root-id canonical))
+                      (path . ,canonical) (label . "Portable") (enabled . t)))
+           (imoogi-project-notes-todo-storage 'central))
+      (imoogi-project-notes--write-mounted-state
+       `((version . 1) (roots . (,mounted)) (source-overrides . nil)))
+      (imoogi-project-notes--write-mounted-root-marker mounted)
+      (cl-letf (((symbol-function 'imoogi-project-notes--project-root)
+                 (lambda () root))
+                ((symbol-function 'read-string) (lambda (&rest _) "260927.01"))
+                ((symbol-function 'completing-read)
+                 (lambda (prompt collection &rest _)
+                   (if (string-match-p "preset" prompt)
+                       "development"
+                     (imoogi-project-notes-test--pick-mounted prompt collection))))
+                ((symbol-function 'imoogi-project-notes--restore-workspace)
+                 #'ignore))
+        (call-interactively #'imoogi-project-notes-setup))
+      (let ((notes (expand-file-name "260927.01-source/" external))
+            (entries (imoogi-project-notes--all-entries)))
+        (should (file-exists-p (expand-file-name "tasks.org" notes)))
+        (should-not (imoogi-project-notes--read-registry))
+        (should (= (length entries) 1))
+        (should (eq (alist-get 'origin (car entries)) 'mounted))
+        (should (eq (imoogi-project-notes--entry-todo-storage (car entries))
+                    'project))))))
+
+(ert-deftest imoogi-project-notes-setup-reuses-existing-mounted-project ()
+  (imoogi-project-notes-test--isolated
+    (let* ((external (expand-file-name "external/" sandbox))
+           (_ (make-directory external t))
+           (canonical (imoogi-project-notes--canonical-directory external))
+           (mounted `((id . ,(imoogi-project-notes--mounted-root-id canonical))
+                      (path . ,canonical) (label . "Portable") (enabled . t))))
+      (imoogi-project-notes--write-mounted-state
+       `((version . 1) (roots . (,mounted)) (source-overrides . nil)))
+      (imoogi-project-notes--write-mounted-root-marker mounted)
+      (cl-letf (((symbol-function 'imoogi-project-notes--project-root)
+                 (lambda () root))
+                ((symbol-function 'imoogi-project-notes--restore-workspace)
+                 #'ignore))
+        (imoogi-project-notes-setup
+         root (expand-file-name "260927.01-source/" external))
+        ;; A second `s' must reopen the mounted notes, not ask for a number.
         (cl-letf (((symbol-function 'read-string)
-                   (lambda (&rest _) "Cognitive Science"))
-                  ((symbol-function 'imoogi-project-notes--select-mounted-root)
-                   (lambda (&rest _) mounted))
-                  ((symbol-function 'read-directory-name)
-                   (lambda (_prompt default &rest _)
-                     (setq selected-default default)
-                     default))
-                  ((symbol-function 'imoogi-project-notes--open-study-workspace)
-                   #'ignore))
-          (call-interactively #'imoogi-project-notes-setup-study)
-          (should (equal selected-default
-                         (expand-file-name "26.08-cognitive-science/" external)))
-          (should (file-exists-p
-                   (expand-file-name "26.08-cognitive-science/study.org"
-                                     external)))
-          (should (file-exists-p
-                   (expand-file-name
-                    "26.08-cognitive-science/.imoogi-project.json"
-                    external))))))))
+                   (lambda (&rest _) (ert-fail "numbering asked again")))
+                  ((symbol-function 'completing-read)
+                   (lambda (&rest _) (ert-fail "location asked again"))))
+          (call-interactively #'imoogi-project-notes-setup)))
+      (should-not (imoogi-project-notes--read-registry))
+      (should-not (and (file-directory-p imoogi-project-notes-directory)
+                       (directory-files imoogi-project-notes-directory
+                                        nil "^[^.]")))
+      (should (equal (directory-files external nil "^[^.]")
+                     '("260927.01-source"))))))
+
+(ert-deftest imoogi-project-notes-study-created-on-mounted-root-stays-mounted ()
+  (imoogi-project-notes-test--isolated
+    (let* ((external (expand-file-name "external/" sandbox))
+           (_ (make-directory external t))
+           (canonical (imoogi-project-notes--canonical-directory external))
+           (root-entry
+            `((id . ,(imoogi-project-notes--mounted-root-id canonical))
+              (path . ,canonical) (label . "Portable") (enabled . t))))
+      (imoogi-project-notes--write-mounted-state
+       `((version . 1) (roots . (,root-entry)) (source-overrides . nil)))
+      (imoogi-project-notes--write-mounted-root-marker root-entry)
+      (cl-letf (((symbol-function 'imoogi-project-notes--open-study-workspace)
+                 #'ignore))
+        (imoogi-project-notes-setup-study
+         "Cognitive Science"
+         (expand-file-name "26.08-cognitive-science/" external)
+         "26.08" "2026-09-27"))
+      (should-not (imoogi-project-notes--read-registry))
+      (let ((entries (imoogi-project-notes--all-entries)))
+        (should (= (length entries) 1))
+        (should (eq (alist-get 'origin (car entries)) 'mounted))))))
 
 (ert-deftest imoogi-project-notes-moves-local-study-to-mounted-root ()
   (imoogi-project-notes-test--isolated
@@ -817,6 +975,7 @@
            (root-entry
             `((id . ,(imoogi-project-notes--mounted-root-id canonical))
               (path . ,canonical) (label . "Portable") (enabled . t)))
+           (_ (imoogi-project-notes--write-mounted-root-marker root-entry))
            (directory (imoogi-project-notes-setup-study
                        "Operating Systems" nil "26.01" "2026-01-15"))
            (study-buffer (current-buffer))
@@ -864,6 +1023,7 @@
            (root-entry
             `((id . ,(imoogi-project-notes--mounted-root-id canonical))
               (path . ,canonical) (label . "Portable") (enabled . t)))
+           (_ (imoogi-project-notes--write-mounted-root-marker root-entry))
            (directory (imoogi-project-notes-setup-study
                        "Operating Systems" nil "26.01" "2026-01-15"))
            (local-entry (car (imoogi-project-notes--all-entries)))

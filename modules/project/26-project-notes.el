@@ -73,6 +73,10 @@ a navigation file.  Changing this option does not migrate existing projects."
 (defconst imoogi-project-notes--metadata-file-name ".imoogi-project.json"
   "File that identifies the kind and layout of a project-notes directory.")
 
+(defconst imoogi-project-notes--mounted-root-marker-file-name
+  ".imoogi-mounted-root.json"
+  "File written at a mounted root that proves the device is really attached.")
+
 (defconst imoogi-project-notes--number-id-regexp
   "\\(?:[0-9]\\{6\\}\\.[0-9][0-9]\\|[0-9]\\{4\\}\\.[0-9][0-9]\\|[0-9]\\{2\\}\\.[0-9][0-9]\\|L[0-9][0-9][0-9]\\)"
   "Regexp matching a project-notes numbering id without folder slug.")
@@ -826,8 +830,12 @@ return an empty state instead of signaling for malformed data."
       (when (and (not (eq (alist-get 'enabled root) :json-false))
                  (imoogi-project-notes--directory-overlap-p
                   canonical
-                  (imoogi-project-notes--canonical-directory
-                   (imoogi-project-notes--alist-string 'path root))))
+                  ;; An unplugged root cannot be canonicalized; compare its
+                  ;; recorded path instead of failing the whole registration.
+                  (let ((path (imoogi-project-notes--alist-string 'path root)))
+                    (if (file-directory-p path)
+                        (imoogi-project-notes--canonical-directory path)
+                      (imoogi-project-notes--directory-file-name path)))))
         (user-error "이미 등록된 외장 노트 루트와 중복되거나 겹칩니다: %s"
                     (imoogi-project-notes--alist-string 'path root))))
     canonical))
@@ -843,6 +851,90 @@ return an empty state instead of signaling for malformed data."
    (concat root-id "\0"
            (imoogi-project-notes--directory-file-name
             (file-truename notes-directory)))))
+
+(defun imoogi-project-notes--mounted-root-marker-file (root)
+  "Return the marker file path for mounted ROOT."
+  (expand-file-name imoogi-project-notes--mounted-root-marker-file-name
+                    (imoogi-project-notes--alist-string 'path root)))
+
+(defun imoogi-project-notes--write-mounted-root-marker (root)
+  "Write the device marker identifying mounted ROOT."
+  (with-temp-file (imoogi-project-notes--mounted-root-marker-file root)
+    (let ((json-encoding-pretty-print t))
+      (insert (json-encode
+               `((version . 1)
+                 (id . ,(imoogi-project-notes--alist-string 'id root))
+                 (label . ,(imoogi-project-notes--alist-string 'label root))))
+              "\n"))))
+
+;; @MX:NOTE A bare directory check cannot tell an attached device from an
+;; empty stand-in folder left at the same path after unmount; only the marker
+;; written at registration can.  Reads may still scan `unverified' roots.
+(defun imoogi-project-notes--mounted-root-status (root)
+  "Return the live connection status of mounted ROOT.
+`disconnected' when its path is absent, `connected' when the marker id
+matches ROOT, `unverified' when the folder has no marker, and `foreign' when
+the marker belongs to another root."
+  (let ((path (imoogi-project-notes--alist-string 'path root)))
+    (if (not (and path (file-directory-p path)))
+        'disconnected
+      (let* ((file (imoogi-project-notes--mounted-root-marker-file root))
+             (marker (and (file-readable-p file)
+                          (ignore-errors
+                            (let ((json-object-type 'alist)
+                                  (json-key-type 'symbol))
+                              (json-read-file file))))))
+        (cond ((not (file-exists-p file)) 'unverified)
+              ((equal (alist-get 'id marker)
+                      (imoogi-project-notes--alist-string 'id root))
+               'connected)
+              (t 'foreign))))))
+
+(defun imoogi-project-notes--mount-point-note (path)
+  "Describe where PATH is mounted, warning when it is the system disk."
+  (let ((mount (plist-get (imoogi-project-notes--df-descriptor path)
+                          :mount-point)))
+    (cond ((null mount) "")
+          ((member mount '("/" "/System/Volumes/Data"))
+           (format " [경고: 내장 디스크(%s)로 보입니다]" mount))
+          (t (format " [마운트 위치: %s]" mount)))))
+
+;; @MX:ANCHOR Single write gate for mounted roots (setup, setup-study, move,
+;; location chooser); keep every mounted write behind it.
+(defun imoogi-project-notes--ensure-mounted-root-writable (root)
+  "Signal unless mounted ROOT is enabled and verifiably attached.
+An unverified root is marked after confirmation; this is also how roots
+registered before markers existed are migrated."
+  (let ((path (imoogi-project-notes--alist-string 'path root))
+        (label (imoogi-project-notes--alist-string 'label root)))
+    (when (eq (alist-get 'enabled root) :json-false)
+      (user-error "비활성 외장 루트에는 쓸 수 없습니다: %s" label))
+    (pcase (imoogi-project-notes--mounted-root-status root)
+      ('connected root)
+      ('disconnected
+       (user-error "외장 노트 루트가 연결되어 있지 않습니다: %s" path))
+      ('foreign
+       (user-error "다른 외장 루트의 표식이 있는 폴더입니다: %s" path))
+      ('unverified
+       (unless (y-or-n-p
+                (format "%s 에 장치 표식이 없습니다%s. 이 폴더가 외장 루트 %s 가 맞나요? "
+                        path (imoogi-project-notes--mount-point-note path) label))
+         (user-error "외장 루트를 확인하지 못해 중단했습니다: %s" path))
+       (imoogi-project-notes--write-mounted-root-marker root)
+       root))))
+
+(defun imoogi-project-notes--mounted-root-for-directory (directory)
+  "Return the enabled registered mounted root containing DIRECTORY, or nil."
+  (when directory
+    (let ((directory (file-truename (expand-file-name directory))))
+      (cl-find-if
+       (lambda (root)
+         (let ((path (imoogi-project-notes--alist-string 'path root)))
+           (and (not (eq (alist-get 'enabled root) :json-false))
+                path
+                (file-directory-p path)
+                (file-in-directory-p directory (file-truename path)))))
+       (alist-get 'roots (imoogi-project-notes--read-mounted-state 'noerror))))))
 
 (defun imoogi-project-notes--decorate-local-entry (entry)
   "Return a copied local registry ENTRY with read-side identity fields."
@@ -1312,8 +1404,9 @@ The date/month prefix is part of the scope, so `26.01' and `260925.01'
 remain independent sequences."
   (imoogi-project-notes--number-id-from-name name))
 
-(defun imoogi-project-notes--numbered-notes-directory (number root)
-  "Return a notes directory named from NUMBER and source ROOT."
+(defun imoogi-project-notes--numbered-notes-directory (number root &optional base)
+  "Return a notes directory named from NUMBER and source ROOT.
+The folder lives below BASE, or `imoogi-project-notes-directory' when nil."
   (when (or (string-empty-p (string-trim number))
             (string-match-p "[/\\\\]" number))
     (user-error "프로젝트 번호를 입력하세요 (예: 260925.01 또는 2609)"))
@@ -1325,7 +1418,7 @@ remain independent sequences."
     (unless (imoogi-project-notes--folder-name-valid-p name)
       (user-error "프로젝트 번호 형식이 올바르지 않습니다: %s" name))
     (expand-file-name (file-name-as-directory name)
-                      imoogi-project-notes-directory)))
+                      (or base imoogi-project-notes-directory))))
 
 (defun imoogi-project-notes--replace-template-values (text values)
   "Replace {{KEY}} placeholders in TEXT using VALUES."
@@ -1647,6 +1740,22 @@ This startup path intentionally avoids writing string-backed agenda storage."
                             :test #'string=)))
     (imoogi-project-notes--write-registry (cons entry others))))
 
+;; @MX:NOTE Notes below a mounted root are discovered by scanning their
+;; metadata, never through the local registry: `--all-entries' lets a local row
+;; win over the same directory, which would hide the mounted origin from
+;; detach/unmount.
+(defun imoogi-project-notes--commit-new-entry (entry)
+  "Persist newly set-up ENTRY and return the entry callers should use.
+Local notes go to the registry.  Notes below a mounted root drop any stale
+local row and are returned as rediscovered mounted entries."
+  (let ((notes-dir (imoogi-project-notes--alist-string 'notes-dir entry)))
+    (if (not (imoogi-project-notes--mounted-root-for-directory notes-dir))
+        (progn (imoogi-project-notes--save-entry entry) entry)
+      (imoogi-project-notes--remove-local-entry entry)
+      (or (imoogi-project-notes--find-entry-by-notes-directory
+           notes-dir (imoogi-project-notes--all-entries))
+          entry))))
+
 (defun imoogi-project-notes--set-buffer-context (entry)
   "Attach ENTRY context to the current buffer."
   (setq-local imoogi-project-notes-source-root
@@ -1751,7 +1860,8 @@ only CURRENT-BUFFER-ONLY operations in the explicitly unlocked buffer."
       (let* ((root (imoogi-project-notes--project-root))
              (key (imoogi-project-notes--identity-key root)))
         (imoogi-project-notes-setup root)
-        (or (imoogi-project-notes--find-entry-by-key key)
+        (or (imoogi-project-notes--find-entry-by-key
+             key (imoogi-project-notes--all-entries))
             (error "Project notes setup did not create a registry entry")))))
 
 (defun imoogi-project-notes--restore-workspace (entry)
@@ -1784,9 +1894,19 @@ files are never overwritten."
           (existing (and (not directory)
                          (ignore-errors
                            (imoogi-project-notes--find-entry-by-key
-                            (imoogi-project-notes--identity-key root)))))
+                            (imoogi-project-notes--identity-key root)
+                            (imoogi-project-notes--all-entries)))))
+          (location (unless (or directory existing)
+                      (imoogi-project-notes--read-notes-location
+                       "프로젝트 노트 저장 위치: ")))
           (numbering (unless (or directory existing)
                        (read-string "프로젝트 번호 (예: 260925.01 또는 2609): ")))
+          (directory (or directory
+                         (and location
+                              (imoogi-project-notes--numbered-notes-directory
+                               numbering root
+                               (imoogi-project-notes--alist-string
+                                'path location)))))
           (preset-kind (unless existing
                          (intern (completing-read
                                   "프로젝트 산출물 preset: "
@@ -1797,7 +1917,9 @@ files are never overwritten."
                 (or root (imoogi-project-notes--project-root))))
          (key (imoogi-project-notes--identity-key root))
          (entries (imoogi-project-notes--read-registry))
-         (existing (imoogi-project-notes--find-entry-by-key key entries))
+         (existing (or (imoogi-project-notes--find-entry-by-key key entries)
+                       (imoogi-project-notes--find-entry-by-key
+                        key (imoogi-project-notes--all-entries))))
          (project-name (file-name-nondirectory (directory-file-name root)))
          (notes-dir (imoogi-project-notes--validate-notes-directory
                      (or directory
@@ -1814,11 +1936,15 @@ files are never overwritten."
                                      (imoogi-project-notes--read-metadata-file
                                       metadata-file 'noerror))))
             (imoogi-project-notes--alist-string 'note_id metadata)))
-         (storage (if existing
-                      (imoogi-project-notes--entry-todo-storage existing)
-                    (if (member imoogi-project-notes-todo-storage '(project central))
-                        imoogi-project-notes-todo-storage
-                      'project)))
+         (mounted-root (imoogi-project-notes--mounted-root-for-directory
+                        notes-dir))
+         (storage (cond
+                   (existing (imoogi-project-notes--entry-todo-storage existing))
+                   ;; Mounted notes cannot use the central agenda file.
+                   (mounted-root 'project)
+                   ((member imoogi-project-notes-todo-storage '(project central))
+                    imoogi-project-notes-todo-storage)
+                   (t 'project)))
          (entry (imoogi-project-notes--entry
                  key root notes-dir storage 'project nil nil
                  (or (alist-get 'artifact-preset existing)
@@ -1827,9 +1953,11 @@ files are never overwritten."
     (when-let ((note-id (or metadata-note-id
                             (imoogi-project-notes--entry-note-id existing))))
       (setf (alist-get 'note-id entry) note-id))
+    (when (and mounted-root (not existing))
+      (imoogi-project-notes--ensure-mounted-root-writable mounted-root))
     (imoogi-project-notes--setup-files entry project-name)
     (imoogi-project-notes--ensure-metadata entry (format-time-string "%Y-%m-%d"))
-    (imoogi-project-notes--save-entry entry)
+    (setq entry (imoogi-project-notes--commit-new-entry entry))
     (imoogi-project-notes--register-agenda-target
      (imoogi-project-notes--alist-string 'tasks-file entry))
     (imoogi-project-notes--restore-workspace entry)
@@ -2350,23 +2478,14 @@ optional programmatic overrides.  Existing files are never overwritten."
   (interactive
    (let* ((name (read-string "학습 이름: "))
           (mounted-root
-           (when current-prefix-arg
-             (let ((entry (imoogi-project-notes--select-mounted-root
-                           "학습 노트를 만들 외장 루트: ")))
-               (when (eq (alist-get 'enabled entry) :json-false)
-                 (user-error "비활성 외장 루트에는 학습 노트를 만들 수 없습니다"))
-               (let ((path (alist-get 'path entry)))
-                 (unless (file-directory-p path)
-                   (user-error "외장 노트 루트가 연결되어 있지 않습니다: %s" path))
-                 path))))
-          (base (or mounted-root imoogi-project-notes-directory))
+           (imoogi-project-notes--alist-string
+            'path (imoogi-project-notes--read-notes-location
+                   "학습 노트 저장 위치: ")))
           (id (imoogi-project-notes--next-study-id nil mounted-root))
-          (default (expand-file-name
-                    (format "%s-%s/" id (imoogi-project-notes--slug name))
-                    base))
           (directory (when mounted-root
-                       (read-directory-name "외장 학습 노트 폴더: "
-                                            default nil nil))))
+                       (expand-file-name
+                        (format "%s-%s/" id (imoogi-project-notes--slug name))
+                        mounted-root))))
      (list name directory id (format-time-string "%Y-%m-%d"))))
   (when (string-empty-p (string-trim study-name))
     (user-error "학습 이름을 입력하세요"))
@@ -2397,9 +2516,13 @@ optional programmatic overrides.  Existing files are never overwritten."
     (when-let ((note-id (or metadata-note-id
                             (imoogi-project-notes--entry-note-id existing))))
       (setf (alist-get 'note-id entry) note-id))
+    (when-let* (((not existing))
+                (mounted-root (imoogi-project-notes--mounted-root-for-directory
+                               notes-dir)))
+      (imoogi-project-notes--ensure-mounted-root-writable mounted-root))
     (imoogi-project-notes--setup-study-files entry study-name start-date)
     (imoogi-project-notes--ensure-metadata entry start-date)
-    (imoogi-project-notes--save-entry entry)
+    (setq entry (imoogi-project-notes--commit-new-entry entry))
     (imoogi-project-notes--register-agenda-target
      (imoogi-project-notes--alist-string 'tasks-file entry))
     (imoogi-project-notes--open-study-workspace entry)
@@ -2681,6 +2804,37 @@ use their standalone notes directory as the workspace root."
            (imoogi-project-notes--alist-string 'path root))
           (if (eq (alist-get 'enabled root) :json-false) " [disabled]" "")))
 
+(defun imoogi-project-notes--read-notes-location (prompt)
+  "Ask where a new note should live with PROMPT; return a mounted root or nil.
+Nil means the local `imoogi-project-notes-directory'.  Nothing is asked when
+no enabled mounted root is currently attached."
+  (let* ((roots (cl-remove-if
+                 (lambda (root)
+                   (or (eq (alist-get 'enabled root) :json-false)
+                       (memq (imoogi-project-notes--mounted-root-status root)
+                             '(disconnected foreign))))
+                 (alist-get 'roots
+                            (imoogi-project-notes--read-mounted-state 'noerror))))
+         (local (format "로컬  %s" (abbreviate-file-name
+                                   imoogi-project-notes-directory)))
+         (candidates
+          (cons (cons local nil)
+                (mapcar
+                 (lambda (root)
+                   (cons (concat (imoogi-project-notes--root-label root)
+                                 (if (eq (imoogi-project-notes--mounted-root-status
+                                          root)
+                                         'unverified)
+                                     " [표식 없음]"
+                                   ""))
+                         root))
+                 roots))))
+    (when roots
+      (when-let* ((root (cdr (assoc (completing-read prompt candidates nil t
+                                                     nil nil local)
+                                    candidates))))
+        (imoogi-project-notes--ensure-mounted-root-writable root)))))
+
 (defun imoogi-project-notes--select-mounted-root (&optional prompt)
   "Prompt for a registered mounted root and return it."
   (let* ((roots (alist-get 'roots (imoogi-project-notes--read-mounted-state)))
@@ -2707,7 +2861,10 @@ use their standalone notes directory as the workspace root."
     (user-error "표시 이름을 입력하세요"))
   (unless (file-exists-p directory)
     (if (called-interactively-p 'interactive)
-        (when (y-or-n-p (format "폴더를 생성할까요? %s " directory))
+        (when (y-or-n-p
+               (format "폴더를 생성할까요? %s%s " directory
+                       (imoogi-project-notes--mount-point-note
+                        (locate-dominating-file directory #'file-directory-p))))
           (make-directory directory t))
       (make-directory directory t)))
   (let* ((state (imoogi-project-notes--read-mounted-state))
@@ -2718,6 +2875,13 @@ use their standalone notes directory as the workspace root."
                   (label . ,label)
                   (enabled . t)
                   (created-at . ,(format-time-string "%Y-%m-%d")))))
+    (when (and (eq (imoogi-project-notes--mounted-root-status entry) 'foreign)
+               (not (and (called-interactively-p 'interactive)
+                         (y-or-n-p
+                          (format "다른 외장 루트 표식이 있습니다. 덮어쓸까요? %s "
+                                  canonical)))))
+      (user-error "다른 외장 루트의 표식이 있는 폴더입니다: %s" canonical))
+    (imoogi-project-notes--write-mounted-root-marker entry)
     (push entry (alist-get 'roots state))
     (imoogi-project-notes--write-mounted-state state)
     (message "imoogi: 외장 노트 루트를 등록했습니다: %s" canonical)
@@ -2892,8 +3056,7 @@ Agenda paths are changed and the original directory is removed."
        "중앙 agenda를 사용하는 프로젝트는 외장으로 옮길 수 없습니다. project tasks.org 저장 방식으로 전환하세요"))
     (when (eq (alist-get 'enabled root) :json-false)
       (user-error "비활성 외장 루트로는 노트를 옮길 수 없습니다"))
-    (unless (file-directory-p root-path)
-      (user-error "외장 노트 루트가 연결되어 있지 않습니다: %s" root-path))
+    (imoogi-project-notes--ensure-mounted-root-writable root)
     (unless (file-directory-p source)
       (user-error "옮길 노트 폴더가 없습니다: %s" source))
     (let* ((destination
