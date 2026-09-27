@@ -32,7 +32,7 @@ CLIPBOARD_PREFIX ?= $(HOME)/.local/bin
 IMOOGI_CLIP_VERSION ?= dev
 
 .DEFAULT_GOAL := help
-.PHONY: help emacs-install emacs-prewarm emacs-where install toolchain-setup tmux-install tmux-check grammars build build-all build-anki-bin build-toolchain build-provenance build-anki build-org-preview build-clipboard build-notes install-clipboard clipboard-version provenance-generate provenance-verify verify-vendor fmt fmt-check lint test test-elisp test-go test-shell ci-local clean-elc clean
+.PHONY: help emacs-install emacs-prewarm emacs-where install toolchain-setup tmux-install tmux-check grammars build build-all build-anki-bin build-toolchain build-provenance build-anki build-org-preview build-clipboard build-notes build-agent install-clipboard clipboard-version provenance-generate provenance-verify verify-vendor fmt fmt-check lint test test-elisp test-go test-shell ci-local clean-elc clean
 
 help: ## 이 도움말
 	@echo "imoogi-emacs"
@@ -59,6 +59,7 @@ help: ## 이 도움말
 	@echo "  make build-anki          Org→Anki 백엔드를 $(ANKI_PREFIX) 에 설치"
 	@echo "  make build-clipboard     클립보드 자산 CLI를 bin/에 빌드"
 	@echo "  make build-notes         프로젝트 노트 안전 이동 CLI를 bin/에 빌드"
+	@echo "  make build-agent         에이전트→Emacs 알림 CLI를 bin/에 빌드"
 	@echo "  make install-clipboard   클립보드 자산 CLI를 $(CLIPBOARD_PREFIX) 에 설치"
 	@echo "  make clipboard-version   빌드된 클립보드 CLI 버전 확인"
 	@echo "  make ci-local            pre-push 훅이 부르는 전체 검사"
@@ -106,7 +107,7 @@ grammars: ## tree-sitter 문법을 vendor/tree-sitter/ 로 빌드한다 (온라�
 build: ## 모든 Go 패키지가 컴파일되는지 검사한다
 	@$(GO) build ./...
 
-build-all: build-toolchain build-anki-bin build-org-preview build-clipboard build-notes build-provenance ## 모든 Go CLI를 bin/에 빌드한다
+build-all: build-toolchain build-anki-bin build-org-preview build-clipboard build-notes build-agent build-provenance ## 모든 Go CLI를 bin/에 빌드한다
 	@echo "모든 Go CLI 빌드 완료: bin/"
 
 build-toolchain: ## 언어 도구 설치 CLI를 bin/에 빌드한다
@@ -132,6 +133,10 @@ build-clipboard: ## 클립보드 텍스트·파일·이미지 판별 및 자산 
 build-notes: ## 프로젝트 노트 검증 이동 CLI를 bin/에 빌드한다
 	@mkdir -p bin
 	@$(GO) build -o bin/imoogi-notes ./cmd/imoogi-notes
+
+build-agent: ## 코딩 에이전트가 Emacs 에 알림을 보내는 CLI를 bin/에 빌드한다
+	@mkdir -p bin
+	@$(GO) build -o bin/imoogi-agent ./cmd/imoogi-agent
 
 install-clipboard: ## 클립보드 자산 CLI를 CLIPBOARD_PREFIX 에 설치한다
 	@mkdir -p "$(CLIPBOARD_PREFIX)"

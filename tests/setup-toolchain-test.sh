@@ -95,11 +95,15 @@ EOF
 chmod +x "${install_root}/scripts/setup-toolchain.sh"
 
 install_log="${TEST_ROOT}/install-toolchain.log"
+install_output="${TEST_ROOT}/install-output.log"
 HOME="${install_home}" SHELL=/bin/zsh IMOOGI_FAKE_INSTALL_LOG="${install_log}" \
-bash "${install_root}/scripts/install.sh" >/dev/null
+bash "${install_root}/scripts/install.sh" >"${install_output}"
 [[ "$(cat "${install_log}")" == "--if-available" ]] || fail "install.sh did not auto-run optional setup"
 [[ -L "${install_home}/.local/bin/imoogi-editor" ]] || fail "external-editor wrapper was not linked"
 [[ "$(readlink "${install_home}/.local/bin/imoogi-editor")" == "${install_home}/.config/imoogi-emacs/scripts/imoogi-editor" ]] || fail "external-editor link target is wrong"
+[[ -L "${install_home}/.local/bin/imoogi-agent" ]] || fail "imoogi-agent CLI was not linked"
+[[ "$(readlink "${install_home}/.local/bin/imoogi-agent")" == "${install_home}/.config/imoogi-emacs/bin/imoogi-agent" ]] || fail "imoogi-agent link target is wrong"
+[[ "$(grep -c 'make build-agent' "${install_output}")" == "1" ]] || fail "missing imoogi-agent binary did not print the make build-agent hint"
 profile="${install_home}/.zshrc"
 [[ "$(grep -Fxc '# >>> imoogi-emacs external editor >>>' "${profile}")" == "1" ]] || fail "editor block start marker is missing"
 [[ "$(grep -Fxc "export VISUAL=\"${install_home}/.local/bin/imoogi-editor\"" "${profile}")" == "1" ]] || fail "VISUAL was not configured"
@@ -109,9 +113,14 @@ expected_profile="${TEST_ROOT}/expected-zshrc"
 cp "${profile}" "${expected_profile}"
 
 rm -f "${install_log}"
+mkdir -p "${install_root}/bin"
+printf '%s\n' '#!/usr/bin/env bash' >"${install_root}/bin/imoogi-agent"
+chmod +x "${install_root}/bin/imoogi-agent"
 HOME="${install_home}" SHELL=/bin/zsh IMOOGI_FAKE_INSTALL_LOG="${install_log}" \
-bash "${install_root}/scripts/install.sh" --without-toolchain >/dev/null
+bash "${install_root}/scripts/install.sh" --without-toolchain >"${install_output}"
 [[ ! -e "${install_log}" ]] || fail "--without-toolchain still ran setup"
+[[ "$(grep -c 'make build-agent' "${install_output}" || true)" == "0" ]] || fail "built imoogi-agent binary still printed the build hint"
+[[ "$(readlink "${install_home}/.local/bin/imoogi-agent")" == "${install_home}/.config/imoogi-emacs/bin/imoogi-agent" ]] || fail "rerun changed the imoogi-agent link target"
 [[ "$(grep -Fxc '# >>> imoogi-emacs external editor >>>' "${profile}")" == "1" ]] || fail "rerun duplicated the editor block"
 cmp -s "${profile}" "${expected_profile}" || fail "rerun changed an up-to-date editor block"
 
