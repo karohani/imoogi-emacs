@@ -18,14 +18,14 @@ import (
 	"github.com/karohani/imoogi-emacs/internal/anki/registry"
 )
 
-const version = "imoogi version 0.1.0-dev"
+const version = "imoogi-anki version 0.1.0-dev"
 
 // install-models is deliberately listed here but is not a documented user
 // entry point (design.md §6). Installation rides imoogi-anki-setup, so a user
 // following the existing setup instructions ends up with the models
 // installed; the Go binary still needs a verb to dispatch on, and it is named
 // for what it does.
-const usage = `usage: imoogi <command>
+const usage = `usage: imoogi-anki <command>
 
 commands:
   sync             read a JSON request document on stdin, write a JSON response on stdout

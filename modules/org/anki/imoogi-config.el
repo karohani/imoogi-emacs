@@ -11,7 +11,7 @@
 ;;
 ;; design.md SS2.5 scopes the file's contents to exactly the two values
 ;; `imoogi-anki-setup' prompts for: the sync root and the default deck.
-;; `imoogi-binary-path' and `imoogi-exclude-patterns' are ordinary
+;; `imoogi-anki-binary-path' and `imoogi-exclude-patterns' are ordinary
 ;; defcustoms and are never part of this file.
 ;;
 ;; `imoogi-sync-root' and `imoogi-default-deck' are defined as defcustoms

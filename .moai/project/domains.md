@@ -188,7 +188,6 @@ All modules are loaded from the explicit list in `boot.el:65-100`; each load is 
 
 - Card `t15` (picked): "Swift" arrow cards (`:->`, `:<-`, `:<->`), planned in `internal/anki/orgdoc/swift.go`.
 - Card `t16` (queued): nested or unbalanced `#+BEGIN_EXTRA` blocks are split incorrectly by `splitExtraBlocks`; currently pinned by a test but not reported.
-- Card `t17` (queued): `cmd/imoogi-anki/main.go` usage text says `imoogi`, and the Elisp variable `imoogi-binary-path` (`imoogi.el:28`) does not name its feature.
 
 ### 6b. Local flashcards (SQLite)
 
@@ -296,7 +295,7 @@ All modules are loaded from the explicit list in `boot.el:65-100`; each load is 
 | Build and test time only | Makefile and shell, not called by Emacs at runtime | `imoogi-toolchain`, `imoogi-provenance` (domain 8) |
 | Emacs-only storage | SQLite file | local flashcards (domain 6b) |
 
-Shared conventions across these seams: CLI paths are defcustoms (`imoogi-binary-path`, `imoogi-project-notes-command`, `imoogi-clipboard-command`, `imoogi-org-preview-command`); and a missing binary or unsupported platform degrades to a stable error result rather than breaking boot.
+Shared conventions across these seams: CLI paths are defcustoms (`imoogi-anki-binary-path`, `imoogi-project-notes-command`, `imoogi-clipboard-command`, `imoogi-org-preview-command`); and a missing binary or unsupported platform degrades to a stable error result rather than breaking boot.
 
 ## See also
 

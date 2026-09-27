@@ -25,8 +25,13 @@
   :group 'org
   :prefix "imoogi-")
 
-(defcustom imoogi-binary-path "imoogi-anki"
-  "Path to the imoogi Go binary.
+;; The alias must come before the defcustom so a value set under the old
+;; name before this file loads is carried over to the new name.
+(define-obsolete-variable-alias 'imoogi-binary-path
+  'imoogi-anki-binary-path "2026-09-28")
+
+(defcustom imoogi-anki-binary-path "imoogi-anki"
+  "Path to the imoogi-anki Go binary.
 A relative value (the default) is resolved on `exec-path'."
   :type 'string
   :group 'imoogi)
@@ -135,7 +140,7 @@ dropped key."
 ;; it via that autoload alone, without ever loading imoogi.el (design.md
 ;; SS2.5's setup command exists precisely to be usable before any other
 ;; part of the package has run).  `imoogi-setup.el' itself `require's
-;; `imoogi' for the defcustoms it needs (`imoogi-binary-path',
+;; `imoogi' for the defcustoms it needs (`imoogi-anki-binary-path',
 ;; `imoogi-anki-connect-url', `imoogi-sync-root', `imoogi-default-deck',
 ;; `imoogi-config-file') -- requiring it back here would be circular.
 
@@ -276,7 +281,7 @@ Register additional targets with `imoogi-anki-register-directory' or
 `imoogi-anki-register-file'.  Host registrations do not delete orphan
 Anki cards.  With no registrations, retain the legacy root workflow."
   (interactive)
-  (let* ((binary (executable-find imoogi-binary-path))
+  (let* ((binary (executable-find imoogi-anki-binary-path))
          (targets (imoogi-targets-load))
          (report
           (cond

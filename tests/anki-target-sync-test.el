@@ -9,7 +9,7 @@
           (imoogi-targets-file (expand-file-name "host/targets.json" base))
           (imoogi-sync-root nil)
           (imoogi-exclude-patterns nil)
-          (imoogi-binary-path (executable-find "true")))
+          (imoogi-anki-binary-path (executable-find "true")))
      (unwind-protect (progn ,@body)
        (dolist (buffer (buffer-list))
          (when-let* ((file (buffer-file-name buffer)))

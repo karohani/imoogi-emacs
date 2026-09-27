@@ -31,7 +31,7 @@
 (require 'imoogi-scan)
 (require 'imoogi-writeback)
 
-;; `imoogi-binary-path' and `imoogi-anki-connect-url' are the real
+;; `imoogi-anki-binary-path' and `imoogi-anki-connect-url' are the real
 ;; defcustoms from imoogi.el, `require'd above -- NOT forward-declared.
 ;;
 ;; This is deliberate, not merely a preference: `imoogi-anki-setup' is
@@ -235,7 +235,7 @@ Returns the human-readable report string (also shown via `message')."
   (let* ((root (or sync-root (read-directory-name "imoogi sync root: ")))
          (deck (or default-deck (read-string "Default deck: " imoogi-default-deck)))
          (target (or config-file imoogi-config-file))
-         (binary (executable-find imoogi-binary-path))
+         (binary (executable-find imoogi-anki-binary-path))
          (report
           (if (null binary)
               (imoogi-error-message "binary_not_found")

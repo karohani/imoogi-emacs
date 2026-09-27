@@ -105,13 +105,13 @@ records both values -- the user having edited no file by hand."
   (imoogi-setup-test--with-granted-stub anki-url
     (let* ((config-file (make-temp-file "imoogi-setup-test" nil ".json"))
            (imoogi-anki-connect-url anki-url)
-           (imoogi-binary-path (executable-find "true"))
+           (imoogi-anki-binary-path (executable-find "true"))
            (imoogi-sync-root nil)
            (imoogi-default-deck "Default"))
       (delete-file config-file)
       (unwind-protect
           (progn
-            (should imoogi-binary-path)
+            (should imoogi-anki-binary-path)
             (let ((report (imoogi-anki-setup "/tmp/some-root" "TestDeck" config-file)))
               (should (string-match-p "binary" report))
               (should (string-match-p "AnkiConnect" report))
@@ -129,12 +129,12 @@ records both values -- the user having edited no file by hand."
 ;; --- AC-004 -----------------------------------------------------------
 
 (ert-deftest imoogi-setup-test-ac004-missing-binary-is-named-not-signalled ()
-  "AC-004: given `imoogi-binary-path' pointing at a nonexistent path,
+  "AC-004: given `imoogi-anki-binary-path' pointing at a nonexistent path,
 invoking `imoogi-anki-setup' reports that the binary was not found and
 references the README build step, with no Emacs backtrace and no raw
 `file-missing' signal text."
   (let* ((config-file (make-temp-file "imoogi-setup-test" nil ".json"))
-         (imoogi-binary-path "/definitely/does/not/exist/imoogi")
+         (imoogi-anki-binary-path "/definitely/does/not/exist/imoogi")
          (imoogi-sync-root nil)
          (imoogi-default-deck "Default"))
     (delete-file config-file)
@@ -147,6 +147,14 @@ references the README build step, with no Emacs backtrace and no raw
           ;; and no config file was written on a failed precondition
           (should-not (file-exists-p config-file)))
       (when (file-exists-p config-file) (delete-file config-file)))))
+
+(ert-deftest imoogi-anki-binary-path-keeps-old-name-as-alias ()
+  "The binary option is `imoogi-anki-binary-path'; the old name still works."
+  (should (custom-variable-p 'imoogi-anki-binary-path))
+  (should (equal (default-value 'imoogi-anki-binary-path) "imoogi-anki"))
+  (should (eq (indirect-variable 'imoogi-binary-path) 'imoogi-anki-binary-path))
+  (let ((imoogi-binary-path "/opt/old-setting"))
+    (should (equal imoogi-anki-binary-path "/opt/old-setting"))))
 
 (provide 'imoogi-setup-test)
 ;;; imoogi-setup-test.el ends here

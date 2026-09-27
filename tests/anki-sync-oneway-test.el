@@ -137,7 +137,7 @@ no Anki-sourced field value, tag, or deck name anywhere."
           (captured-request nil))
       (let* ((imoogi-sync-root root)
              (imoogi-exclude-patterns nil)
-             (imoogi-binary-path (executable-find "true"))
+             (imoogi-anki-binary-path (executable-find "true"))
              (imoogi-process-runner
               (lambda (_binary request-json)
                 (setq captured-request request-json)
@@ -197,7 +197,7 @@ wrote them."
     (let ((buffer-before (with-current-buffer buffer (buffer-string))))
       (let* ((imoogi-sync-root root)
              (imoogi-exclude-patterns nil)
-             (imoogi-binary-path (executable-find "true"))
+             (imoogi-anki-binary-path (executable-find "true"))
              (imoogi-process-runner
               (lambda (_binary _request-json)
                 (cons 0 (imoogi-oneway-test--response "added" 1001)))))
@@ -248,7 +248,7 @@ could not fail this assertion however the code behaved."
           (disk-before (imoogi-oneway-test--file-contents file)))
       (let* ((imoogi-sync-root root)
              (imoogi-exclude-patterns nil)
-             (imoogi-binary-path (executable-find "true"))
+             (imoogi-anki-binary-path (executable-find "true"))
              (imoogi-process-runner
               (lambda (_binary _request-json)
                 (cons 0 (imoogi-oneway-test--response "added" 4242)))))

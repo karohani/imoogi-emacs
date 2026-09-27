@@ -19,7 +19,7 @@
 
 (defconst imoogi-error-table
   '(("binary_not_found" .
-     "The imoogi-anki binary was not found at the configured path. Build it with `make build-anki' from the imoogi-emacs checkout, then make sure it is on `exec-path' (or point `imoogi-binary-path' at it).")
+     "The imoogi-anki binary was not found at the configured path. Build it with `make build-anki' from the imoogi-emacs checkout, then make sure it is on `exec-path' (or point `imoogi-anki-binary-path' at it).")
     ("binary_incompatible" .
      "The imoogi-anki binary speaks a different protocol version than this package expects. Rebuild it from this checkout with `make build-anki'.")
     ("sync_root_unset" .

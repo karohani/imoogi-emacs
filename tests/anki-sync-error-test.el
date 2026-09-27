@@ -38,7 +38,7 @@
 ;; --- AC-007: sync root unset -------------------------------------------
 
 (ert-deftest imoogi-sync-error-test-ac007-unset-sync-root-stops-and-never-guesses ()
-  (let ((imoogi-binary-path (executable-find "true"))
+  (let ((imoogi-anki-binary-path (executable-find "true"))
         (imoogi-sync-root nil)
         (imoogi-process-runner
          (lambda (&rest _args) (error "imoogi-process-run must not be invoked"))))
@@ -52,7 +52,7 @@
 
 (ert-deftest imoogi-sync-error-test-ac005-stopped-anki-produces-guidance ()
   (imoogi-sync-error-test--with-scan (imoogi-sync-error-test--scan-with-one-target)
-    (let* ((imoogi-binary-path (executable-find "true"))
+    (let* ((imoogi-anki-binary-path (executable-find "true"))
            (imoogi-sync-root "/tmp/root")
            (response-json
             (json-serialize
@@ -74,7 +74,7 @@
 
 (ert-deftest imoogi-sync-error-test-ac006-missing-addon-distinct-from-stopped-anki ()
   (imoogi-sync-error-test--with-scan (imoogi-sync-error-test--scan-with-one-target)
-    (let* ((imoogi-binary-path (executable-find "true"))
+    (let* ((imoogi-anki-binary-path (executable-find "true"))
            (imoogi-sync-root "/tmp/root")
            (response-json
             (json-serialize
@@ -108,7 +108,7 @@ compares it (the reason no second mechanism exists on this side).  So
 the front end's obligation here is exactly what this test asserts: turn
 the code into the corrective action, and write nothing."
   (imoogi-sync-error-test--with-scan (imoogi-sync-error-test--scan-with-one-target)
-    (let* ((imoogi-binary-path (executable-find "true"))
+    (let* ((imoogi-anki-binary-path (executable-find "true"))
            (imoogi-sync-root "/tmp/root")
            ;; The stub answers as a version-1 binary would: it declares its
            ;; own older version and reports the skew it detected.
@@ -147,7 +147,7 @@ docstring; this test only exercises the report-rendering side)."
             :census nil
             :scan-complete nil
             :unreadable-files '("c.org" "archive/locked.org"))
-    (let* ((imoogi-binary-path (executable-find "true"))
+    (let* ((imoogi-anki-binary-path (executable-find "true"))
            (imoogi-sync-root "/tmp/root")
            (response-json
             (json-serialize
@@ -174,7 +174,7 @@ AC-005/AC-006's handshake failure, which genuinely carries no results
 at all.  Discarding the \"N results, M errors\" summary here would
 silently hide real add/update work that happened in the same run."
   (imoogi-sync-error-test--with-scan (imoogi-sync-error-test--scan-with-one-target)
-    (let* ((imoogi-binary-path (executable-find "true"))
+    (let* ((imoogi-anki-binary-path (executable-find "true"))
            (imoogi-sync-root "/tmp/root")
            (response-json
             (json-serialize
@@ -200,7 +200,7 @@ the fix: the report said only \"1 errors\" -- the count was right, but which
 heading failed and why never left the response document, so a Cloze skipped
 for a missing {{cN:: marker looked like Cloze silently not working."
   (imoogi-sync-error-test--with-scan (imoogi-sync-error-test--scan-with-one-target)
-    (let* ((imoogi-binary-path (executable-find "true"))
+    (let* ((imoogi-anki-binary-path (executable-find "true"))
            (imoogi-sync-root "/tmp/root")
            (response-json
             (json-serialize
