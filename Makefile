@@ -158,7 +158,7 @@ fmt: ## Go 코드를 포맷한다
 	@$(GO) fmt ./...
 
 fmt-check: ## 포맷이 어긋난 파일이 있으면 실패한다 (ci-local 용)
-	@unformatted="$$(gofmt -l . | grep -v '^vendor/' || true)"; \
+	@unformatted="$$(gofmt -l . | grep -v -e '^vendor/' -e '^\.claude/worktrees/' || true)"; \
 	 if [ -n "$$unformatted" ]; then \
 	   echo "gofmt 필요:" >&2; echo "$$unformatted" >&2; \
 	   echo "고치려면: make fmt" >&2; exit 1; \
