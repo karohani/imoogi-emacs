@@ -15,8 +15,7 @@ func gitFixture(t *testing.T) string {
 	}
 	root := fixture(t)
 	for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "t@example.invalid"}, {"config", "user.name", "t"}} {
-		cmd := exec.Command("git", args...)
-		cmd.Dir = root
+		cmd := gitCommand(root, args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
