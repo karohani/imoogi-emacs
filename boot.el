@@ -98,7 +98,8 @@ tests/assert-boot.el 이 이 값을 설치 검증의 판정 근거로 쓴다.")
                   "project/26-project-notes"
                   "development/27-gptel"
                   "org/28-clipboard"
-                  "org/29-org-roam"))
+                  "org/29-org-roam"
+                  "development/30-agent"))
   (condition-case err
       (load (expand-file-name (concat "modules/" module) imoogi-emacs-dir))
     (error

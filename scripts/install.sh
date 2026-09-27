@@ -17,6 +17,7 @@ CONFIG_LINK="${HOME}/.config/imoogi-emacs"
 EMACS_DIR="${HOME}/.emacs.d"
 EDITOR_BIN_DIR="${HOME}/.local/bin"
 EDITOR_LINK="${EDITOR_BIN_DIR}/imoogi-editor"
+AGENT_LINK="${EDITOR_BIN_DIR}/imoogi-agent"
 INSTALL_TOOLCHAIN=1
 
 usage() {
@@ -87,6 +88,11 @@ configure_external_editor() {
   mkdir -p "${EDITOR_BIN_DIR}"
   ln -sfn "${CONFIG_LINK}/scripts/imoogi-editor" "${EDITOR_LINK}"
   echo "== linked ${EDITOR_LINK} -> ${CONFIG_LINK}/scripts/imoogi-editor"
+  ln -sfn "${CONFIG_LINK}/bin/imoogi-agent" "${AGENT_LINK}"
+  echo "== linked ${AGENT_LINK} -> ${CONFIG_LINK}/bin/imoogi-agent"
+  if [[ ! -x "${CONFIG_LINK}/bin/imoogi-agent" ]]; then
+    echo "== imoogi-agent is not built yet; run 'make build-agent' in ${REPO_ROOT}"
+  fi
 
   mkdir -p "$(dirname "${profile}")"
   touch "${profile}"
