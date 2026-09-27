@@ -263,9 +263,12 @@ All modules are loaded from the explicit list in `boot.el:65-100`; each load is 
 **Implemented capabilities**
 
 - `imoogi-agent` subcommands `message`, `open-file`, `goto`, `artifact` (`--type`, `--title`) and `finish` (`--artifact`), with common options `--project`, `--session`, `--timeout` (`internal/agentipc/request.go:81-91`).
-- Receiver in Emacs (`modules/development/30-agent.el`): protocol v1 event types `message`, `open-file`, `goto-location`, `artifact-created`, `task-finished` (`:26-28`); two entry points, `imoogi-agent-receive-file` (`:348`) and `imoogi-agent-receive-json` (`:358`), share one validation and dispatch path and return `"ok"` or `"error:<reason>"`.
-- Safety rules in the receiver: events larger than 1 MiB are rejected (`:19`), duplicate JSON keys are rejected (`:97`), and no event value is ever evaluated as code (header comment, `:7-9`).
-- Every event is appended to the session log buffer `*imoogi-agent*` (`:22`, `:209`).
+- Receiver in Emacs (`modules/development/30-agent.el`): protocol v1 event types `message`, `open-file`, `goto-location`, `artifact-created`, `task-finished` (`:32-33`); two entry points, `imoogi-agent-receive-file` (`:384`) and `imoogi-agent-receive-json` (`:394`), share one validation and dispatch path and return `"ok"` or `"error:<reason>"`.
+- Safety rules in the receiver: events larger than 1 MiB are rejected (`:19`), duplicate JSON keys are rejected (`:124`, `:155-157`), and no event value is ever evaluated as code (header comment, `:7-9`).
+- File-trust check (SPEC-AGENTIPC-002): `imoogi-agent-receive-file` rejects an event file whose owner is not the current user or which is group/world-writable with `error:untrusted`, before reading it (`:75-85`); `imoogi-agent-receive-json` is unaffected.
+- Payload size cap: a file to open that is larger than 100 MiB (`imoogi-agent-max-payload-bytes`, `:22`) rejects the whole event with `error:payload-too-large` and nothing is displayed (`:180-192`). Both new reasons map to CLI exit 3.
+- CLI side (`internal/agentipc/emacsclient.go`): the 0600 event file lives in a per-call 0700 private directory (`os.MkdirTemp`, `:89-95`) removed on every path; a bare `EMACSCLIENT` (no `/`) is resolved only via PATH and fails with exit 1 if the match is in `.`, a relative or empty PATH entry, or is not absolute (`findEmacsclient`, `:126-134`).
+- Every event is appended to the session log buffer `*imoogi-agent*` (`:29`, `:245`).
 
 **Structure.** The CLI writes one JSON event to a temporary file and runs `emacsclient` to call `imoogi-agent-receive-file` (`internal/agentipc/emacsclient.go`). It depends on the Emacs server started in `13-system.el`. `make build-agent` builds the binary.
 
@@ -273,12 +276,11 @@ All modules are loaded from the explicit list in `boot.el:65-100`; each load is 
 
 **Tests.** `tests/agent-test.el`; `internal/agentipc/{emacsclient,request}_test.go`; `cmd/imoogi-agent/main_test.go`.
 
-**Known gaps** (follow-ups to SPEC-AGENTIPC-001)
+**Known gaps** (residual risks from SPEC-AGENTIPC-002 plan.md)
 
-- `t18`: the receiver does not verify the event file owner or reject group/world-writable files.
-- `t19`: `findEmacsclient` resolves a bare `EMACSCLIENT` value against the working directory.
-- `t20`: no size cap on payload files opened with `find-file-noselect`.
-- `t21`: the AC-004 ERT test matches `report` in the fixture file name, so artifact-type logging is not really checked.
+- R-5: if the CLI is killed by a signal, its private temp directory is left behind (a 0700 directory holding a 0600 file; a late read still faces the trust check).
+- R-7: a user-owned symlink to a user-owned file with attacker-chosen content still passes the trust check on a shared `/tmp` (display/notice/log impact only).
+- R-8: the plain PATH lookup of `emacsclient` (`emacsclient.go:145`) has no absolute-path guard, so it may accept a relative match under `GODEBUG=execerrdot=0`.
 
 ---
 

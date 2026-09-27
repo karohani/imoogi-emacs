@@ -61,8 +61,9 @@ Claude Code나 Codex의 `Ctrl+G`를 누르면 실행 중인 Emacs에 새 프레�
 
 `imoogi-agent`는 Claude Code 같은 코딩 에이전트가 실행 중인 Emacs에 소식을 전하는
 작은 CLI다. 다른 Go CLI는 Emacs가 하위 프로세스로 부르지만, 이 도구는 방향이 반대다.
-에이전트가 명령을 실행하면 이벤트 하나를 소유자 전용(0600) 임시 파일로 쓰고
-`emacsclient --eval`로 Emacs 서버에 넘긴다. Emacs 쪽 수신기는
+에이전트가 명령을 실행하면 이벤트 하나를 소유자 전용(0600) 파일로 쓰고
+`emacsclient --eval`로 Emacs 서버에 넘긴다. 이 파일은 호출마다 새로 만드는
+소유자 전용(0700) 임시 폴더 안에 두며, 성공하든 실패하든 폴더째 지운다. Emacs 쪽 수신기는
 `modules/development/30-agent.el`이다. 따라서 Emacs 서버가 떠 있어야 한다.
 
 설치기(`make install`)가 `~/.local/bin/imoogi-agent`를 `imoogi-editor`와 같은 방식으로
@@ -86,6 +87,8 @@ imoogi-agent --version
   `*imoogi-agent*` 버퍼에 한 줄씩 쌓인다(읽기 전용, 세션 동안만 유지).
 - 시간 상한은 기본 5초이며 `--timeout`이나 `IMOOGI_AGENT_TIMEOUT`으로 바꾼다.
   `emacsclient` 위치는 `EMACSCLIENT`로 지정할 수 있다.
+  `emacsclient`처럼 폴더 없이 이름만 주면 PATH에서만 찾고 현재 디렉터리는 보지 않는다.
+  PATH에서 처음 찾은 것이 현재 디렉터리(`.`·상대 경로·빈 항목)에 있으면 전달 실패(1)로 끝난다.
 
 종료 코드:
 
@@ -95,6 +98,9 @@ imoogi-agent --version
 | 1 | 전달 실패(emacsclient 없음, 서버 연결 실패, 시간 초과 등) |
 | 2 | 잘못된 호출(인자·옵션 오류). 아무것도 보내지 않는다 |
 | 3 | Emacs에 닿았지만 거부됨. 사유는 stderr 한 줄로 나온다 |
+
+거부 사유에는 `untrusted`(이벤트 파일의 소유자가 내가 아니거나 다른 사용자가 쓸 수 있음)와
+`payload-too-large`(열려는 파일이 100MB를 넘음. 이때는 아무것도 표시하지 않는다)도 있다.
 
 에이전트가 산출물 파일을 남길 때는
 `<project-notes>/artifacts/agent/YYMMDD-HHMMSS-{type}.{ext}` 위치를 권장한다.
