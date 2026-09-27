@@ -159,14 +159,65 @@ lifetime LNNN."
      (format "L%03d" sequence))
     (_ (user-error "알 수 없는 프로젝트 번호 수준입니다: %s" level))))
 
+(defun imoogi-project-notes--doctor-name-scope (name)
+  "Return (LEVEL SCOPE SLUG) for a folder NAME lacking its `.NN' suffix."
+  (when (string-match
+         "\\`\\([0-9]\\{6\\}\\|[0-9]\\{4\\}\\|[0-9]\\{2\\}\\)-\\(.+\\)\\'" name)
+    (let ((scope (match-string 1 name)))
+      (list (pcase (length scope) (6 'daily) (4 'monthly) (_ 'yearly))
+            scope
+            (match-string 2 name)))))
+
+(defun imoogi-project-notes--doctor-folder-parts (name)
+  "Return (LEVEL SCOPE SLUG) for folder NAME, numbered or not.
+SLUG is nil when NAME carries no suffix after its numbering id."
+  (if-let* ((info (imoogi-project-notes--parse-folder-number name)))
+      (let ((id (alist-get 'number-id info)))
+        (list (alist-get 'number-level info)
+              (alist-get 'scope info)
+              (and (> (length name) (length id))
+                   (substring name (1+ (length id))))))
+    (imoogi-project-notes--doctor-name-scope name)))
+
+(defun imoogi-project-notes--doctor-resolve-answer (name answer)
+  "Return the folder name requested by ANSWER for folder NAME, or nil.
+Nil means skip: ANSWER is blank or equals NAME.  `+' selects the next free
+number in NAME's scope and a bare number selects that sequence; any other
+ANSWER is taken as the complete new folder name."
+  (let ((answer (string-trim answer)))
+    (cond
+     ((or (string-empty-p answer) (string= answer name)) nil)
+     ((or (string= answer "+") (string-match-p "\\`[0-9]+\\'" answer))
+      (pcase (imoogi-project-notes--doctor-folder-parts name)
+        (`(,level ,scope ,slug)
+         (let ((id (if (string= answer "+")
+                       (imoogi-project-notes--next-number-id level scope)
+                     (imoogi-project-notes--format-number-id
+                      level scope (string-to-number answer)))))
+           (if slug (format "%s-%s" id slug) id)))
+        (_ (user-error "번호 범위를 알 수 없는 폴더라 '%s'를 쓸 수 없습니다: %s"
+                       answer name))))
+     (t answer))))
+
+(defconst imoogi-project-notes--doctor-log-buffer "*imoogi-project-notes-doctor*"
+  "Buffer recording what the project-notes doctor did and why it failed.")
+
+(defun imoogi-project-notes--doctor-log (format-string &rest args)
+  "Append a timestamped line built from FORMAT-STRING and ARGS to the doctor log."
+  (with-current-buffer (get-buffer-create imoogi-project-notes--doctor-log-buffer)
+    (let ((inhibit-read-only t))
+      (goto-char (point-max))
+      (insert (format-time-string "[%F %T] ")
+              (apply #'format format-string args)
+              "\n"))))
+
 (defun imoogi-project-notes--doctor-suggested-name (name)
-  "Return a valid numbered suggestion for invalid folder NAME."
-  (cond
-   ((string-match "\\`\\([0-9]\\{6\\}\\)-\\(.+\\)\\'" name)
-    (format "%s.01-%s" (match-string 1 name) (match-string 2 name)))
-   ((string-match "\\`\\([0-9]\\{4\\}\\|[0-9]\\{2\\}\\)-\\(.+\\)\\'" name)
-    (format "%s.01-%s" (match-string 1 name) (match-string 2 name)))
-   (t name)))
+  "Return a valid numbered suggestion for invalid folder NAME.
+The sequence is the next free number after the largest one in NAME's scope."
+  (pcase (imoogi-project-notes--doctor-name-scope name)
+    (`(,level ,scope ,slug)
+     (format "%s-%s" (imoogi-project-notes--next-number-id level scope) slug))
+    (_ name)))
 
 (defconst imoogi-project-notes--documents
   '((domain . ("domain.org" . "도메인 모델"))
@@ -1053,6 +1104,45 @@ remain distinct through their `instance-id'."
                         (alist-get 'directory entry)))))))
      (imoogi-project-notes--all-number-id-entries))))
 
+(defun imoogi-project-notes--scope-number-ids (level scope)
+  "Return sorted visible numbering ids that share LEVEL and SCOPE."
+  (sort (delete-dups
+         (delq nil
+               (mapcar
+                (lambda (entry)
+                  (let ((info (imoogi-project-notes--parse-number-id
+                               (alist-get 'number-id entry))))
+                    (and (eq level (alist-get 'number-level info))
+                         (equal scope (alist-get 'scope info))
+                         (alist-get 'number-id info))))
+                (imoogi-project-notes--all-number-id-entries))))
+        #'string<))
+
+(defun imoogi-project-notes--next-sequence (level scope)
+  "Return one more than the largest sequence used in LEVEL and SCOPE."
+  (1+ (apply #'max 0
+             (mapcar (lambda (id)
+                       (alist-get 'sequence
+                                  (imoogi-project-notes--parse-number-id id)))
+                     (imoogi-project-notes--scope-number-ids level scope)))))
+
+(defun imoogi-project-notes--next-number-id (level scope)
+  "Return the next free numbering id in LEVEL and SCOPE."
+  (imoogi-project-notes--format-number-id
+   level scope (imoogi-project-notes--next-sequence level scope)))
+
+(defun imoogi-project-notes--scope-number-ids-label (level scope)
+  "Describe the numbering ids already used in LEVEL and SCOPE."
+  (let ((ids (imoogi-project-notes--scope-number-ids level scope)))
+    (format "기존 번호: %s" (if ids (mapconcat #'identity ids ", ") "없음"))))
+
+(defun imoogi-project-notes--read-sequence (level scope)
+  "Read a sequence for LEVEL and SCOPE, defaulting to the next free number."
+  (read-number (format "새 순서 번호 (%s): "
+                       (imoogi-project-notes--scope-number-ids-label
+                        level scope))
+               (imoogi-project-notes--next-sequence level scope)))
+
 (defun imoogi-project-notes--find-entry-by-key (key &optional entries)
   "Return registry entry matching KEY."
   (cl-find key (or entries (imoogi-project-notes--read-registry))
@@ -1746,6 +1836,10 @@ files are never overwritten."
     (message "imoogi: 작업 폴더 %s → 문서 폴더 %s" root notes-dir)
     notes-dir))
 
+;; Treemacs struct slots are written through `cl-struct-slot-value'.  A plain
+;; `(setf (treemacs-project->path ...))' only expands correctly when Treemacs
+;; is loaded at compile or load time; otherwise it compiles into a call to the
+;; nonexistent `(setf treemacs-project->path)' function.
 (defun imoogi-project-notes--replace-treemacs-root (old-root new-root)
   "Replace OLD-ROOT with NEW-ROOT in existing Treemacs workspaces.
 Never remove a workspace; only replace the project path in workspaces that
@@ -1789,7 +1883,7 @@ already contain OLD-ROOT."
                      (let ((projects
                             (cl-remove new-project
                                        (treemacs-workspace->projects workspace))))
-                       (setf (treemacs-workspace->projects workspace)
+                       (setf (cl-struct-slot-value 'treemacs-workspace 'projects workspace)
                              (append (seq-take projects project-index)
                                      (list new-project)
                                      (nthcdr project-index projects)))
@@ -1804,9 +1898,9 @@ already contain OLD-ROOT."
                      (let ((projects
                             (cl-remove project
                                        (treemacs-workspace->projects workspace))))
-                     (setf (treemacs-project->path project)
+                     (setf (cl-struct-slot-value 'treemacs-project 'path project)
                            (directory-file-name old-root)
-                           (treemacs-workspace->projects workspace)
+                           (cl-struct-slot-value 'treemacs-workspace 'projects workspace)
                            (append (seq-take projects project-index)
                                    (list project)
                                    (nthcdr project-index projects)))
@@ -1828,9 +1922,9 @@ already contain OLD-ROOT."
                                   (directory-file-name
                                    (expand-file-name new-root)))))
                      (treemacs-workspace->projects workspace))))
-               (setf (treemacs-project->path project)
+               (setf (cl-struct-slot-value 'treemacs-project 'path project)
                      (directory-file-name old-root)
-                     (treemacs-workspace->projects workspace)
+                     (cl-struct-slot-value 'treemacs-workspace 'projects workspace)
                      (append (seq-take projects project-index)
                              (list project)
                              (nthcdr project-index projects)))
@@ -1843,8 +1937,8 @@ already contain OLD-ROOT."
               'imoogi
               (format "Treemacs 프로젝트 경로를 갱신하지 못했습니다: %s"
                       (error-message-string err))
-              :warning)))))))
-      (nreverse failures)))
+              :warning))))))
+      (nreverse failures))))
 
 (defun imoogi-project-notes--rollback-rename
     (entry entry-before old-root new-root renamed buffer-files
@@ -1876,9 +1970,9 @@ already contain OLD-ROOT."
     (let ((workspace (car workspace-state))
           (projects (cdr workspace-state)))
       (dolist (project-state projects)
-        (setf (treemacs-project->path (car project-state))
+        (setf (cl-struct-slot-value 'treemacs-project 'path (car project-state))
               (cdr project-state)))
-      (setf (treemacs-workspace->projects workspace)
+      (setf (cl-struct-slot-value 'treemacs-workspace 'projects workspace)
             (mapcar #'car projects))))
   (when (and treemacs-before (fboundp 'treemacs--persist))
     (treemacs--persist))
@@ -2113,63 +2207,106 @@ numbering grammar."
   (interactive "P")
   (let ((base (imoogi-project-notes--doctor-base-directory))
         (changed 0)
-        (skipped 0))
+        (skipped 0)
+        (current nil))
     (unless (file-directory-p base)
       (user-error "프로젝트 노트 폴더가 없습니다: %s" base))
-    (imoogi-project-notes--consume-repair-marker)
-    (dolist (directory (directory-files base t "^[^.].*" t))
-      (when (file-directory-p directory)
-        (let ((name (file-name-nondirectory (directory-file-name directory))))
-          (when (or rename-valid
-                    (not (imoogi-project-notes--folder-name-valid-p name)))
-            (let* ((suggestion (imoogi-project-notes--doctor-suggested-name name))
-                   (answer (read-string
-                            (format "새 번호/폴더명 [%s] (빈칸은 건너뜀): " name)
-                            suggestion)))
-              (if (string-empty-p (string-trim answer))
-                  (setq skipped (1+ skipped))
-                (if (not (imoogi-project-notes--folder-name-valid-p answer))
-                    (user-error "프로젝트 폴더명 형식이 올바르지 않습니다: %s" answer)
-                  (let* ((old-root (file-name-as-directory directory))
-                         (new-root (file-name-as-directory
-                                    (expand-file-name answer base)))
-                         (answer-id (imoogi-project-notes--folder-id-key answer))
-                         (duplicate-id
-                          (and answer-id
-                               (imoogi-project-notes--number-id-conflict
-                                answer-id old-root)))
-                         (entry (or (imoogi-project-notes--find-entry-by-notes-directory old-root)
-                                    (let ((metadata-file
-                                           (imoogi-project-notes--metadata-file old-root)))
-                                      (when (file-readable-p metadata-file)
-                                        (imoogi-project-notes--metadata-entry
-                                         metadata-file
-                                         (imoogi-project-notes--read-metadata-file metadata-file)))))))
-                    (if duplicate-id
-                        (user-error "ID %s가 이미 사용 중입니다: %s"
-                                    answer-id
-                                    (alist-get 'directory duplicate-id))
-                      (when entry
-                        ;; The doctor's answer is authoritative for repaired
-                        ;; folder numbering; stale registry/metadata must not
-                        ;; be written back over it.
-                        (setf (alist-get 'number-id entry) answer-id
-                              (alist-get 'number-level entry)
-                              (symbol-name
-                               (alist-get 'number-level
-                               (imoogi-project-notes--parse-number-id
-                                           answer-id)))))
-                      (imoogi-project-notes--rename-entry-directory
-                       entry old-root new-root
-                       (lambda (committed-entry)
-                         (when committed-entry
-                           (imoogi-project-notes--rewrite-metadata-derived-fields
-                            committed-entry (format-time-string "%Y-%m-%d"))
-                           (imoogi-project-notes--save-entry committed-entry)))
-                       t)
-                      (setq changed (1+ changed)))))))))))
-    (message "imoogi: project-notes 점검 완료 — 변경 %d개, 건너뜀 %d개 (파일 삭제 없음)"
-             changed skipped)
+    (imoogi-project-notes--doctor-log "doctor 시작: %s" base)
+    ;; Any failure stops the doctor as before, but first records which folder
+    ;; and answer caused it so the reason survives the echo area.
+    (condition-case err
+        (progn
+          (imoogi-project-notes--consume-repair-marker)
+          (dolist (directory (directory-files base t "^[^.].*" t))
+            (when (file-directory-p directory)
+              (let* ((name (file-name-nondirectory (directory-file-name directory)))
+                     (valid (imoogi-project-notes--folder-name-valid-p name)))
+                (when (or rename-valid (not valid))
+                  (setq current (list name nil))
+                  (let* ((parts (imoogi-project-notes--doctor-folder-parts name))
+                         (raw (read-string
+                               (format "새 번호/폴더명 [%s] (%s%s빈칸은 건너뜀): "
+                                       name
+                                       (if parts
+                                           (concat
+                                            (imoogi-project-notes--scope-number-ids-label
+                                             (nth 0 parts) (nth 1 parts))
+                                            ", '+'=다음 번호, 숫자=해당 번호, ")
+                                         "")
+                                       "")
+                               ;; Numbered folders start empty so RET keeps
+                               ;; them; unnumbered ones get a ready suggestion.
+                               (unless valid
+                                 (imoogi-project-notes--doctor-suggested-name name))))
+                         (answer (progn
+                                   (setq current (list name raw))
+                                   (imoogi-project-notes--doctor-resolve-answer
+                                    name raw))))
+                    (if (null answer)
+                        (progn
+                          (setq skipped (1+ skipped))
+                          (imoogi-project-notes--doctor-log "건너뜀: %s" name))
+                      (setq current (list name raw answer))
+                      (if (not (imoogi-project-notes--folder-name-valid-p answer))
+                          (user-error "프로젝트 폴더명 형식이 올바르지 않습니다: %s" answer)
+                        (let* ((old-root (file-name-as-directory directory))
+                               (new-root (file-name-as-directory
+                                          (expand-file-name answer base)))
+                               (answer-id (imoogi-project-notes--folder-id-key answer))
+                               (duplicate-id
+                                (and answer-id
+                                     (imoogi-project-notes--number-id-conflict
+                                      answer-id old-root)))
+                               (entry (or (imoogi-project-notes--find-entry-by-notes-directory old-root)
+                                          (let ((metadata-file
+                                                 (imoogi-project-notes--metadata-file old-root)))
+                                            (when (file-readable-p metadata-file)
+                                              (imoogi-project-notes--metadata-entry
+                                               metadata-file
+                                               (imoogi-project-notes--read-metadata-file metadata-file)))))))
+                          (if duplicate-id
+                              (user-error "ID %s가 이미 사용 중입니다: %s"
+                                          answer-id
+                                          (alist-get 'directory duplicate-id))
+                            (when entry
+                              ;; The doctor's answer is authoritative for repaired
+                              ;; folder numbering; stale registry/metadata must not
+                              ;; be written back over it.
+                              (setf (alist-get 'number-id entry) answer-id
+                                    (alist-get 'number-level entry)
+                                    (symbol-name
+                                     (alist-get 'number-level
+                                                (imoogi-project-notes--parse-number-id
+                                                 answer-id)))))
+                            (imoogi-project-notes--rename-entry-directory
+                             entry old-root new-root
+                             (lambda (committed-entry)
+                               (when committed-entry
+                                 (imoogi-project-notes--rewrite-metadata-derived-fields
+                                  committed-entry (format-time-string "%Y-%m-%d"))
+                                 (imoogi-project-notes--save-entry committed-entry)))
+                             t)
+                            (setq changed (1+ changed))
+                            (imoogi-project-notes--doctor-log
+                             "변경: %s → %s" name answer))))))
+                  (setq current nil))))))
+      ((error quit)
+       (imoogi-project-notes--doctor-log
+        "실패: %s\n  폴더: %s\n  입력: %s\n  결과 이름: %s\n  에러: %S"
+        (error-message-string err)
+        (or (nth 0 current) "(폴더 처리 전)")
+        (or (nth 1 current) "-")
+        (or (nth 2 current) "-")
+        err)
+       (imoogi-project-notes--doctor-log
+        "중단 — 그때까지 변경 %d개, 건너뜀 %d개" changed skipped)
+       (unless noninteractive
+         (display-buffer imoogi-project-notes--doctor-log-buffer))
+       (signal (car err) (cdr err))))
+    (imoogi-project-notes--doctor-log
+     "완료 — 변경 %d개, 건너뜀 %d개" changed skipped)
+    (message "imoogi: project-notes 점검 완료 — 변경 %d개, 건너뜀 %d개 (파일 삭제 없음, 기록: %s)"
+             changed skipped imoogi-project-notes--doctor-log-buffer)
     (when (called-interactively-p 'interactive)
       (dolist (entry (imoogi-project-notes--read-registry))
         (unless (imoogi-project-notes--metadata-has-artifact-preset-p entry)
@@ -2312,22 +2449,7 @@ The directory is renamed in place after duplicate and path preflight checks."
                   ('yearly (substring (alist-get 'scope info) 0 2))
                   ('lifetime "L")
                   (_ (user-error "지원하지 않는 승격 수준입니다"))))
-         (visible (imoogi-project-notes--all-number-id-entries))
-         (existing (seq-filter
-                    (lambda (candidate)
-                      (eq (alist-get 'number-level
-                                     (imoogi-project-notes--parse-number-id
-                                      (alist-get 'number-id candidate)))
-                          target-level))
-                    visible))
-         (_ (message "현재 %s 수준 ID: %s"
-                     (symbol-name target-level)
-                     (if existing
-                         (mapconcat (lambda (candidate)
-                                     (alist-get 'number-id candidate))
-                                   existing ", ")
-                       "없음")))
-         (sequence (read-number "새 순서 번호: " 1))
+         (sequence (imoogi-project-notes--read-sequence target-level scope))
          (target-id (imoogi-project-notes--format-number-id
                      target-level scope sequence))
          (conflict (imoogi-project-notes--number-id-conflict

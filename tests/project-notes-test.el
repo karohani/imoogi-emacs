@@ -998,11 +998,124 @@
                                  :command)))))
 
 (ert-deftest imoogi-project-notes-doctor-suggests-valid-numbered-name ()
-  (should (equal "260925.01-karohani-infra-manager"
-                 (imoogi-project-notes--doctor-suggested-name
-                  "260925-karohani-infra-manager")))
-  (should (equal "2601.01-study"
-                 (imoogi-project-notes--doctor-suggested-name "2601-study"))))
+  (imoogi-project-notes-test--isolated
+    (should (equal "260925.01-karohani-infra-manager"
+                   (imoogi-project-notes--doctor-suggested-name
+                    "260925-karohani-infra-manager")))
+    (should (equal "2601.01-study"
+                   (imoogi-project-notes--doctor-suggested-name "2601-study")))))
+
+(defun imoogi-project-notes-test--make-numbered-folders (&rest names)
+  "Create project-notes folders NAMES in the isolated notes directory."
+  (dolist (name names)
+    (make-directory (expand-file-name name imoogi-project-notes-directory) t)))
+
+(ert-deftest imoogi-project-notes-next-number-id-follows-scope-maximum ()
+  (imoogi-project-notes-test--isolated
+    (imoogi-project-notes-test--make-numbered-folders
+     "260925.01-a" "260925.03-b" "260926.05-c" "2609.02-d")
+    (should (equal '("260925.01" "260925.03")
+                   (imoogi-project-notes--scope-number-ids 'daily "260925")))
+    (should (equal "260925.04"
+                   (imoogi-project-notes--next-number-id 'daily "260925")))
+    (should (equal "260927.01"
+                   (imoogi-project-notes--next-number-id 'daily "260927")))
+    (should (equal "2609.03"
+                   (imoogi-project-notes--next-number-id 'monthly "2609")))))
+
+(ert-deftest imoogi-project-notes-doctor-suggests-next-number-in-scope ()
+  (imoogi-project-notes-test--isolated
+    (imoogi-project-notes-test--make-numbered-folders
+     "260925.01-a" "260925.03-b" "260926.05-c")
+    (should (equal "260925.04-foo"
+                   (imoogi-project-notes--doctor-suggested-name "260925-foo")))))
+
+(ert-deftest imoogi-project-notes-doctor-prompt-lists-existing-numbers ()
+  (imoogi-project-notes-test--isolated
+    (imoogi-project-notes-test--make-numbered-folders
+     "260925.01-a" "260925.03-b" "260925-foo")
+    (let (prompts defaults)
+      (cl-letf (((symbol-function 'read-string)
+                 (lambda (prompt &optional initial &rest _)
+                   (push prompt prompts)
+                   (push initial defaults)
+                   "")))
+        (imoogi-project-notes-setup-doctor))
+      (should (equal '("260925.04-foo") defaults))
+      (should (string-match-p "260925\\.01" (car prompts)))
+      (should (string-match-p "260925\\.03" (car prompts))))))
+
+;; `+' and a bare number are shorthand for renumbering within the scope.
+(ert-deftest imoogi-project-notes-doctor-resolves-shorthand-answers ()
+  (imoogi-project-notes-test--isolated
+    (imoogi-project-notes-test--make-numbered-folders
+     "260925.01-foo" "260925.03-b")
+    (should (equal "260925.04-foo"
+                   (imoogi-project-notes--doctor-resolve-answer "260925.01-foo" "+")))
+    (should (equal "260925.02-foo"
+                   (imoogi-project-notes--doctor-resolve-answer "260925.01-foo" " 2 ")))
+    (should (equal "2609.07-x"
+                   (imoogi-project-notes--doctor-resolve-answer "2609-x" "7")))
+    (should (equal "L002"
+                   (imoogi-project-notes--doctor-resolve-answer "L001" "2")))
+    (should-not (imoogi-project-notes--doctor-resolve-answer "260925.01-foo" ""))
+    (should-not (imoogi-project-notes--doctor-resolve-answer
+                 "260925.01-foo" "260925.01-foo"))
+    (should (equal "2609.01-new"
+                   (imoogi-project-notes--doctor-resolve-answer
+                    "260925.01-foo" "2609.01-new")))
+    (should-error (imoogi-project-notes--doctor-resolve-answer "misc" "+")
+                  :type 'user-error)))
+
+(ert-deftest imoogi-project-notes-doctor-renumbers-valid-folder-with-plus ()
+  (imoogi-project-notes-test--isolated
+    (imoogi-project-notes-test--make-numbered-folders
+     "260925.01-foo" "260925.03-b")
+    (let (initials)
+      (cl-letf (((symbol-function 'read-string)
+                 (lambda (prompt &optional initial &rest _)
+                   (push initial initials)
+                   (if (string-match-p "\\[260925\\.01-foo\\]" prompt) "+" ""))))
+        (should (equal '(:changed 1 :skipped 1)
+                       (imoogi-project-notes-setup-doctor t))))
+      ;; Numbered folders are asked with no prefilled text, so RET keeps them.
+      (should (equal '(nil nil) initials))
+      (should (file-directory-p
+               (expand-file-name "260925.04-foo" imoogi-project-notes-directory)))
+      (should-not (file-directory-p
+                   (expand-file-name "260925.01-foo" imoogi-project-notes-directory))))))
+
+(ert-deftest imoogi-project-notes-doctor-logs-failure-reason ()
+  (imoogi-project-notes-test--isolated
+    (imoogi-project-notes-test--make-numbered-folders "260925.01-foo" "260925.02-bar")
+    (when (get-buffer imoogi-project-notes--doctor-log-buffer)
+      (kill-buffer imoogi-project-notes--doctor-log-buffer))
+    (cl-letf (((symbol-function 'read-string)
+               (lambda (prompt &rest _)
+                 (if (string-match-p "\\[260925\\.01-foo\\]" prompt) "2" ""))))
+      (should-error (imoogi-project-notes-setup-doctor t) :type 'user-error))
+    (with-current-buffer imoogi-project-notes--doctor-log-buffer
+      (let ((log (buffer-string)))
+        (should (string-match-p "실패: ID 260925\\.02가 이미 사용 중" log))
+        (should (string-match-p "폴더: 260925\\.01-foo" log))
+        (should (string-match-p "입력: 2" log))
+        (should (string-match-p "결과 이름: 260925\\.02-foo" log))))
+    (should (file-directory-p
+             (expand-file-name "260925.01-foo" imoogi-project-notes-directory)))))
+
+(ert-deftest imoogi-project-notes-raiseup-sequence-defaults-to-next-number ()
+  (imoogi-project-notes-test--isolated
+    (imoogi-project-notes-test--make-numbered-folders
+     "2609.01-a" "2609.02-b")
+    (let (prompt default)
+      (cl-letf (((symbol-function 'read-number)
+                 (lambda (p &optional d &rest _)
+                   (setq prompt p default d)
+                   d)))
+        (should (= 3 (imoogi-project-notes--read-sequence 'monthly "2609"))))
+      (should (= 3 default))
+      (should (string-match-p "2609\\.01" prompt))
+      (should (string-match-p "2609\\.02" prompt)))))
 
 (ert-deftest imoogi-project-notes-artifact-links-task-both-ways ()
   (imoogi-project-notes-test--isolated
