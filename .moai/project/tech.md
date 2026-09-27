@@ -4,7 +4,7 @@
 
 imoogi-emacs is built from two coordinated stacks:
 
-- **Emacs Lisp** (dominant — 53 files under `modules/`, in four packages): the configuration itself, targeting **Emacs 30.x specifically**. For example, `which-key` is deliberately omitted from `packages.el` because it ships built-in as of Emacs 30.
+- **Emacs Lisp** (dominant — 55 files under `modules/`, in four packages): the configuration itself, targeting **Emacs 30.x specifically**. For example, `which-key` is deliberately omitted from `packages.el` because it ships built-in as of Emacs 30.
 - **Go 1.26** (`github.com/karohani/imoogi-emacs`): seven CLIs — six the configuration invokes as subprocesses, plus `imoogi-agent`, which an external coding agent invokes to call into the running Emacs via `emacsclient`. The module has one direct third-party dependency, `github.com/niklasfasching/go-org v1.9.1` (with `golang.org/x/net` as an indirect), and a correspondingly small `go.sum`.
 
 The unifying design principle across both stacks is **air-gap safety**: nothing in the boot path or the offline `setup` path may touch the network. This is the single most important constraint on the project (per `AGENTS.md`, "가장 중요한 제약").

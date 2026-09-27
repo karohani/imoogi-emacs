@@ -1,6 +1,6 @@
 # Codemap — Modules
 
-Every Emacs Lisp file under `modules/`, by package. 53 files: 29 numbered modules, one unnumbered (`development/formatting.el`), 9 per-language LSP configs, 10 Anki libraries and 4 flashcard libraries.
+Every Emacs Lisp file under `modules/`, by package. 55 files: 31 numbered modules, one unnumbered (`development/formatting.el`), 9 per-language LSP configs, 10 Anki libraries and 4 flashcard libraries.
 
 ## `modules/general/` — 11 modules
 
@@ -28,7 +28,7 @@ Every Emacs Lisp file under `modules/`, by package. 53 files: 29 numbered module
 | `22-tabs.el` | `tab-bar` as the window layer. |
 | `26-project-notes.el` | Project-scoped and study Org notes: creation from templates, registration, agenda wiring, removable-root registration and the verified move through `imoogi-notes`. Defines `imoogi-project-notes-command`. |
 
-## `modules/org/` — 7 modules + 14 libraries
+## `modules/org/` — 8 modules + 14 libraries
 
 | Module | Purpose |
 |---|---|
@@ -39,6 +39,7 @@ Every Emacs Lisp file under `modules/`, by package. 53 files: 29 numbered module
 | `24-anki.el` | One-way Org → Anki sync: adds `modules/org/anki/` to `load-path` and layers this repository's conveniences (completion, key bindings, menu) on top. |
 | `25-flashcards.el` | Emacs-native SQLite-backed flashcard fallback for hosts without Anki. Shares no state with `24-anki.el`. |
 | `28-clipboard.el` | Clipboard assets for Org and Markdown: inspection, staging leases and asset insertion through `imoogi-clip`. |
+| `29-org-roam.el` | org-roam over the permanent notes directory, with cached node completion refreshed on an idle timer and a transient menu. |
 
 ### `modules/org/anki/` — 10 libraries
 
@@ -64,7 +65,7 @@ Every Emacs Lisp file under `modules/`, by package. 53 files: 29 numbered module
 | `imoogi-flashcards-repository.el` | SQLite repository. |
 | `imoogi-flashcards-review.el` | Review UI. |
 
-## `modules/development/` — 7 modules + 9 language configs
+## `modules/development/` — 8 modules + 9 language configs
 
 | Module | Purpose |
 |---|---|
@@ -75,6 +76,7 @@ Every Emacs Lisp file under `modules/`, by package. 53 files: 29 numbered module
 | `19-folding.el` | Code folding (kirigami, outline-indent). |
 | `20-terminal.el` | ghostel terminal (libghostty-vt native module), with Korean input support. |
 | `27-gptel.el` | gptel against a LiteLLM gateway, including private-CA configuration. |
+| `30-agent.el` | Receiver for `imoogi-agent` events delivered through `emacsclient`: validation, notifications, the `*imoogi-agent*` log and focus-preserving file display. The only module entered from outside Emacs. |
 
 ### `modules/development/lang/` — 9 per-language LSP configs
 
@@ -82,10 +84,11 @@ Every Emacs Lisp file under `modules/`, by package. 53 files: 29 numbered module
 
 ## Go Packages
 
-### `cmd/` — 6 entry points
+### `cmd/` — 7 entry points
 
 | Package | Purpose |
 |---|---|
+| `cmd/imoogi-agent` | Run by an external coding agent, not by Emacs: parses one subcommand, delivers the event to the running Emacs through `emacsclient` and exits 0/1/2/3. |
 | `cmd/imoogi-anki` | Reads one JSON request from stdin, writes one JSON response to stdout, once per sync run. No user interaction. |
 | `cmd/imoogi-clip` | Decodes a clipboard request, runs `clipboard.Service`, encodes the response. |
 | `cmd/imoogi-notes` | Decodes a move request, runs `notemove.Move`, encodes the response. |
@@ -93,11 +96,12 @@ Every Emacs Lisp file under `modules/`, by package. 53 files: 29 numbered module
 | `cmd/imoogi-provenance` | Dispatches `verify`, `generate` and `record-git-source`. |
 | `cmd/imoogi-toolchain` | Wires `cli.Run` with the `fetch` and `setup` hooks. |
 
-### `internal/` — 27 packages
+### `internal/` — 28 packages
 
 | Package | Purpose |
 |---|---|
 | `activation` | CLI self-bootstrap cross-compile spec used by `fetch`. |
+| `agentipc` | `imoogi-agent` argument grammar, event assembly, `emacsclient` discovery, 0600 event-file delivery, time limit and exit-code classification. |
 | `anki/ankiconnect` | The only component permitted to talk to AnkiConnect; client, errors and model. |
 | `anki/hashing` | Content hash used to decide whether a note changed. |
 | `anki/media` | Media pass over rendered fields. |

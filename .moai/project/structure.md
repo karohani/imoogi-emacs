@@ -187,23 +187,24 @@ imoogi-emacs/
 
 | # | Module | # | Module |
 |---|---|---|---|
-| 1 | `general/00-defaults` | 16 | `org/14-org` |
-| 2 | `general/01-keys` | 17 | `org/23-org-preview` |
-| 3 | `development/formatting` | 18 | `org/15-markdown` |
-| 4 | `general/02-completion` | 19 | `development/16-elisp` |
-| 5 | `general/03-which-key` | 20 | `development/17-lsp` |
-| 6 | `project/04-projects` | 21 | `development/18-languages` |
-| 7 | `general/05-transient` | 22 | `development/19-folding` |
-| 8 | `project/06-git` | 23 | `development/20-terminal` |
-| 9 | `project/07-treemacs` | 24 | `general/21-native-compile` |
-| 10 | `org/08-obsidian` | 25 | `project/22-tabs` |
-| 11 | `general/09-autorevert` | 26 | `org/24-anki` |
-| 12 | `general/10-theme` | 27 | `org/25-flashcards` |
-| 13 | `general/11-editing` | 28 | `project/26-project-notes` |
-| 14 | `general/12-navigation` | 29 | `development/27-gptel` |
-| 15 | `general/13-system` | 30 | `org/28-clipboard` |
+| 1 | `general/00-defaults` | 17 | `org/23-org-preview` |
+| 2 | `general/01-keys` | 18 | `org/15-markdown` |
+| 3 | `development/formatting` | 19 | `development/16-elisp` |
+| 4 | `general/02-completion` | 20 | `development/17-lsp` |
+| 5 | `general/03-which-key` | 21 | `development/18-languages` |
+| 6 | `project/04-projects` | 22 | `development/19-folding` |
+| 7 | `general/05-transient` | 23 | `development/20-terminal` |
+| 8 | `project/06-git` | 24 | `general/21-native-compile` |
+| 9 | `project/07-treemacs` | 25 | `project/22-tabs` |
+| 10 | `org/08-obsidian` | 26 | `org/24-anki` |
+| 11 | `general/09-autorevert` | 27 | `org/25-flashcards` |
+| 12 | `general/10-theme` | 28 | `project/26-project-notes` |
+| 13 | `general/11-editing` | 29 | `development/27-gptel` |
+| 14 | `general/12-navigation` | 30 | `org/28-clipboard` |
+| 15 | `general/13-system` | 31 | `org/29-org-roam` |
+| 16 | `org/14-org` | 32 | `development/30-agent` |
 
-30 entries: 29 numbered modules plus the unnumbered `development/formatting`, which is loaded third so that every later module sees the shared formatting setup.
+32 entries: 31 numbered modules plus the unnumbered `development/formatting`, which is loaded third so that every later module sees the shared formatting setup.
 
 Load-order dependency examples:
 
