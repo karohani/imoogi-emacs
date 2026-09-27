@@ -24,6 +24,10 @@ type fakeRecord struct {
 	Args    []string `json:"args"`
 	Perm    string   `json:"perm"`
 	Content string   `json:"content"`
+	// The directory holding the event file, observed while it still exists.
+	DirPerm   string `json:"dirPerm"`
+	DirName   string `json:"dirName"`
+	DirParent string `json:"dirParent"`
 }
 
 func TestMain(m *testing.M) {
@@ -43,6 +47,12 @@ func fakeEmacsclient(mode string) int {
 		if data, err := os.ReadFile(path); err == nil {
 			record.Content = string(data)
 		}
+		dir := filepath.Dir(path)
+		if info, err := os.Stat(dir); err == nil {
+			record.DirPerm = strconv.FormatUint(uint64(info.Mode().Perm()), 8)
+		}
+		record.DirName = filepath.Base(dir)
+		record.DirParent = filepath.Dir(dir)
 	}
 	if recordPath := os.Getenv(fakeRecordEnv); recordPath != "" {
 		data, _ := json.Marshal(record)
@@ -352,13 +362,14 @@ func TestAC14DiscoveryIgnoresDirectoriesAndRelativePath(t *testing.T) {
 		t.Errorf("a directory named emacsclient was accepted: %q", got)
 	}
 
+	// A bare name is looked up in PATH only (SPEC-AGENTIPC-002 REQ-AIPH-007):
+	// an executable in the current directory alone does not satisfy it.
 	dir := t.TempDir()
 	installExecutable(t, filepath.Join(dir, "ec"))
 	t.Chdir(dir)
 	t.Setenv("EMACSCLIENT", "ec")
-	got, err := findEmacsclient()
-	if err != nil || !filepath.IsAbs(got) {
-		t.Errorf("relative EMACSCLIENT resolved to %q, %v; want an absolute path", got, err)
+	if got, err := findEmacsclient(); err == nil {
+		t.Errorf("bare EMACSCLIENT resolved against the current directory: %q", got)
 	}
 }
 
@@ -393,5 +404,197 @@ func TestDiscoveryCandidatesMatchImoogiEditor(t *testing.T) {
 			t.Fatalf("candidate %q not found after position %d in scripts/imoogi-editor", candidate, last)
 		}
 		last += at + len(candidate)
+	}
+}
+
+// SPEC-AGENTIPC-002 ---------------------------------------------------------
+
+// sameDir reports whether a and b name the same path once symbolic links are
+// resolved (macOS /var is a link to /private/var).
+func sameDir(t *testing.T, a, b string) bool {
+	t.Helper()
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	return errA == nil && errB == nil && ra == rb
+}
+
+// emptyDir fails the test unless dir exists and holds no entry.
+func emptyDir(t *testing.T, dir string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("%s is not empty: %q", dir, names)
+	}
+}
+
+// linkToSelf makes path a symbolic link to this test binary, so running it
+// leaves a fake-emacsclient record and an absent record proves it never ran.
+func linkToSelf(t *testing.T, path string) {
+	t.Helper()
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(self, path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAIPH05ClassifiesNewReasons(t *testing.T) {
+	for _, reason := range []string{"untrusted", "payload-too-large"} {
+		t.Run(reason, func(t *testing.T) {
+			got := classify([]byte(`"error:`+reason+`"`+"\n"), nil, 0)
+			if got.Code != ExitRejected {
+				t.Errorf("code = %d, want %d", got.Code, ExitRejected)
+			}
+			if strings.Contains(got.Diag, "\n") || !strings.Contains(got.Diag, reason) {
+				t.Errorf("diag = %q, want one line containing %q", got.Diag, reason)
+			}
+		})
+	}
+}
+
+func TestAIPH06PrivateDirectoryAndCleanup(t *testing.T) {
+	event := []byte(`{"version":"1","type":"message","timestamp":"t","payload":{"text":"hi"}}` + "\n")
+	for _, mode := range []string{"ok", "reject", "elisp-error", "connect-fail", "sleep:30"} {
+		t.Run(mode, func(t *testing.T) {
+			// useFake's t.TempDir comes first so the record stays out of TMPDIR.
+			recordPath := useFake(t, mode)
+			tmp := t.TempDir()
+			t.Setenv("TMPDIR", tmp)
+			Emacsclient{}.Deliver(event, time.Second)
+			record := readRecord(t, recordPath)
+			if record.Perm != "600" {
+				t.Errorf("event file mode = %s, want 600", record.Perm)
+			}
+			if record.DirPerm != "700" {
+				t.Errorf("event directory mode = %s, want 700", record.DirPerm)
+			}
+			if !strings.HasPrefix(record.DirName, "imoogi-agent-") {
+				t.Errorf("event directory name = %q, want prefix imoogi-agent-", record.DirName)
+			}
+			if !sameDir(t, record.DirParent, tmp) {
+				t.Errorf("event directory parent = %q, want TMPDIR %q", record.DirParent, tmp)
+			}
+			emptyDir(t, tmp)
+		})
+	}
+
+	t.Run("fresh directory per call", func(t *testing.T) {
+		first := useFake(t, "ok")
+		tmp := t.TempDir()
+		t.Setenv("TMPDIR", tmp)
+		Emacsclient{}.Deliver(event, time.Second)
+		second := useFake(t, "ok")
+		Emacsclient{}.Deliver(event, time.Second)
+		a, b := readRecord(t, first).DirName, readRecord(t, second).DirName
+		if a == "" || a == b {
+			t.Errorf("directory names %q and %q, want two different names", a, b)
+		}
+		emptyDir(t, tmp)
+	})
+
+	t.Run("unwritable TMPDIR", func(t *testing.T) {
+		recordPath := useFake(t, "ok")
+		dir := filepath.Join(t.TempDir(), "ro")
+		if err := os.Mkdir(dir, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("TMPDIR", dir)
+		if got := (Emacsclient{}).Deliver(event, time.Second); got.Code != ExitNotSent {
+			t.Errorf("code = %d (%s), want %d", got.Code, got.Diag, ExitNotSent)
+		}
+		if _, err := os.Stat(recordPath); !os.IsNotExist(err) {
+			t.Errorf("emacsclient was invoked although the event directory could not be created")
+		}
+	})
+}
+
+func TestAIPH07BareNameUsesPathOnly(t *testing.T) {
+	p := t.TempDir()
+	d := t.TempDir()
+	installExecutable(t, filepath.Join(p, "ec"))
+	installExecutable(t, filepath.Join(d, "ec"))
+	t.Chdir(d)
+
+	t.Run("a bare name found in PATH", func(t *testing.T) {
+		t.Setenv("EMACSCLIENT", "ec")
+		t.Setenv("PATH", p)
+		got, err := findEmacsclient()
+		if err != nil || got != filepath.Join(p, "ec") {
+			t.Errorf("findEmacsclient() = %q, %v; want %q", got, err, filepath.Join(p, "ec"))
+		}
+	})
+	t.Run("b name with a slash is relative to the current directory", func(t *testing.T) {
+		t.Setenv("EMACSCLIENT", "./ec")
+		t.Setenv("PATH", t.TempDir())
+		got, err := findEmacsclient()
+		if err != nil || !filepath.IsAbs(got) || !sameDir(t, got, filepath.Join(d, "ec")) {
+			t.Errorf("findEmacsclient() = %q, %v; want the absolute path of %q", got, err, filepath.Join(d, "ec"))
+		}
+	})
+	t.Run("c absolute path", func(t *testing.T) {
+		want := filepath.Join(p, "ec")
+		t.Setenv("EMACSCLIENT", want)
+		got, err := findEmacsclient()
+		if err != nil || got != want {
+			t.Errorf("findEmacsclient() = %q, %v; want %q", got, err, want)
+		}
+	})
+}
+
+func TestAIPH08BareNameNotFoundFailsDelivery(t *testing.T) {
+	sep := string(os.PathListSeparator)
+	cases := []struct {
+		name    string
+		path    func(e, q string) string
+		godebug string
+	}{
+		{"a not in PATH", func(e, _ string) string { return e }, ""},
+		{"b dot entry before PATH", func(e, _ string) string { return "." + sep + e }, ""},
+		{"c first match in dot entry", func(_, q string) string { return "." + sep + q }, ""},
+		{"d dot entry with execerrdot=0", func(_, _ string) string { return "." }, "execerrdot=0"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			recordPath := useFake(t, "ok")
+			apps := useApplicationsDir(t)
+			d, e, q := t.TempDir(), t.TempDir(), t.TempDir()
+			linkToSelf(t, filepath.Join(d, "ec"))
+			linkToSelf(t, filepath.Join(e, "emacsclient"))
+			linkToSelf(t, filepath.Join(q, "ec"))
+			linkToSelf(t, bundle(apps, "Emacs.app"))
+			tmp := t.TempDir()
+			t.Setenv("TMPDIR", tmp)
+			t.Chdir(d)
+			t.Setenv("EMACSCLIENT", "ec")
+			t.Setenv("PATH", tc.path(e, q))
+			if tc.godebug != "" {
+				t.Setenv("GODEBUG", tc.godebug)
+			}
+
+			got := Emacsclient{}.Deliver([]byte("{}\n"), time.Second)
+			if got.Code != ExitNotSent {
+				t.Errorf("code = %d (%s), want %d", got.Code, got.Diag, ExitNotSent)
+			}
+			if strings.Contains(got.Diag, "\n") || !strings.Contains(got.Diag, "EMACSCLIENT") ||
+				!strings.Contains(got.Diag, ": ec") {
+				t.Errorf("diag = %q, want one line naming EMACSCLIENT and ec", got.Diag)
+			}
+			if _, err := os.Stat(recordPath); !os.IsNotExist(err) {
+				t.Errorf("a program was run although the bare name did not resolve (record %v)", err)
+			}
+			emptyDir(t, tmp)
+		})
 	}
 }

@@ -40,22 +40,23 @@ var appBundleCandidates = []string{
 // findEmacsclient, reading its configuration from the process environment.
 type Emacsclient struct{}
 
-// Deliver writes the event to an owner-only temporary file, runs
-// `emacsclient --eval EXPR PATH` without a shell, classifies the outcome, and
-// removes the file on every path.
+// Deliver writes the event to an owner-only file inside a fresh owner-only
+// temporary directory, runs `emacsclient --eval EXPR PATH` without a shell,
+// classifies the outcome, and removes the file and the directory on every
+// path.
 //
-// @MX:ANCHOR: [AUTO] Deliver is the transport entry point: discovery, event file lifetime, time limit, classification.
-// @MX:REASON: Every exit code 0/1/3 of spec.md § 2.4 originates here; REQ-AIPC-012..014 all depend on this sequence.
+// @MX:ANCHOR: [AUTO] Deliver is the transport entry point: discovery, event directory lifetime, time limit, classification.
+// @MX:REASON: Every exit code 0/1/3 of spec.md § 2.4 originates here; REQ-AIPC-012..014 and SPEC-AGENTIPC-002 REQ-AIPH-006 all depend on this sequence.
 func (Emacsclient) Deliver(event []byte, timeout time.Duration) Result {
 	client, err := findEmacsclient()
 	if err != nil {
 		return Result{Code: ExitNotSent, Diag: err.Error()}
 	}
-	path, err := writeEventFile(event)
-	if path != "" {
-		// Removal failure has no remaining channel to report on; the file
-		// is owner-only and the next run uses a fresh name.
-		defer func() { _ = os.Remove(path) }()
+	dir, path, err := writeEventFile(event)
+	if dir != "" {
+		// Removal failure has no remaining channel to report on; the
+		// directory is owner-only and the next run uses a fresh name.
+		defer func() { _ = os.RemoveAll(dir) }()
 	}
 	if err != nil {
 		return Result{Code: ExitNotSent, Diag: err.Error()}
@@ -85,23 +86,27 @@ func (Emacsclient) Deliver(event []byte, timeout time.Duration) Result {
 	}
 }
 
-// writeEventFile creates the event file with mode 0600 regardless of umask.
-// It returns the absolute path whenever a file was created, even on a later
-// failure, so the caller can remove it.
-func writeEventFile(event []byte) (string, error) {
-	f, err := os.CreateTemp("", "imoogi-agent-*.json")
+// writeEventFile creates a fresh directory with mode 0700 under the system
+// temporary directory and, inside it, the event file with mode 0600
+// regardless of umask. It returns the directory whenever one was created,
+// even on a later failure, so the caller can remove it with everything in it;
+// the file path is absolute.
+func writeEventFile(event []byte) (dir, path string, err error) {
+	dir, err = os.MkdirTemp("", "imoogi-agent-*")
 	if err != nil {
-		return "", fmt.Errorf("cannot create event file: %w", err)
+		return "", "", fmt.Errorf("cannot create event directory: %w", err)
 	}
-	path := f.Name()
-	if abs, absErr := filepath.Abs(path); absErr == nil {
-		path = abs
+	if abs, absErr := filepath.Abs(dir); absErr == nil {
+		dir = abs
 	} else {
-		err = absErr
+		return dir, "", fmt.Errorf("cannot create event directory: %w", absErr)
 	}
-	if err == nil {
-		err = f.Chmod(0o600)
+	path = filepath.Join(dir, "event.json")
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return dir, "", fmt.Errorf("cannot create event file: %w", err)
 	}
+	err = f.Chmod(0o600)
 	if err == nil {
 		_, err = f.Write(event)
 	}
@@ -109,20 +114,31 @@ func writeEventFile(event []byte) (string, error) {
 		err = closeErr
 	}
 	if err != nil {
-		return path, fmt.Errorf("cannot write event file: %w", err)
+		return dir, path, fmt.Errorf("cannot write event file: %w", err)
 	}
-	return path, nil
+	return dir, path, nil
 }
 
 // findEmacsclient mirrors scripts/imoogi-editor find_emacsclient:
-// $EMACSCLIENT (must be executable, no fallback), then PATH, then
-// appBundleCandidates in order.
+// $EMACSCLIENT, then PATH, then appBundleCandidates in order. A bare
+// $EMACSCLIENT name (no slash) is looked up in PATH only; a name with a
+// slash must be executable. Either way there is no fallback.
 func findEmacsclient() (string, error) {
 	if explicit := os.Getenv("EMACSCLIENT"); explicit != "" {
+		if !strings.ContainsRune(explicit, '/') {
+			// Never resolve a bare name against the current directory
+			// (SPEC-AGENTIPC-002 REQ-AIPH-007): LookPath stops at the
+			// first PATH match and reports a relative entry as ErrDot, and
+			// the IsAbs test still holds when GODEBUG=execerrdot=0.
+			found, err := exec.LookPath(explicit)
+			if err != nil || !filepath.IsAbs(found) {
+				return "", fmt.Errorf("EMACSCLIENT not found in PATH: %s", explicit)
+			}
+			return found, nil
+		}
 		if !isExecutable(explicit) {
 			return "", fmt.Errorf("EMACSCLIENT is not executable: %s", explicit)
 		}
-		// A bare name would otherwise be looked up in PATH by exec.
 		return filepath.Abs(explicit)
 	}
 	// exec.LookPath refuses PATH entries relative to the current directory.
