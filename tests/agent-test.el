@@ -433,10 +433,12 @@
 (ert-deftest imoogi-agent-ac04-artifact-created-notice-and-display ()
   "AC-AIPC-004: artifact notice uses the title or the file name."
   (let* ((dir (make-temp-file "imoogi-aipc-test-dir-" t))
-         (file (expand-file-name "260927-104700-report.md" dir)))
+         ;; The file name must not contain the artifact type, or the log
+         ;; assertion below would pass without artifactType being logged.
+         (file (expand-file-name "260927-104700-weekly.md" dir)))
     (unwind-protect
         (progn
-          (with-temp-file file (insert "# report\n"))
+          (with-temp-file file (insert "# weekly\n"))
           (let* ((user (imoogi-agent-test--user-buffer))
                  (window (selected-window))
                  (frame (selected-frame)))
@@ -449,7 +451,7 @@
               (should (equal status "ok"))
               (should (= 1 (cl-count "Agent artifact created: 주간 보고" messages
                                      :test #'equal)))
-              (should (string-match-p "report" (car log))))
+              (should (string-match-p " ok report 주간 보고 " (car log))))
             (let ((shown (imoogi-agent-test--file-window file)))
               (should (windowp shown))
               (should-not (eq shown window)))
@@ -459,7 +461,7 @@
                           (imoogi-agent-test--event-json
                            "artifact-created" `((path . ,file))))))
               (should (equal status "ok"))
-              (should (= 1 (cl-count "Agent artifact created: 260927-104700-report.md"
+              (should (= 1 (cl-count "Agent artifact created: 260927-104700-weekly.md"
                                      messages :test #'equal))))
             (imoogi-agent-test--assert-user-untouched user window frame)))
       (imoogi-agent-test--kill-visiting file)
