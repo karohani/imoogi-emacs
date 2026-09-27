@@ -2,7 +2,7 @@
 
 ## Overview
 
-imoogi-emacs is a mixed-stack monorepo: an Emacs Lisp configuration (the primary product) plus six companion Go CLIs that the configuration invokes as subprocesses. Both halves are designed to be fully air-gapped once vendored.
+imoogi-emacs is a mixed-stack monorepo: an Emacs Lisp configuration (the primary product) plus seven companion Go CLIs. Six are invoked by the configuration as subprocesses; the seventh, `imoogi-agent`, runs the other way — an external coding agent invokes it and it calls into the running Emacs through `emacsclient`. Both halves are designed to be fully air-gapped once vendored.
 
 As of the 2026-09-19 module reorganization, the Emacs modules live in four packages — `general/`, `project/`, `org/`, `development/` — instead of one flat folder. The numeric prefixes were kept as module identifiers, so command names, feature names, key bindings, and the `imoogi-failed-modules` entries did not change.
 
@@ -64,7 +64,7 @@ imoogi-emacs/
 │   │       ├── imoogi-flashcards-org.el
 │   │       ├── imoogi-flashcards-repository.el
 │   │       └── imoogi-flashcards-review.el
-│   └── development/           # Formatting, LSP, major modes, folding, terminal, gptel
+│   └── development/           # Formatting, LSP, major modes, folding, terminal, gptel, agent bridge
 │       ├── formatting.el      # Unnumbered; loaded right after general/01-keys
 │       ├── 16-elisp.el
 │       ├── 17-lsp.el          # Auto-discovers and loads development/lang/*.el
@@ -72,6 +72,7 @@ imoogi-emacs/
 │       ├── 19-folding.el
 │       ├── 20-terminal.el
 │       ├── 27-gptel.el
+│       ├── 30-agent.el        # imoogi-agent receiver: validation, *imoogi-agent* log, display
 │       └── lang/              # 9 per-language LSP configs, auto-discovered
 │           ├── bash.el
 │           ├── clojure.el
@@ -83,7 +84,8 @@ imoogi-emacs/
 │           ├── rust.el
 │           └── typescript.el
 │
-├── cmd/                       # Six Go CLI entry points
+├── cmd/                       # Seven Go CLI entry points
+│   ├── imoogi-agent/          # Coding agent → running Emacs event bridge (emacsclient)
 │   ├── imoogi-anki/           # Org → Anki sync back end (JSON on stdin/stdout)
 │   ├── imoogi-clip/           # Clipboard inspection and asset ingestion
 │   ├── imoogi-notes/          # Verified project/study note move
@@ -91,8 +93,9 @@ imoogi-emacs/
 │   ├── imoogi-provenance/     # Vendored-artifact provenance generate/verify
 │   └── imoogi-toolchain/      # LSP toolchain fetch/setup
 │
-├── internal/                  # Go business logic (12 top-level packages)
+├── internal/                  # Go business logic (13 top-level packages)
 │   ├── activation/            # CLI self-bootstrap cross-compile spec
+│   ├── agentipc/              # imoogi-agent event build, arg parsing, emacsclient delivery
 │   ├── anki/                  # ankiconnect, hashing, media, model, orgdoc,
 │   │                          #   planner, protocol, registry
 │   ├── artifact/              # Artifact verification and staging primitives
@@ -167,7 +170,7 @@ imoogi-emacs/
 | `modules/org/` | Org and Markdown authoring conventions, browser preview, clipboard assets, Anki sync and local flashcards. The implementation libraries live in `org/anki/` and `org/flashcards/`. |
 | `modules/development/` | Formatting, common LSP wiring, major modes, folding, terminal and gptel. |
 | `modules/development/lang/` | Per-language LSP configuration, auto-discovered by `17-lsp.el`. |
-| `cmd/` | Six Go CLI entry points, each a thin `main()` over an `internal/` package. |
+| `cmd/` | Seven Go CLI entry points, each a thin `main()` over an `internal/` package. |
 | `internal/` | Go business logic, following standard Go internal-package conventions. |
 | `vendor/` | Air-gapped artifacts. `elpa/`, `ghostel-module/` and `tree-sitter/` are committed — the committed directory itself is the version lock. `toolchains/` holds the `imoogi-toolchain fetch` output. |
 | `provenance/` | Declared sources and per-domain manifests for every vendored external file. |

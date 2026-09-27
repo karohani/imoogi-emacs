@@ -5,13 +5,13 @@
 imoogi-emacs is one repository holding two cooperating systems:
 
 1. **The Emacs configuration** — 53 Emacs Lisp files under `modules/`, grouped into four packages (`general/`, `project/`, `org/`, `development/`) and loaded in an explicit dependency order by `boot.el`. This is the product.
-2. **Six Go CLIs** — `cmd/imoogi-anki`, `cmd/imoogi-clip`, `cmd/imoogi-notes`, `cmd/imoogi-org-preview`, `cmd/imoogi-provenance`, `cmd/imoogi-toolchain`, backed by 27 packages under `internal/`. These exist to do what Emacs Lisp does poorly: HTML rendering, HTTP serving, platform clipboard access, cryptographic verification, archive handling and cross-platform binary management.
+2. **Seven Go CLIs** — `cmd/imoogi-agent`, `cmd/imoogi-anki`, `cmd/imoogi-clip`, `cmd/imoogi-notes`, `cmd/imoogi-org-preview`, `cmd/imoogi-provenance`, `cmd/imoogi-toolchain`, backed by 28 packages under `internal/`. These exist to do what Emacs Lisp does poorly: HTML rendering, HTTP serving, platform clipboard access, cryptographic verification, archive handling and cross-platform binary management.
 
 Everything both halves need at runtime is vendored under `vendor/` and hash-verified against `vendor-manifest.json`, so the whole system runs with no network access.
 
 ## The Elisp ↔ Go Boundary
 
-**Every Go CLI is invoked by Emacs as a subprocess. Nothing is linked, loaded as a dynamic module, or shared in-process.** The only native module in the configuration is the vendored `ghostel` terminal, which is not part of the Go side at all.
+**Every Go CLI except `imoogi-agent` is invoked by Emacs as a subprocess. Nothing is linked, loaded as a dynamic module, or shared in-process.** `imoogi-agent` crosses the boundary in the opposite direction: an external coding agent runs it, and it calls into the running Emacs with `emacsclient --eval`, handing over a 0600 temp event file that `modules/development/30-agent.el` validates and dispatches. The only native module in the configuration is the vendored `ghostel` terminal, which is not part of the Go side at all.
 
 The boundary has one dominant shape and one exception:
 

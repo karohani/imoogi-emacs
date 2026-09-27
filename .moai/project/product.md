@@ -6,7 +6,7 @@ imoogi-emacs
 
 ## Description
 
-imoogi-emacs is a personal Emacs configuration (개인 Emacs 설정) built to boot and operate fully inside a network-isolated (air-gapped / 망분리) environment. It pairs a modular Emacs Lisp configuration with six companion Go CLIs that handle the work Emacs is poor at — rendering and network protocol for Anki sync, clipboard access, verified file moves, HTML preview, provenance hashing, and language-server toolchain management. Both halves share the same design principle: everything the editor needs at boot or at runtime is vendored ahead of time, so cloning the repository (or carrying it into an isolated network) is sufficient to get a fully working, modern editing environment with zero network access required.
+imoogi-emacs is a personal Emacs configuration (개인 Emacs 설정) built to boot and operate fully inside a network-isolated (air-gapped / 망분리) environment. It pairs a modular Emacs Lisp configuration with seven companion Go CLIs that handle the work Emacs is poor at — rendering and network protocol for Anki sync, clipboard access, verified file moves, HTML preview, provenance hashing, language-server toolchain management, and delivering coding-agent events (notifications, file display, artifacts) into the running Emacs through `emacsclient`. Both halves share the same design principle: everything the editor needs at boot or at runtime is vendored ahead of time, so cloning the repository (or carrying it into an isolated network) is sufficient to get a fully working, modern editing environment with zero network access required.
 
 The project is actively evolving — packages and modules are added, swapped and modernized over time — but the air-gap boot guarantee is the one constraint that must never regress.
 

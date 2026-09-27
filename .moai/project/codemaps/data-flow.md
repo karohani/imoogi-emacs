@@ -1,6 +1,6 @@
 # Codemap — Data Flow
 
-Six flows carry essentially all of the system's runtime behaviour.
+Seven flows carry essentially all of the system's runtime behaviour.
 
 ## 1. Boot
 
@@ -149,3 +149,25 @@ OFFLINE machine
 ```
 
 The split is the same online → offline discipline used for Emacs packages, applied to binaries: the online half may use the network and writes a lockfile; the offline half may only verify what is already present.
+
+## 7. Coding agent → Emacs (imoogi-agent)
+
+```
+coding agent (Claude Code, Codex, ...)
+  imoogi-agent <message|open-file|goto|artifact|finish> ... [--project P] [--session S]
+    ├─ internal/agentipc  parse args (exit 2 on invalid use, nothing sent)
+    │                     build one event: version "1", RFC 3339 timestamp, payload
+    │                     relative paths → absolute against the CLI's cwd
+    ├─ write the event to a 0600 temp file
+    ├─ find emacsclient: $EMACSCLIENT → PATH → /Applications/Emacs*.app
+    ├─ emacsclient --eval <fixed expr> <event-file>   (no shell; 5 s limit enforced by the CLI)
+    │     └─ modules/development/30-agent.el  imoogi-agent-receive-file
+    │           ├─ validate: file, size, JSON, keys, version, type, fields, paths
+    │           ├─ dispatch: echo-area notice / display file in another window (no focus change)
+    │           ├─ append one line to *imoogi-agent*
+    │           └─ return "ok" | "error:<reason>"
+    ├─ delete the temp file on every path
+    └─ exit 0 ok · 1 not delivered · 3 rejected by Emacs
+```
+
+This is the only flow that starts outside Emacs: the Go side calls into Emacs rather than being spawned by it. The receiver never prompts, never writes or executes payload files, and does not consult the project-notes registry.

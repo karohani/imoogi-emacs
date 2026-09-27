@@ -57,6 +57,49 @@ Claude Code나 Codex의 `Ctrl+G`를 누르면 실행 중인 Emacs에 새 프레�
 
 모든 패키지가 저장소 안 `vendor/elpa/` 에 동봉돼 있어, **인터넷 없이도 첫 실행부터 그대로 동작한다**(망분리/air-gap 지원).
 
+### 코딩 에이전트 알림 — `imoogi-agent`
+
+`imoogi-agent`는 Claude Code 같은 코딩 에이전트가 실행 중인 Emacs에 소식을 전하는
+작은 CLI다. 다른 Go CLI는 Emacs가 하위 프로세스로 부르지만, 이 도구는 방향이 반대다.
+에이전트가 명령을 실행하면 이벤트 하나를 소유자 전용(0600) 임시 파일로 쓰고
+`emacsclient --eval`로 Emacs 서버에 넘긴다. Emacs 쪽 수신기는
+`modules/development/30-agent.el`이다. 따라서 Emacs 서버가 떠 있어야 한다.
+
+설치기(`make install`)가 `~/.local/bin/imoogi-agent`를 `imoogi-editor`와 같은 방식으로
+연결한다. 바이너리는 `make build-agent`로 따로 만들 수 있고 `make build-all`에도 포함된다.
+
+```bash
+imoogi-agent message "빌드 끝남"
+imoogi-agent open-file README.md
+imoogi-agent goto internal/agentipc/request.go 42 5
+imoogi-agent artifact notes/report.md --type report --title "리뷰 결과"
+imoogi-agent finish success "테스트 전부 통과" --artifact notes/report.md
+imoogi-agent --version
+```
+
+모든 하위 명령에 `--project P`, `--session S`, `--timeout SECONDS`를 붙일 수 있다.
+옵션은 위치 인자 앞뒤 어디에 와도 되고, `--` 뒤는 모두 위치 인자로 본다.
+상대 경로는 명령을 실행한 디렉터리 기준 절대 경로로 바뀌어 전달된다.
+
+- 파일은 지금 선택된 창이 아닌 다른 창에 열린다. 커서와 포커스는 그대로다.
+- 알림은 에코 영역에 한 줄로 뜨고, 받은 이벤트와 거부된 이벤트는 모두
+  `*imoogi-agent*` 버퍼에 한 줄씩 쌓인다(읽기 전용, 세션 동안만 유지).
+- 시간 상한은 기본 5초이며 `--timeout`이나 `IMOOGI_AGENT_TIMEOUT`으로 바꾼다.
+  `emacsclient` 위치는 `EMACSCLIENT`로 지정할 수 있다.
+
+종료 코드:
+
+| 코드 | 의미 |
+|------|------|
+| 0 | Emacs가 이벤트를 받아들임 |
+| 1 | 전달 실패(emacsclient 없음, 서버 연결 실패, 시간 초과 등) |
+| 2 | 잘못된 호출(인자·옵션 오류). 아무것도 보내지 않는다 |
+| 3 | Emacs에 닿았지만 거부됨. 사유는 stderr 한 줄로 나온다 |
+
+에이전트가 산출물 파일을 남길 때는
+`<project-notes>/artifacts/agent/YYMMDD-HHMMSS-{type}.{ext}` 위치를 권장한다.
+파일은 에이전트가 직접 쓰며, Emacs는 이 관례를 강제하거나 디렉터리를 만들지 않는다.
+
 ### (선택) tmux 기본 설정
 
 Emacs 와는 별개로, 터미널을 tmux 로 쓴다면 저장소가 들고 있는 기본 설정을 얹을 수 있다.

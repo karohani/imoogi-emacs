@@ -20,6 +20,7 @@ Each binary is `cmd/<name>/main.go`, built into `bin/<name>`.
 
 | Entry point | Invocation | Contract |
 |---|---|---|
+| `cmd/imoogi-agent/main.go` | Run by an external coding agent (not by Emacs) | `imoogi-agent message\|open-file\|goto\|artifact\|finish ... [--project P] [--session S] [--timeout SECONDS]`, `--version`. Writes a 0600 temp event file and calls `emacsclient --eval` into `modules/development/30-agent.el`. Exit 0 accepted / 1 not delivered / 2 usage error / 3 rejected. |
 | `cmd/imoogi-anki/main.go` | Spawned by `modules/org/anki/imoogi-process.el` | One JSON request on stdin → one JSON response on stdout, once per sync run. No user interaction. Log path from `IMOOGI_ANKI_LOG`. |
 | `cmd/imoogi-clip/main.go` | Spawned by `modules/org/28-clipboard.el` | `imoogi-clip [--version]`. Reads up to 1 MiB of JSON from stdin, writes one JSON response. A decode failure is itself returned as a structured failure, not an exit code. |
 | `cmd/imoogi-notes/main.go` | Spawned by `modules/project/26-project-notes.el` | `imoogi-notes [--version]`. Same 1 MiB stdin JSON → stdout JSON shape; `{ok, code, error}`. |
@@ -40,8 +41,8 @@ Binary resolution from Emacs follows the same shape in all three callers: the co
 | `toolchain-setup` | `scripts/setup-toolchain.sh` → `imoogi-toolchain` |
 | `grammars` | `scripts/build-grammars.sh` → `vendor/tree-sitter/` (online only) |
 | `build` | Compile check of every Go package |
-| `build-all` | All six CLIs into `bin/` |
-| `build-toolchain`, `build-anki-bin`, `build-org-preview`, `build-clipboard`, `build-notes`, `build-provenance` | One CLI each |
+| `build-all` | All seven CLIs into `bin/` |
+| `build-toolchain`, `build-anki-bin`, `build-org-preview`, `build-clipboard`, `build-notes`, `build-provenance`, `build-agent` | One CLI each |
 | `build-anki`, `install-clipboard` | Install a CLI into `ANKI_PREFIX` / `CLIPBOARD_PREFIX` |
 | `provenance-generate`, `provenance-verify`, `verify-vendor` | `imoogi-provenance` |
 | `fmt`, `fmt-check`, `lint` | `gofmt` and `go vet` |

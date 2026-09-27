@@ -5,7 +5,7 @@
 imoogi-emacs is built from two coordinated stacks:
 
 - **Emacs Lisp** (dominant — 53 files under `modules/`, in four packages): the configuration itself, targeting **Emacs 30.x specifically**. For example, `which-key` is deliberately omitted from `packages.el` because it ships built-in as of Emacs 30.
-- **Go 1.26** (`github.com/karohani/imoogi-emacs`): six CLIs the configuration invokes as subprocesses. The module has one direct third-party dependency, `github.com/niklasfasching/go-org v1.9.1` (with `golang.org/x/net` as an indirect), and a correspondingly small `go.sum`.
+- **Go 1.26** (`github.com/karohani/imoogi-emacs`): seven CLIs — six the configuration invokes as subprocesses, plus `imoogi-agent`, which an external coding agent invokes to call into the running Emacs via `emacsclient`. The module has one direct third-party dependency, `github.com/niklasfasching/go-org v1.9.1` (with `golang.org/x/net` as an indirect), and a correspondingly small `go.sum`.
 
 The unifying design principle across both stacks is **air-gap safety**: nothing in the boot path or the offline `setup` path may touch the network. This is the single most important constraint on the project (per `AGENTS.md`, "가장 중요한 제약").
 
@@ -52,10 +52,11 @@ Pop-up command menus are built on `transient`; `general/05-transient.el` replace
 
 ## The Go CLIs
 
-Six binaries under `cmd/`, built into `bin/` (git-ignored). Each is a thin `main()` over an `internal/` package; five of the six speak a one-shot JSON request/response protocol over stdin/stdout and perform no user interaction.
+Seven binaries under `cmd/`, built into `bin/` (git-ignored). Each is a thin `main()` over an `internal/` package; five speak a one-shot JSON request/response protocol over stdin/stdout and perform no user interaction. `imoogi-agent` is the one CLI not spawned by Emacs: a coding agent runs it, and it delivers one event into the running Emacs through `emacsclient`.
 
 | Binary | Purpose | Interface |
 |---|---|---|
+| `imoogi-agent` | Lets a coding agent notify the running Emacs: builds one event (`message`, `open-file`, `goto`, `artifact`, `finish`), writes it to a 0600 temp file and hands it to `modules/development/30-agent.el` via `emacsclient --eval`. Exit codes 0 accepted / 1 not delivered / 2 usage error / 3 rejected by Emacs. Time limit 5 s (`--timeout`, `IMOOGI_AGENT_TIMEOUT`); `EMACSCLIENT` overrides discovery. | Subcommand argv → `emacsclient` |
 | `imoogi-anki` | Renders Org sync targets into Anki fields and drives AnkiConnect for a one-way Org → Anki sync. Writes a diagnostic log to the path in `IMOOGI_ANKI_LOG`. | One JSON request on stdin, one JSON response on stdout |
 | `imoogi-clip` | Inspects the OS clipboard (text / file list / image), and copies the selected asset into the note folder. | JSON on stdin/stdout, `--version` flag |
 | `imoogi-notes` | Moves a project or study note folder to another root: copies, verifies every file with SHA-256, then switches the original. Refuses to overwrite an existing destination name. | JSON on stdin/stdout, `--version` flag |
@@ -63,7 +64,7 @@ Six binaries under `cmd/`, built into `bin/` (git-ignored). Each is a thin `main
 | `imoogi-provenance` | `generate` writes the provenance manifests and `vendor-manifest.json`; `verify` checks that every vendored external file matches; `record-git-source ID COMMIT REF` pins a git-sourced component. | Subcommand argv |
 | `imoogi-toolchain` | `fetch` (online) downloads and vendors LSP toolchain artifacts and writes `toolchains.lock.json`; `setup` (offline) verifies, stages under `.local/`, and atomically activates `.local/bin`. | Subcommand argv |
 
-Go packages: 34 in total (`go list ./...`) — the six `cmd/` packages, 27 under `internal/` (including eight `internal/anki/*` and six `internal/orgpreview/*` sub-packages), and one under `tests/`.
+Go packages: 36 in total (`go list ./...`) — the seven `cmd/` packages, 28 under `internal/` (including eight `internal/anki/*` and six `internal/orgpreview/*` sub-packages), and one under `tests/`.
 
 ### LSP toolchain runtimes (managed by `imoogi-toolchain`, not `packages.el`)
 
@@ -109,8 +110,8 @@ Both vendoring workflows are strictly **one-directional (online → offline)** a
 | `toolchain-setup` | Detects OS/arch and installs the compatible bundled language servers |
 | `grammars` | Builds tree-sitter grammars (online machine only) |
 | `build` | Compile check of every Go package |
-| `build-all` | Builds all six CLIs into `bin/` |
-| `build-toolchain`, `build-anki-bin`, `build-org-preview`, `build-clipboard`, `build-notes`, `build-provenance` | Build one CLI into `bin/` |
+| `build-all` | Builds all seven CLIs into `bin/` |
+| `build-toolchain`, `build-anki-bin`, `build-org-preview`, `build-clipboard`, `build-notes`, `build-provenance`, `build-agent` | Build one CLI into `bin/` |
 | `build-anki`, `install-clipboard` | Install a CLI into `ANKI_PREFIX` / `CLIPBOARD_PREFIX` |
 | `provenance-generate` / `provenance-verify` / `verify-vendor` | Refresh and check vendored provenance |
 | `fmt` / `fmt-check` / `lint` | `gofmt`, a formatting gate for CI, and `go vet` |
@@ -152,6 +153,6 @@ Both vendoring workflows are strictly **one-directional (online → offline)** a
 
 ## Scope Boundaries
 
-In scope: the Emacs configuration (`modules/`, `vendor/elpa/`) and the six Go CLIs (`cmd/`, `internal/`), all designed to run fully offline once vendored, for personal (single-maintainer) use.
+In scope: the Emacs configuration (`modules/`, `vendor/elpa/`) and the seven Go CLIs (`cmd/`, `internal/`), all designed to run fully offline once vendored, for personal (single-maintainer) use.
 
 Out of scope: publishing this as a distributable public package; full platform support beyond `darwin/arm64` for the vendored binary artifacts.
