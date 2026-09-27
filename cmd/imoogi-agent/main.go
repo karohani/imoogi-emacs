@@ -31,6 +31,6 @@ func run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 		Getenv:    os.Getenv,
 		Getwd:     os.Getwd,
 		Now:       time.Now,
-		Transport: agentipc.Emacsclient{Getenv: os.Getenv},
+		Transport: agentipc.Emacsclient{},
 	})
 }
