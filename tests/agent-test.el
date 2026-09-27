@@ -652,5 +652,190 @@
       (delete-other-windows)
       (delete-directory dir t))))
 
+;;; SPEC-AGENTIPC-002 ---------------------------------------------------------
+;;
+;; Test names start with `imoogi-agent-aiphNN-' so that the spec.md § 3.3.0
+;; selector `^imoogi-agent-aiphNN-' runs exactly one AC.
+
+;; Special in the module; declared here so the `let' in aiph04 binds it
+;; dynamically even when the module failed to load.
+(defvar imoogi-agent-max-payload-bytes)
+
+(defun imoogi-agent-test--receive-file-counting (file)
+  "Receive FILE; return (STATUS MESSAGES NEW-LOG INSERTS).
+INSERTS counts calls of the `insert-file-contents' family during the call."
+  (let ((inserts 0))
+    (cl-letf* ((orig-insert (symbol-function 'insert-file-contents))
+               (orig-literal (symbol-function 'insert-file-contents-literally))
+               ((symbol-function 'insert-file-contents)
+                (lambda (&rest args) (cl-incf inserts) (apply orig-insert args)))
+               ((symbol-function 'insert-file-contents-literally)
+                (lambda (&rest args) (cl-incf inserts) (apply orig-literal args))))
+      (append (imoogi-agent-test--receive-file file) (list inserts)))))
+
+(defun imoogi-agent-test--sparse-file (file bytes)
+  "Create FILE as a sparse file of BYTES bytes with dd; return FILE."
+  (should (= 0 (call-process "dd" nil nil nil "if=/dev/zero" (concat "of=" file)
+                             "bs=1" "count=0" (format "seek=%d" bytes))))
+  (should (= bytes (file-attribute-size (file-attributes file))))
+  file)
+
+;;; AC-AIPH-001 ---------------------------------------------------------------
+
+(ert-deftest imoogi-agent-aiph01-untrusted-event-file ()
+  "AC-AIPH-001: foreign-owned or group/other-writable event files are refused."
+  (let ((json (imoogi-agent-test--json
+               (imoogi-agent-test--base "message" '((text . "aiph")))))
+        (real-uid (user-uid)))
+    (imoogi-agent-test--with-temp-files (file)
+      (setq file (imoogi-agent-test--write json))
+      (should (= #o600 (file-modes file)))
+      (let ((untrusted
+             (lambda (label)
+               (pcase-let ((`(,status ,messages ,log ,inserts)
+                            (imoogi-agent-test--receive-file-counting file)))
+                 (should (equal (list label status) (list label "error:untrusted")))
+                 (should (equal (list label inserts) (list label 0)))
+                 (should-not (member "aiph" messages))
+                 (should (= 1 (length log)))
+                 (should (string-match-p "\\] - project=- session=- untrusted$"
+                                         (car log)))))))
+        ;; (a) group-writable, (b) other-writable.
+        (set-file-modes file #o620)
+        (funcall untrusted "a")
+        (set-file-modes file #o602)
+        (funcall untrusted "b")
+        ;; (c) mode 0600 but owned by someone else.
+        (set-file-modes file #o600)
+        (cl-letf (((symbol-function 'user-uid) (lambda () (1+ real-uid))))
+          (funcall untrusted "c"))
+        ;; (d) control: mode 0600, owned by the user.
+        (pcase-let ((`(,status ,messages ,_ ,_)
+                     (imoogi-agent-test--receive-file-counting file)))
+          (should (equal status "ok"))
+          (should (member "aiph" messages)))))))
+
+;;; AC-AIPH-002 ---------------------------------------------------------------
+
+(ert-deftest imoogi-agent-aiph02-trust-scope-order-and-links ()
+  "AC-AIPH-002: trust check scope, its order, and symbolic-link resolution."
+  (let* ((json (imoogi-agent-test--json
+                (imoogi-agent-test--base "message" '((text . "aiph")))))
+         (dir (make-temp-file "imoogi-aipc-test-dir-" t))
+         (big (expand-file-name "big.json" dir))
+         (sub (expand-file-name "sub" dir))
+         (bad (expand-file-name "bad.json" dir))
+         (good (expand-file-name "good.json" dir))
+         (bad-link (expand-file-name "bad-link.json" dir))
+         (good-link (expand-file-name "good-link.json" dir)))
+    (unwind-protect
+        (progn
+          ;; (a) the string entry point has no file, so no trust check.
+          (should (equal (car (imoogi-agent-test--receive-json json)) "ok"))
+          ;; (b) untrusted comes before too-large.
+          (let ((coding-system-for-write 'utf-8-unix))
+            (write-region (make-string 1048577 ?x) nil big nil 'silent))
+          (should (= 1048577 (file-attribute-size (file-attributes big))))
+          (set-file-modes big #o620)
+          (should (equal (car (imoogi-agent-test--receive-file big)) "error:untrusted"))
+          ;; (c) file preconditions come before the trust check.
+          (make-directory sub)
+          (set-file-modes sub #o620)
+          (should (equal (car (imoogi-agent-test--receive-file sub)) "error:unreadable"))
+          (set-file-modes sub #o700)
+          ;; (d) a link to an untrusted file is judged by its target.
+          (let ((coding-system-for-write 'utf-8-unix))
+            (write-region json nil bad nil 'silent)
+            (write-region json nil good nil 'silent))
+          (set-file-modes bad #o620)
+          (set-file-modes good #o600)
+          (make-symbolic-link bad bad-link)
+          (make-symbolic-link good good-link)
+          (should (equal (car (imoogi-agent-test--receive-file bad-link))
+                         "error:untrusted"))
+          ;; (e) a link to a trusted file is accepted.
+          (should (equal (car (imoogi-agent-test--receive-file good-link)) "ok")))
+      (when (file-directory-p sub)
+        (set-file-modes sub #o700))
+      (delete-directory dir t))))
+
+;;; AC-AIPH-003 ---------------------------------------------------------------
+
+(ert-deftest imoogi-agent-aiph03-payload-too-large-rejects-whole-event ()
+  "AC-AIPH-003: a payload file over the cap rejects the whole event."
+  (let* ((dir (make-temp-file "imoogi-aipc-test-dir-" t))
+         (p (expand-file-name "big.bin" dir))
+         (lp (expand-file-name "big-link.bin" dir)))
+    (unwind-protect
+        (progn
+          (imoogi-agent-test--sparse-file p 104857601)
+          (make-symbolic-link p lp)
+          (dolist (case `(("a" "open-file" ((path . ,p)))
+                          ("b" "goto-location" ((path . ,p) (line . 1)))
+                          ("c" "artifact-created" ((path . ,p) (title . "big")))
+                          ("d" "task-finished" ((status . "success") (artifact . ,p)))
+                          ("e" "open-file" ((path . ,lp)))))
+            (imoogi-agent-test--user-buffer)
+            (let ((layout (imoogi-agent-test--window-state))
+                  (point (window-point (selected-window))))
+              (pcase-let ((`(,status ,messages ,log)
+                           (imoogi-agent-test--receive-json
+                            (imoogi-agent-test--event-json (nth 1 case) (nth 2 case)))))
+                (should (equal (list (car case) status)
+                               (list (car case) "error:payload-too-large")))
+                (should-not (find-buffer-visiting p))
+                (should (equal layout (imoogi-agent-test--window-state)))
+                (should (= point (window-point (selected-window))))
+                (should-not (cl-some (lambda (l)
+                                       (or (string-prefix-p "Agent artifact created" l)
+                                           (string-prefix-p "✓ Agent task finished" l)))
+                                     messages))
+                (should (= 1 (length log)))
+                (should (string-match-p "payload-too-large" (car log))))))
+          ;; (f) the path policy comes first.
+          (let ((default-directory dir))
+            (should (equal (car (imoogi-agent-test--receive-json
+                                 (imoogi-agent-test--event-json
+                                  "open-file" `((path . ,(file-relative-name p dir))))))
+                           "error:bad-path"))))
+      (imoogi-agent-test--kill-visiting p (file-truename p))
+      (delete-other-windows)
+      (delete-directory dir t))))
+
+;;; AC-AIPH-004 ---------------------------------------------------------------
+
+(ert-deftest imoogi-agent-aiph04-payload-cap-boundary-without-prompt ()
+  "AC-AIPH-004: the cap is inclusive, fixed, and opens files without asking."
+  (should (= imoogi-agent-max-payload-bytes 104857600))
+  (let ((original large-file-warning-threshold))
+    (imoogi-agent-test--with-temp-files (a b)
+      (setq a (imoogi-agent-test--write "0123456789abcdef" ".txt"))
+      (setq b (imoogi-agent-test--write "0123456789abcdefg" ".txt"))
+      (should (= 16 (file-attribute-size (file-attributes a))))
+      (should (= 17 (file-attribute-size (file-attributes b))))
+      (unwind-protect
+          (let ((large-file-warning-threshold 1)
+                (imoogi-agent-max-payload-bytes 16))
+            ;; (a) exactly at the cap: shown in another window, no question.
+            (let* ((user (imoogi-agent-test--user-buffer))
+                   (window (selected-window))
+                   (frame (selected-frame)))
+              (should (equal (car (imoogi-agent-test--receive-json
+                                   (imoogi-agent-test--event-json
+                                    "open-file" `((path . ,a)))))
+                             "ok"))
+              (let ((shown (imoogi-agent-test--file-window a)))
+                (should (windowp shown))
+                (should-not (eq shown window)))
+              (imoogi-agent-test--assert-user-untouched user window frame))
+            ;; (b) one byte over the cap.
+            (should (equal (car (imoogi-agent-test--receive-json
+                                 (imoogi-agent-test--event-json
+                                  "open-file" `((path . ,b)))))
+                           "error:payload-too-large")))
+        (imoogi-agent-test--kill-visiting a b)
+        (delete-other-windows)))
+    (should (equal large-file-warning-threshold original))))
+
 (provide 'imoogi-agent-test)
 ;;; agent-test.el ends here

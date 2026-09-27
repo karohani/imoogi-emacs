@@ -19,6 +19,13 @@
 (defconst imoogi-agent-max-bytes 1048576
   "Largest accepted event, in bytes (event file size or JSON string bytes).")
 
+(defconst imoogi-agent-max-payload-bytes 104857600
+  "Largest payload file the receiver opens, in bytes (100 MiB).
+A payload path naming a larger file rejects the whole event with
+payload-too-large. The value equals the `large-file-warning-threshold' set
+in modules/general/00-defaults.el but never reads that variable: the
+receiver binds it to nil when visiting, so this cap is the only bound.")
+
 (defconst imoogi-agent-log-buffer-name "*imoogi-agent*"
   "Name of the append-only, session-scoped event log buffer.")
 
@@ -45,22 +52,42 @@ true → t, [] → a vector, {} → nil, object → alist.")
 ;;; Reading and parsing
 
 (defun imoogi-agent--read-file (file)
-  "Return the content of event FILE after the precondition and size checks.
+  "Return the content of event FILE after the precondition, trust, and size checks.
 FILE must be an absolute, local, readable regular file of at most
-`imoogi-agent-max-bytes' bytes. The remote test comes before anything that
-touches the file, because asking a remote file for its size already opens a
-connection. The size is checked before the content is read."
+`imoogi-agent-max-bytes' bytes. The checks run in the order file
+conditions (unreadable), trust (untrusted), size (too-large), and only then
+is the content read. The remote test comes before anything that touches the
+file, because asking a remote file for its size already opens a connection.
+The trust and size checks look at the file that would be read, that is FILE
+with symbolic links resolved: it must be owned by `user-uid' and writable
+by neither its group nor others."
   (unless (and (stringp file)
                (file-name-absolute-p file)
                (not (file-remote-p file))
                (file-regular-p file)
                (file-readable-p file))
     (imoogi-agent--reject "unreadable"))
-  (let ((size (file-attribute-size (file-attributes file))))
-    (unless size
-      (imoogi-agent--reject "unreadable"))
-    (when (> size imoogi-agent-max-bytes)
-      (imoogi-agent--reject "too-large")))
+  ;; @MX:NOTE: [AUTO] Trust check (SPEC-AGENTIPC-002 REQ-AIPH-001/002). Threat
+  ;; model: in a shared, world-writable TMPDIR (/tmp on Linux without TMPDIR)
+  ;; another local user can plant a file under the name the CLI used after the
+  ;; CLI timed out and removed its directory, and the server reads it late
+  ;; (SPEC-AGENTIPC-001 plan.md D-10). A file owned by someone else or writable
+  ;; by group/others is refused before any judgement, including its size. A
+  ;; user-owned link to a user-owned file with chosen content still passes
+  ;; (SPEC-AGENTIPC-002 plan.md R-7).
+  (let* ((true (file-truename file))
+         (attributes (file-attributes true 'integer))
+         (modes (file-modes true)))
+    (unless (and attributes
+                 (eql (file-attribute-user-id attributes) (user-uid))
+                 modes
+                 (zerop (logand modes #o022)))
+      (imoogi-agent--reject "untrusted"))
+    (let ((size (file-attribute-size attributes)))
+      (unless size
+        (imoogi-agent--reject "unreadable"))
+      (when (> size imoogi-agent-max-bytes)
+        (imoogi-agent--reject "too-large"))))
   (with-temp-buffer
     (let ((coding-system-for-read 'utf-8))
       (insert-file-contents file))
@@ -144,16 +171,25 @@ that the first violation in that order is the one reported."
                  (imoogi-agent--validate-payload type payload)))))))
 
 (defun imoogi-agent--resolve-path (path)
-  "Return the real path of the payload PATH or reject with bad-path.
+  "Return the real path of the payload PATH or reject the event.
 PATH must be absolute and local, and after resolving symbolic links it must
 name an existing regular file (not a directory, device, FIFO, socket, or
-dangling link). The remote test never opens a connection, and it runs
-again on the resolved name so a link cannot lead onto a remote file."
+dangling link); otherwise the reason is bad-path. The remote test never
+opens a connection, and it runs again on the resolved name so a link cannot
+lead onto a remote file. A resolved file larger than
+`imoogi-agent-max-payload-bytes' then rejects the whole event with
+payload-too-large; this runs during validation, before dispatch, so a
+rejected task-finished shows no notice either."
   (unless (and (file-name-absolute-p path) (not (file-remote-p path)))
     (imoogi-agent--reject "bad-path"))
   (let ((true (file-truename path)))
     (unless (and (not (file-remote-p true)) (file-regular-p true))
       (imoogi-agent--reject "bad-path"))
+    (let ((size (file-attribute-size (file-attributes true))))
+      (unless size
+        (imoogi-agent--reject "bad-path"))
+      (when (> size imoogi-agent-max-payload-bytes)
+        (imoogi-agent--reject "payload-too-large")))
     true))
 
 (defun imoogi-agent--resolve-paths (event)
