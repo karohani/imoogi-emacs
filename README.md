@@ -748,6 +748,13 @@ Agenda 화면에서는 현재 일정 보기를 파일로 저장한다. 문서는
 등의 형식을 선택하고, Agenda는 저장할 파일의 확장자(`.txt`, `.html`, `.ics`, `.org` 등)로
 형식을 선택한다. PDF 출력에는 별도의 로컬 변환 도구가 필요할 수 있다.
 `M-x imoogi-org-agenda`로 기본 agenda 메뉴를 열어 `a`로 일정, `t`로 TODO 목록을 볼 수 있다.
+
+TODO를 완료(DONE)로 바꾸면 제목 아래에 `CLOSED:` 완료 시각이 자동으로 남는다.
+`C-c h o z`(`M-x imoogi-org-archive-old-done`)는 완료한 지 1년이 지난 항목을
+보관 파일(기본값 `agenda.org_archive`)로 옮긴다. 현재 Org 파일에서 실행하면 그 파일을,
+다른 곳에서 실행하면 `~/notes/agenda.org`를 대상으로 하며, 옮기기 전에 개수를 보여 주고
+확인을 받는다. 지우지 않고 옮기기만 하므로 되돌릴 수 있다. `CLOSED:` 시각이 없는 항목은
+건드리지 않는다. 기준 기간은 `imoogi-org-archive-age-days`(기본 365일)로 바꾼다.
 일정 보기(`C-c h o a`, `M-x imoogi-org-agenda-overview`)는 오늘보다 마감일이
 이른 미완료 항목을 맨 위 **기한 지난 항목**에 마감일 순서로 한 번씩 모은다.
 TODO 키워드가 없는 제목도 포함하며, 완료한 항목은 이 모음에서 제외한다.

@@ -163,6 +163,50 @@ left untouched, and every source file is preserved."
   (require 'org-agenda)
   (org-agenda nil))
 
+(defcustom imoogi-org-archive-age-days 365
+  "Days after completion before `imoogi-org-archive-old-done' archives an entry."
+  :type 'natnum
+  :group 'org)
+
+;;;###autoload
+(defun imoogi-org-archive-old-done (&optional days)
+  "Archive finished entries closed more than DAYS days ago.
+DAYS defaults to `imoogi-org-archive-age-days'.  The current Org file is
+used, or `~/notes/agenda.org' outside Org buffers.  Entries go to
+`org-archive-location' (nothing is deleted); entries without a CLOSED
+timestamp are never touched.  Asks before moving anything and returns the
+number of archived entries."
+  (interactive)
+  (require 'org-archive)
+  (let* ((days (or days imoogi-org-archive-age-days))
+         (buffer (if (and (derived-mode-p 'org-mode) buffer-file-name)
+                     (current-buffer)
+                   (find-file-noselect (imoogi-org--default-agenda-file))))
+         (match (format "CLOSED<\"<-%dd>\"" days))
+         (skip (lambda ()
+                 (unless (org-entry-is-done-p)
+                   (save-excursion (outline-next-heading) (point))))))
+    (with-current-buffer buffer
+      (let ((count (length (org-map-entries #'point match 'file skip))))
+        (if (or (zerop count)
+                (not (y-or-n-p
+                      (format "완료한 지 %d일이 지난 항목 %d개를 보관할까요? "
+                              days count))))
+            (progn
+              (when (zerop count)
+                (message "imoogi: 보관할 항목이 없습니다 (%d일 기준)" days))
+              0)
+          ;; Parents are visited before their children, and archiving a
+          ;; subtree removes its children, so continue from the same spot.
+          (org-map-entries
+           (lambda ()
+             (org-archive-subtree)
+             (setq org-map-continue-from (line-beginning-position)))
+           match 'file skip)
+          (save-buffer)
+          (message "imoogi: 항목 %d개를 보관했습니다" count)
+          count)))))
+
 (defun imoogi-org-agenda-overdue-p ()
   "Return non-nil for an unfinished entry whose deadline is before today."
   (let ((deadline (org-entry-get nil "DEADLINE")))
@@ -323,6 +367,9 @@ suppresses `text-scale-mode-hook', so local fitting alone is too early."
   (org-fontify-whole-heading-line t)
   (org-cycle-level-faces t)
   (org-ellipsis " ▼")
+  ;; DONE 전환 시 CLOSED 시각을 남긴다. `imoogi-org-archive-old-done' 이
+  ;; 이 시각으로 오래된 완료 항목을 고른다.
+  (org-log-done 'time)
   :config
   (imoogi-org--register-default-agenda-directory-when-present)
   ;; 빨강 → 파랑 → 초록 → 노랑. :extend 로 제목 뒤 빈 공간까지 칠한다.
@@ -501,6 +548,7 @@ suppresses `text-scale-mode-hook', so local fitting alone is too early."
      ["파일·설정 ---------"
       ("e" "agenda.org 열기" imoogi-org-open-agenda-file)
       ("S" "기본 폴더 설정" imoogi-org-setup)
+      ("z" "오래된 완료 보관" imoogi-org-archive-old-done)
       ("x" "내보내기" imoogi-org-export :inapt-if-not imoogi-org-export-context-p)
       ("v" "브라우저 미리보기" imoogi-org-preview :inapt-if-not (lambda () (derived-mode-p 'org-mode)))
       ("V" "미리보기 종료" imoogi-org-preview-stop :inapt-if-not (lambda () (derived-mode-p 'org-mode)))
