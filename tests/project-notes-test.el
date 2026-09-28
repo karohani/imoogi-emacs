@@ -1310,4 +1310,104 @@
         (should (= (length files) 2))
         (should (cl-every #'file-exists-p files))))))
 
+;;; Treemacs root replacement against a real Treemacs (card t24) ------------
+
+(defun imoogi-project-notes-test--show-workspace (workspace)
+  "Make WORKSPACE current and open a Treemacs window showing it.
+The `setf' place of `treemacs-current-workspace' exists only once Treemacs
+is loaded, which this file does not require at compile time, so expand it
+at run time."
+  (require 'treemacs)
+  (eval `(setf (treemacs-current-workspace) ',workspace) t)
+  (save-selected-window (treemacs-select-window)))
+
+(defun imoogi-project-notes-test--replace (old new)
+  "Call the root replacement with Treemacs persistence enabled.
+Treemacs skips saving when `noninteractive' (batch tests) or before its
+state was restored, so lift both only around the call under test."
+  (let ((noninteractive nil)
+        (restored (get 'treemacs :state-is-restored)))
+    (put 'treemacs :state-is-restored t)
+    (unwind-protect
+        (imoogi-project-notes--replace-treemacs-root old new)
+      (put 'treemacs :state-is-restored restored))))
+
+(defmacro imoogi-project-notes-test--with-treemacs-rename (shown &rest body)
+  "Rename a notes folder referenced by a real Treemacs workspace, then run BODY.
+SHOWN is nil (no Treemacs window), `other' (a window shows another
+workspace) or `target' (a window shows the workspace being repaired).
+BODY sees `old', `new', `code', `target' and `persist'."
+  (declare (indent 1))
+  `(progn
+     (require 'treemacs)
+     (let* ((base (file-name-as-directory (file-truename (make-temp-file "imoogi-t24-" t))))
+            (old (expand-file-name "2609-demo" base))
+            (new (expand-file-name "2609.07-demo" base))
+            (code (expand-file-name "code" base))
+            (other-dir (expand-file-name "other" base))
+            (persist (expand-file-name "treemacs-persist" base))
+            (treemacs-persist-file persist)
+            (other (progn
+                     (dolist (dir (list old code other-dir)) (make-directory dir))
+                     (treemacs-workspace->create!
+                      :name "Project: other"
+                      :projects (list (treemacs-project->create!
+                                       :name "other" :path other-dir
+                                       :path-status 'local-readable)))))
+            (target (treemacs-workspace->create!
+                     :name "Project: demo"
+                     :projects (list (treemacs-project->create!
+                                      :name "demo" :path code
+                                      :path-status 'local-readable)
+                                     (treemacs-project->create!
+                                      :name "2609-demo" :path old
+                                      :path-status 'local-readable))))
+            (treemacs--workspaces (list other target)))
+       (unwind-protect
+           (progn
+             (pcase ,shown
+               ('other (imoogi-project-notes-test--show-workspace other))
+               ('target (imoogi-project-notes-test--show-workspace target)))
+             (rename-file old new)
+             ,@body)
+         (dolist (buffer (buffer-list))
+           (when (buffer-local-value 'treemacs--in-this-buffer buffer)
+             (kill-buffer buffer)))
+         (delete-directory base t)))))
+
+(defun imoogi-project-notes-test--assert-root-replaced (old new code target persist)
+  "Assert TARGET now lists CODE then NEW, with the old label, and PERSIST agrees."
+  (should (equal (mapcar (lambda (project)
+                           (directory-file-name
+                            (file-truename (treemacs-project->path project))))
+                         (treemacs-workspace->projects target))
+                 (list (directory-file-name code) (directory-file-name new))))
+  (should (equal (mapcar #'treemacs-project->name
+                         (treemacs-workspace->projects target))
+                 '("demo" "2609-demo")))
+  (let ((saved (with-temp-buffer (insert-file-contents persist) (buffer-string))))
+    (should (string-search "2609.07-demo" saved))
+    (should-not (string-search (file-name-nondirectory old) (replace-regexp-in-string "^\\*\\* 2609-demo$" "" saved)))))
+
+(ert-deftest imoogi-project-notes-treemacs-root-replace-without-window ()
+  "No Treemacs window: the old path is replaced, not left beside the new one."
+  (imoogi-project-notes-test--with-treemacs-rename nil
+    (should-not (imoogi-project-notes-test--replace old new))
+    (imoogi-project-notes-test--assert-root-replaced old new code target persist)))
+
+(ert-deftest imoogi-project-notes-treemacs-root-replace-while-other-workspace-shown ()
+  "A window showing another workspace must not break the repair (arrayp, nil)."
+  (imoogi-project-notes-test--with-treemacs-rename 'other
+    (should-not (imoogi-project-notes-test--replace old new))
+    (imoogi-project-notes-test--assert-root-replaced old new code target persist)))
+
+(ert-deftest imoogi-project-notes-treemacs-root-replace-while-target-shown ()
+  "A window showing the repaired workspace is redrawn with the new path."
+  (imoogi-project-notes-test--with-treemacs-rename 'target
+    (should-not (imoogi-project-notes-test--replace old new))
+    (imoogi-project-notes-test--assert-root-replaced old new code target persist)
+    (with-current-buffer (treemacs-get-local-buffer)
+      (should (treemacs-find-in-dom (treemacs-canonical-path new)))
+      (should-not (treemacs-find-in-dom (treemacs-canonical-path old))))))
+
 ;;; project-notes-test.el ends here

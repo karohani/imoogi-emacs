@@ -1968,104 +1968,76 @@ files are never overwritten."
 ;; `(setf (treemacs-project->path ...))' only expands correctly when Treemacs
 ;; is loaded at compile or load time; otherwise it compiles into a call to the
 ;; nonexistent `(setf treemacs-project->path)' function.
+;; Treemacs is not required at compile time, so declare its dynamic variable:
+;; without this, the `let' below would be a lexical binding Treemacs never sees.
+(defvar treemacs-override-workspace)
+
 (defun imoogi-project-notes--replace-treemacs-root (old-root new-root)
   "Replace OLD-ROOT with NEW-ROOT in existing Treemacs workspaces.
-Never remove a workspace; only replace the project path in workspaces that
-already contain OLD-ROOT."
+Never remove a workspace or a project: every project whose path is OLD-ROOT
+keeps its object, label and position, and only its path changes.  Return a
+list of (WORKSPACE-NAME MESSAGE) failures, or nil on success.
+
+Treemacs's own remove/add commands are deliberately not used.  They act on
+the workspace shown in each open Treemacs window, not on the workspace being
+repaired, so for any other workspace they either removed nothing (no window)
+or failed with \"arrayp, nil\" (a window showing another workspace)."
   (when (and (fboundp 'treemacs-workspaces)
              (fboundp 'treemacs-workspace->projects)
-             (fboundp 'treemacs-project->path)
-             (fboundp 'treemacs-do-remove-project-from-workspace)
-             (fboundp 'treemacs-do-add-project-to-workspace))
-    (let ((old-path (directory-file-name (expand-file-name old-root)))
-          (failures nil))
+             (fboundp 'treemacs-project->path))
+    (let* ((old-path (directory-file-name (expand-file-name old-root)))
+           (new-path (if (fboundp 'treemacs-canonical-path)
+                         (treemacs-canonical-path new-root)
+                       (directory-file-name (expand-file-name new-root))))
+           (changed nil)
+           (failures nil))
       (dolist (workspace (treemacs-workspaces))
-        (dolist (project (cl-remove-if-not
-                          (lambda (candidate)
-                            (equal old-path
-                                   (directory-file-name
-                                    (expand-file-name
-                                     (treemacs-project->path candidate)))))
-                          (treemacs-workspace->projects workspace)))
-          (let ((project-index (cl-position project
-                                             (treemacs-workspace->projects
-                                              workspace)))
-                (project-name (and (fboundp 'treemacs-project->name)
-                                   (treemacs-project->name project))))
-          ;; Treemacs mutates live buffers and can run user hooks.  A stale
-          ;; workspace must never prevent the doctor from finishing.
-          (condition-case err
-              (with-timeout
-                  (1 (user-error "Treemacs 갱신 시간이 초과되었습니다"))
-                (let ((treemacs-override-workspace workspace))
-                  (treemacs-do-remove-project-from-workspace
-                   project :ignore-last-project-restriction)
-                  (pcase (treemacs-do-add-project-to-workspace
-                          new-root
-                          (or project-name
-                              (file-name-nondirectory
-                               (directory-file-name new-root))))
-                    (`(success ,new-project)
-                     ;; Reinsert the rebased project at its former position;
-                     ;; user labels and unrelated workspace members survive.
-                     (let ((projects
-                            (cl-remove new-project
-                                       (treemacs-workspace->projects workspace))))
-                       (setf (cl-struct-slot-value 'treemacs-workspace 'projects workspace)
-                             (append (seq-take projects project-index)
-                                     (list new-project)
-                                     (nthcdr project-index projects)))
-                       (when (fboundp 'treemacs--persist)
-                         (treemacs--persist))))
-                    (`(duplicate-project ,_))
-                    (result
-                     ;; The filesystem has already moved OLD-ROOT, so adding
-                     ;; that nonexistent path cannot be a rollback.  Restore
-                     ;; the original project object and ordering in memory;
-                     ;; the repair marker will replay the path projection.
-                     (let ((projects
-                            (cl-remove project
-                                       (treemacs-workspace->projects workspace))))
-                     (setf (cl-struct-slot-value 'treemacs-project 'path project)
-                           (directory-file-name old-root)
-                           (cl-struct-slot-value 'treemacs-workspace 'projects workspace)
-                           (append (seq-take projects project-index)
-                                   (list project)
-                                   (nthcdr project-index projects)))
-                     (when (fboundp 'treemacs--persist)
-                       (treemacs--persist)))
-                     (user-error "Treemacs 프로젝트 경로 갱신 실패: %S" result)))))
-            (error
-             ;; Removal happened before Treemacs can report add/timeout
-             ;; failures.  Restore the original project object and order in
-             ;; memory so a later doctor pass has a stable projection to
-             ;; replay; OLD-ROOT itself may already have been renamed.
-             (let ((projects
-                    (cl-remove-if
-                     (lambda (candidate)
-                       (or (eq candidate project)
-                           (equal (directory-file-name
-                                   (expand-file-name
-                                    (treemacs-project->path candidate)))
-                                  (directory-file-name
-                                   (expand-file-name new-root)))))
-                     (treemacs-workspace->projects workspace))))
-               (setf (cl-struct-slot-value 'treemacs-project 'path project)
-                     (directory-file-name old-root)
-                     (cl-struct-slot-value 'treemacs-workspace 'projects workspace)
-                     (append (seq-take projects project-index)
-                             (list project)
-                             (nthcdr project-index projects)))
-               (when (fboundp 'treemacs--persist)
-                 (treemacs--persist)))
+        (dolist (project (treemacs-workspace->projects workspace))
+          (when (equal old-path
+                       (directory-file-name
+                        (expand-file-name (treemacs-project->path project))))
+            (setf (cl-struct-slot-value 'treemacs-project 'path project) new-path)
+            (cl-pushnew workspace changed :test #'eq))))
+      (when changed
+        ;; Open Treemacs windows still index projects by the old path, so a
+        ;; window showing a changed workspace is rebuilt from the workspace.
+        ;; Display trouble is reported but never undoes the saved path.
+        (condition-case err
+            (progn
+              (when (fboundp 'treemacs--persist)
+                (treemacs--persist))
+              (when (and (fboundp 'treemacs--scope-store)
+                         (fboundp 'treemacs-scope-shelf->buffer)
+                         (fboundp 'treemacs-scope-shelf->workspace))
+                (pcase-dolist (`(,_ . ,shelf) (treemacs--scope-store))
+                  (let ((buffer (treemacs-scope-shelf->buffer shelf)))
+                    (when (and (buffer-live-p buffer)
+                               (memq (treemacs-scope-shelf->workspace shelf)
+                                     changed))
+                      ;; Same rebuild as `treemacs--consolidate-projects':
+                      ;; reset the path index, then redraw every project.
+                      ;; Expanded projects come back collapsed.
+                      (with-current-buffer buffer
+                        (let ((treemacs-override-workspace
+                               (treemacs-scope-shelf->workspace shelf))
+                              (inhibit-read-only t))
+                          (treemacs--invalidate-buffer-project-cache)
+                          (treemacs--reset-dom)
+                          (erase-buffer)
+                          (treemacs--render-projects
+                           (treemacs-workspace->projects
+                            treemacs-override-workspace))
+                          (goto-char (point-min)))))))))
+          (error
+           (dolist (workspace changed)
              (push (list (treemacs-workspace->name workspace)
                          (error-message-string err))
-                   failures)
-             (display-warning
-              'imoogi
-              (format "Treemacs 프로젝트 경로를 갱신하지 못했습니다: %s"
-                      (error-message-string err))
-              :warning))))))
+                   failures))
+           (display-warning
+            'imoogi
+            (format "Treemacs 프로젝트 경로를 갱신하지 못했습니다: %s"
+                    (error-message-string err))
+            :warning))))
       (nreverse failures))))
 
 (defun imoogi-project-notes--rollback-rename
