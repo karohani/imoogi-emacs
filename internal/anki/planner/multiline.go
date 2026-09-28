@@ -51,13 +51,17 @@ func readCardOptions(entry protocol.Entry) orgdoc.CardOptions {
 //
 // The multiline code joins the one the renderer could already return. It is
 // reported only for an entry that already passed the validation gate, which is
-// what keeps it out of that gate's fixed order (REQ-ML-011).
+// what keeps it out of that gate's fixed order (REQ-ML-011). The unpaired
+// supplementary-marker code is the same kind of skip, decided during the render
+// as well (SPEC-ANKICARD-005 REQ-AKX-005).
 func renderError(err error) (code string, skip bool) {
 	switch err.(type) {
 	case *orgdoc.ClozeMarkerMissingError:
 		return protocol.CodeClozeMarkerMissing, true
 	case *orgdoc.MultilineAnswerMissingError:
 		return protocol.CodeMultilineAnswerMissing, true
+	case *orgdoc.ExtraBlockUnbalancedError:
+		return protocol.CodeExtraBlockUnbalanced, true
 	default:
 		return protocol.CodeOrgParseError, false
 	}

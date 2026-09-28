@@ -385,7 +385,7 @@ func TestMultilineOptionReading(t *testing.T) {
 	}
 }
 
-// TestRenderErrorMapping pins the three arms both call sites share, so a
+// TestRenderErrorMapping pins every arm both call sites share, so a
 // failure cannot be reported as one code on the sync path and another on the
 // migration path.
 func TestRenderErrorMapping(t *testing.T) {
@@ -406,6 +406,11 @@ func TestRenderErrorMapping(t *testing.T) {
 			protocol.CodeMultilineAnswerMissing, true,
 		},
 		{
+			"an unpaired supplementary marker is a skip",
+			&orgdoc.ExtraBlockUnbalancedError{},
+			protocol.CodeExtraBlockUnbalanced, true,
+		},
+		{
 			// Anything else is a rendering failure rather than a condition of
 			// the entry's content that the user can correct in the buffer.
 			"an unrecognized note type is a failure",
@@ -422,137 +427,70 @@ func TestRenderErrorMapping(t *testing.T) {
 	}
 }
 
-// TestMultilineDanglingExtraMarker pins what a multiline entry renders to when
-// the supplementary split leaves an UNPAIRED `#+BEGIN_EXTRA` or `#+END_EXTRA`
-// in the remaining body.
+// TestMultilineDanglingExtraMarkerIsReported drives a multiline entry whose
+// supplementary split leaves an UNPAIRED `#+BEGIN_EXTRA` or `#+END_EXTRA` in
+// the remaining body, from the ORIGINAL body so the whole pipeline runs.
 //
-// The residue is pre-existing: `splitExtraBlocks` produces it, and it does so
-// whether or not this SPEC's options are on. What this test fixes is the
-// multiline reading of that residue, driven from the ORIGINAL body so the
-// whole pipeline — split, collapse, scan, compose, gate, render — is exercised
-// rather than the scanner alone.
-//
-// The decision it pins: a dangling marker is ORDINARY CONTENT. Composition
-// gives it no special handling, and it ends the answer list exactly as a
-// paragraph does. Two consequences follow, and both are asserted here rather
-// than left to be discovered — the answers after the marker are dropped from
-// the card, and the marker renders on it as a literal paragraph.
-//
-// Neither is reported. Reporting would need a diagnostic code this SPEC does
-// not define, and no other resolution is available inside its scope: removing
-// the marker is the silent content change REQ-ML-009.2 forbids, and having the
-// scanner read across it would wrap answers that go-org renders in a second
-// list outside the `children-list` container, contradicting AC-ML-011a.
-func TestMultilineDanglingExtraMarker(t *testing.T) {
+// Before SPEC-ANKICARD-005 such a marker was ordinary content: it ended the
+// answer list, the answers after it were dropped from the card, and the marker
+// rendered on it as a literal paragraph — all without a word to the user. The
+// entry is now skipped with extra_block_unbalanced before composition runs, so
+// none of that damage reaches a card (REQ-AKX-001, REQ-AKX-005).
+func TestMultilineDanglingExtraMarkerIsReported(t *testing.T) {
 	for _, c := range []struct {
-		name        string
-		body        string
-		wantWrapped []string
-		wantDropped []string
-		wantLiteral string
+		name string
+		body string
 	}{
 		{
-			// The pair is TERMINATED, so no unterminated-block rule fires and
-			// the collapse has nothing to decline. Measured: declining and
-			// collapsing render identically on every shape in this table, so a
-			// decline rule here would change no output at all.
-			name:        "a_stray_closing_marker_after_a_valid_pair",
-			body:        "- Tokyo\n\n#+BEGIN_EXTRA\nnote\n#+END_EXTRA\n\n#+END_EXTRA\n\n- Osaka\n",
-			wantWrapped: []string{"Tokyo"},
-			wantDropped: []string{"Osaka"},
-			wantLiteral: "#+END_EXTRA",
+			name: "a_stray_closing_marker_after_a_valid_pair",
+			body: "- Tokyo\n\n#+BEGIN_EXTRA\nnote\n#+END_EXTRA\n\n#+END_EXTRA\n\n- Osaka\n",
 		},
 		{
-			name:        "a_lone_closing_marker_with_no_opening",
-			body:        "- Tokyo\n\n#+END_EXTRA\n\n- Osaka\n",
-			wantWrapped: []string{"Tokyo"},
-			wantDropped: []string{"Osaka"},
-			wantLiteral: "#+END_EXTRA",
+			name: "a_lone_closing_marker_with_no_opening",
+			body: "- Tokyo\n\n#+END_EXTRA\n\n- Osaka\n",
 		},
 		{
-			// Worse than the closing case: go-org swallows the later bullet
-			// into the marker's own paragraph, so that answer stops being a
-			// list item at all rather than merely going unwrapped.
-			name:        "an_unterminated_opening_marker",
-			body:        "- Tokyo\n\n#+BEGIN_EXTRA\nnote\n\n- Osaka\n",
-			wantWrapped: []string{"Tokyo"},
-			wantDropped: []string{"Osaka"},
-			wantLiteral: "#+BEGIN_EXTRA",
+			name: "an_unterminated_opening_marker",
+			body: "- Tokyo\n\n#+BEGIN_EXTRA\nnote\n\n- Osaka\n",
 		},
 		{
-			// The case that settles REACHABILITY, and the reason this table is
-			// not merely about malformed authoring: the markers here are
-			// BALANCED — two openings, two closings, properly nested. The
-			// split's non-greedy match runs from the first opening to the
-			// FIRST closing, so the outer block's tail and its closing marker
-			// survive into the remaining body and damage the question side.
-			name:        "balanced_but_nested_supplementary_blocks",
-			body:        "- Tokyo\n\n#+BEGIN_EXTRA\nouter\n#+BEGIN_EXTRA\ninner\n#+END_EXTRA\ntail\n#+END_EXTRA\n\n- Osaka\n",
-			wantWrapped: []string{"Tokyo"},
-			wantDropped: []string{"Osaka"},
-			wantLiteral: "#+END_EXTRA",
+			// Balanced markers, properly nested: the split pairs the first
+			// opening with the FIRST closing, as Org itself does, so the outer
+			// block's tail and its closing marker are left behind.
+			name: "balanced_but_nested_supplementary_blocks",
+			body: "- Tokyo\n\n#+BEGIN_EXTRA\nouter\n#+BEGIN_EXTRA\ninner\n#+END_EXTRA\ntail\n#+END_EXTRA\n\n- Osaka\n",
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			entry := multilineEntry(strPtr("->"), nil)
 			entry.Body = c.body
 			results, errs, client := runOne(t, entry)
-
-			// The entry is NOT rejected: an answer list is present, so
-			// REQ-ML-002's diagnostic does not fire, and no other code covers
-			// this shape.
-			expectAccepted(t, results, errs)
-			text := addedText(t, client)
-
-			for _, want := range c.wantWrapped {
-				if !strings.Contains(text, "{{c1::"+want+"}}") {
-					t.Errorf("Text = %q, want %s wrapped", text, want)
-				}
-			}
-			for _, dropped := range c.wantDropped {
-				if strings.Contains(text, "{{c1::"+dropped+"}}") {
-					t.Errorf("Text = %q, want %s left out of the answers", text, dropped)
-				}
-			}
-			if !strings.Contains(text, c.wantLiteral) {
-				t.Errorf("Text = %q, want the dangling marker %s visible as literal text — "+
-					"it is what makes this outcome reviewable on the card rather than invisible",
-					text, c.wantLiteral)
+			expectSkippedWithCode(t, results, errs, protocol.CodeExtraBlockUnbalanced)
+			if len(client.addCalls) != 0 {
+				t.Errorf("addCalls = %d, want 0 — nothing is written for a rejected entry", len(client.addCalls))
 			}
 		})
 	}
 }
 
-// TestMultilineUnbalancedOpeningLeavesTheQuestionClean is the fourth residue
-// shape, and the one that does NOT damage the card's question side: two
-// openings with one closing leave the answer list intact and put the stray
-// marker in the Back Extra field instead.
-func TestMultilineUnbalancedOpeningLeavesTheQuestionClean(t *testing.T) {
+// TestMultilineUnbalancedOpeningIsReported is the shape that leaves the
+// question side clean: two openings with one closing put the stray opening
+// marker in the extracted supplementary content instead. It is reported all
+// the same (REQ-AKX-002) — otherwise a less balanced body would pass where a
+// more balanced one is rejected.
+func TestMultilineUnbalancedOpeningIsReported(t *testing.T) {
 	entry := multilineEntry(strPtr("->"), nil)
 	entry.Body = "- Tokyo\n#+BEGIN_EXTRA\nfirst\n#+BEGIN_EXTRA\nsecond\n#+END_EXTRA\n- Osaka\n"
 	results, errs, client := runOne(t, entry)
-	expectAccepted(t, results, errs)
-
-	fields := client.addCalls[0].fields
-	for _, want := range []string{"{{c1::Tokyo}}", "{{c1::Osaka}}"} {
-		if !strings.Contains(fields["Text"], want) {
-			t.Errorf("Text = %q, missing %s — both answers survive on this shape", fields["Text"], want)
-		}
-	}
-	if strings.Contains(fields["Text"], "#+BEGIN_EXTRA") {
-		t.Errorf("Text = %q, want no marker on the question side", fields["Text"])
-	}
-	// The residue lands here instead. Pre-existing and out of this SPEC's
-	// scope to repair; pinned so a later card inherits a measurement rather
-	// than a suspicion.
-	if !strings.Contains(fields["Back Extra"], "#+BEGIN_EXTRA") {
-		t.Errorf("Back Extra = %q, want the stray opening marker recorded here", fields["Back Extra"])
+	expectSkippedWithCode(t, results, errs, protocol.CodeExtraBlockUnbalanced)
+	if len(client.addCalls) != 0 {
+		t.Errorf("addCalls = %d, want 0 — nothing is written for a rejected entry", len(client.addCalls))
 	}
 }
 
 // TestMultilineSequentialExtraBlocksKeepEveryAnswer is the positive control for
-// TestMultilineDanglingExtraMarker, and it bounds how far that test's finding
-// reaches.
+// TestMultilineDanglingExtraMarkerIsReported, and it bounds how far that test's
+// finding reaches.
 //
 // Two SEQUENTIAL supplementary blocks are the shape `splitExtraBlocks`
 // documents as supported ("several blocks concatenate in document order"). They
@@ -561,8 +499,8 @@ func TestMultilineUnbalancedOpeningLeavesTheQuestionClean(t *testing.T) {
 // block interiors reach the Back Extra field.
 //
 // Without this case the dangling-marker table would read as a claim that
-// supplementary blocks break multiline cards generally. They do not: the
-// damage needs unbalanced markers or NESTED blocks, never the documented ones.
+// supplementary blocks are rejected generally. They are not: the rejection
+// needs unbalanced markers or NESTED blocks, never the documented ones.
 func TestMultilineSequentialExtraBlocksKeepEveryAnswer(t *testing.T) {
 	entry := multilineEntry(strPtr("->"), nil)
 	entry.Body = "- Tokyo\n\n#+BEGIN_EXTRA\none\n#+END_EXTRA\n\n#+BEGIN_EXTRA\ntwo\n#+END_EXTRA\n\n- Osaka\n"

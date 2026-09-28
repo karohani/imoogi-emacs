@@ -52,7 +52,9 @@ func (e *ClozeMarkerMissingError) Error() string {
 //     function's own rendering path, not on go-org's Org-semantic coverage.
 //     When neither the title nor the body contains a {{cN:: marker anywhere,
 //     Render returns a *ClozeMarkerMissingError instead of rendering
-//     (spec.md REQ-019).
+//     (spec.md REQ-019). Before that gate, a body whose supplementary split
+//     leaves a `#+BEGIN_EXTRA` / `#+END_EXTRA` line unpaired yields a
+//     *ExtraBlockUnbalancedError (SPEC-ANKICARD-005).
 //
 // An empty body renders to an empty field rather than crashing
 // (acceptance.md §D.7).
@@ -70,7 +72,14 @@ func Render(noteType, title, body string) (map[string]string, error) {
 		// cloze deletion — which Anki refuses. Gating on the remaining
 		// fragment reports that as the missing marker it effectively is,
 		// rather than letting it fail later at AnkiConnect.
-		rest, extra := splitExtraBlocks(body)
+		//
+		// An unpaired supplementary marker is reported before that gate: it
+		// moves the boundary the gate reads, so it may be the very reason no
+		// marker is left in the question (SPEC-ANKICARD-005 REQ-AKX-004).
+		rest, extra, err := splitExtraBlocksChecked(body)
+		if err != nil {
+			return nil, err
+		}
 		if !hasClozeMarker(title) && !hasClozeMarker(rest) {
 			return nil, &ClozeMarkerMissingError{}
 		}

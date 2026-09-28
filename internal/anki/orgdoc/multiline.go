@@ -475,30 +475,21 @@ func highestClozeNumber(fragments ...string) int {
 // answer to is not a card, and admitting one direction would make the
 // diagnostic's meaning depend on which arrow was written.
 //
-// A DANGLING SUPPLEMENTARY MARKER gets no special handling, and that is a
-// decision rather than an oversight. The split can leave an unpaired
-// `#+BEGIN_EXTRA` or `#+END_EXTRA` in the remaining body; such a line is
-// ORDINARY CONTENT here, and it ends the answer list exactly as a paragraph
-// does — REQ-ML-001.4 and REQ-ML-001.5 applied unchanged. The consequence is
-// real and user-visible: answers after the marker are dropped from the card,
-// and on an unterminated opening go-org swallows the following bullet into the
-// marker's own paragraph so it stops being a list item at all.
+// A DANGLING SUPPLEMENTARY MARKER never reaches this function. The split can
+// leave an unpaired `#+BEGIN_EXTRA` or `#+END_EXTRA` behind, and read as
+// ordinary content such a line would end the answer list — dropping the answers
+// after it from the card and, on an unterminated opening, letting go-org
+// swallow the following bullet into the marker's paragraph. The alternatives
+// inside composition were measured and rejected: declining to collapse changes
+// no output on these shapes, removing the marker is the silent content change
+// REQ-ML-009.2 forbids, and reading the list across it would wrap answers
+// go-org renders outside the `children-list` container (REQ-ML-012.1).
 //
-// Three alternatives were measured and rejected. Declining to collapse — the
-// rule REQ-ML-009.2 applies to an unterminated block — is a NO-OP on every one
-// of these shapes: the separating line is non-blank, so there is no blank-line
-// run to decline on, and rendering is byte-identical with the collapse and
-// without it. Removing the marker is the silent content change REQ-ML-009.2
-// exists to forbid. Reading the answer list ACROSS it would wrap answers that
-// go-org renders in a second list, outside the `children-list` container,
-// contradicting REQ-ML-012.1.
-//
-// What remains is to report it, and no diagnostic code in this SPEC covers the
-// shape: REQ-ML-002's fires only when there is no answer item, and here there
-// is one. Making the outcome non-silent therefore needs a new code and a new
-// requirement — a SPEC change, deliberately not made here. The behaviour is
-// pinned by TestMultilineAnswerList's dangling-marker corpus rows and by
-// TestMultilineDanglingExtraMarker in the planner.
+// So the entry is reported instead: RenderWithOptions rejects it with
+// *ExtraBlockUnbalancedError right after the split, before composition runs
+// (SPEC-ANKICARD-005 REQ-AKX-001, REQ-AKX-004). The rejection is pinned by
+// TestRenderRejectsUnpairedExtraMarker here and by
+// TestMultilineDanglingExtraMarkerIsReported in the planner.
 func composeMultiline(title, body string, opts CardOptions) (string, string, error) {
 	collapsed := collapseBlankRuns(body)
 
@@ -589,17 +580,22 @@ func wrappable(span string) bool {
 // rejects an option on any other type before the render — so the guard is
 // unreachable from production and exists to keep this function total.
 //
-// The pipeline order is fixed: split, compose, gate, render. Composition reads
-// the REMAINING body, so supplementary content can never become an answer item;
-// and it runs BEFORE the marker gate, so a multiline entry carrying no
-// hand-written marker is satisfied by the markers composition generated rather
-// than skipped as unmarked (spec.md REQ-ML-009).
+// The pipeline order is fixed: split, check, compose, gate, render. The check
+// rejects a split that left a supplementary marker unpaired, before any other
+// render-time diagnostic can fire on the damage it causes (SPEC-ANKICARD-005
+// REQ-AKX-004). Composition reads the REMAINING body, so supplementary content
+// can never become an answer item; and it runs BEFORE the marker gate, so a
+// multiline entry carrying no hand-written marker is satisfied by the markers
+// composition generated rather than skipped as unmarked (spec.md REQ-ML-009).
 func RenderWithOptions(noteType, title, body string, opts CardOptions) (map[string]string, error) {
 	if !opts.multiline() || noteType != NoteTypeCloze {
 		return Render(noteType, title, body)
 	}
 
-	rest, extra := splitExtraBlocks(body)
+	rest, extra, err := splitExtraBlocksChecked(body)
+	if err != nil {
+		return nil, err
+	}
 	composedTitle, composedRest, err := composeMultiline(title, rest, opts)
 	if err != nil {
 		return nil, err

@@ -147,74 +147,18 @@ var multilineCorpus = []struct {
 		spans: []string{"서울특별시"},
 	},
 
-	// --- a dangling supplementary marker in the remaining body ---------------
+	// --- what the supplementary split leaves in the remaining body ----------
 	//
-	// The supplementary split can leave an unpaired `#+BEGIN_EXTRA` or
-	// `#+END_EXTRA` behind, and the bodies below are its measured residue. They
-	// are here to PIN what composition does with one, which is: nothing
-	// special. A dangling marker is ordinary content, and it ends the answer
-	// list exactly as a paragraph does — REQ-ML-001.4 and REQ-ML-001.5 applied
-	// unchanged, and the same outcome AC-ML-009e already fixes for a paragraph.
-	//
-	// The consequence is user-visible and is NOT silent-by-choice: the answers
-	// after the marker are dropped from the card and the marker itself renders
-	// as a literal paragraph on it. Reporting that would need a diagnostic code
-	// this SPEC does not define; see the note on composeMultiline.
+	// A residue carrying an unpaired `#+BEGIN_EXTRA` or `#+END_EXTRA` never
+	// reaches this scanner: the entry is rejected with extra_block_unbalanced
+	// right after the split (SPEC-ANKICARD-005), and those shapes are covered
+	// from the pre-split body by TestRenderRejectsUnpairedExtraMarker. What
+	// remains here is the control a well-formed body produces.
 	{
-		// `- A / #+BEGIN_EXTRA note #+END_EXTRA / #+END_EXTRA / - B` — the pair
-		// is TERMINATED, so no unterminated-block rule is engaged and the
-		// collapse has nothing to decline. The stray closing marker alone ends
-		// the list.
-		name:  "dangling_end_marker_ends_the_answer_list",
-		body:  "- A\n#+END_EXTRA\n- B",
-		found: true, items: 1,
-		spans: []string{"A"},
-	},
-	{
-		// The same residue when the author separated the block with blank
-		// lines, which is the shape Org authoring actually produces.
-		name:  "dangling_end_marker_survives_the_collapse",
-		body:  "- A\n\n\n#+END_EXTRA\n\n- B",
-		found: true, items: 1,
-		spans: []string{"A"},
-	},
-	{
-		// A lone closing marker with no opening: identical residue, identical
-		// outcome. It opens no block interior, here or in go-org.
-		name:  "lone_end_marker_with_no_opening",
-		body:  "- A\n#+END_EXTRA\n- B\n",
-		found: true, items: 1,
-		spans: []string{"A"},
-	},
-	{
-		// An unterminated `#+BEGIN_EXTRA` is worse: go-org swallows the
-		// following bullet into the marker's own paragraph, so the later answer
-		// stops being a list item at all. The scanner agrees with the parse at
-		// one item, which is why the DD-1 cross-check cannot catch this — it is
-		// not a scanner defect.
-		name:  "dangling_begin_marker_swallows_the_later_answer",
-		body:  "- A\n#+BEGIN_EXTRA\nnote\n- B\n",
-		found: true, items: 1,
-		spans: []string{"A"},
-	},
-	{
-		// The row that matters most, because its markers are BALANCED. From
-		// `- A / #+BEGIN_EXTRA outer #+BEGIN_EXTRA inner #+END_EXTRA tail
-		// #+END_EXTRA / - B` — two openings, two closings, properly nested —
-		// the split's non-greedy match runs from the FIRST opening to the
-		// FIRST closing, so the outer block's tail and its closing marker
-		// survive into the remaining body. Balanced input, damaged output.
-		name:  "balanced_nested_blocks_leave_a_stray_closing_marker",
-		body:  "- A\n\ntail\n#+END_EXTRA\n\n- B",
-		found: true, items: 1,
-		spans: []string{"A"},
-	},
-	{
-		// The positive control, and the reason the rows above are not a claim
-		// that every supplementary block breaks the card. Two SEQUENTIAL
-		// blocks — the shape `splitExtraBlocks` documents as supported — leave
-		// only a wide blank-line run, which the collapse closes, so BOTH
-		// answers survive. Pre-split body:
+		// The positive control: supplementary blocks do not break the card.
+		// Two SEQUENTIAL blocks — the shape `splitExtraBlocks` documents as
+		// supported — leave only a wide blank-line run, which the collapse
+		// closes, so BOTH answers survive. Pre-split body:
 		// `- A / #+BEGIN_EXTRA one #+END_EXTRA / #+BEGIN_EXTRA two #+END_EXTRA / - B`.
 		name:  "sequential_blocks_leave_only_a_gap_the_collapse_closes",
 		body:  "- A\n\n\n\n- B",
@@ -323,9 +267,9 @@ func TestMultilineBlankRunCollapse(t *testing.T) {
 		},
 		{
 			// An orphan #+END_ opens nothing, so nothing is undefined and the
-			// collapse runs normally. Reachable from well-formed author input:
-			// the #+BEGIN_EXTRA split leaves exactly this shape behind when the
-			// author nested one EXTRA block inside another.
+			// collapse runs normally. The collapse serves every #+END_ keyword;
+			// an orphan #+END_EXTRA itself no longer reaches it, because the
+			// entry is rejected right after the split (SPEC-ANKICARD-005).
 			"an_orphan_end_marker_opens_nothing",
 			"- A\n#+END_EXTRA\n\n\n- B\n",
 			"- A\n#+END_EXTRA\n\n- B\n",

@@ -100,6 +100,18 @@ const (
 	// one-diagnostic-per-entry slot — it is fourth by construction rather than
 	// by placement (REQ-ML-011).
 	CodeMultilineAnswerMissing = "multiline_answer_missing"
+
+	// CodeExtraBlockUnbalanced reports an entry whose supplementary split left
+	// an unpaired `#+BEGIN_EXTRA` or `#+END_EXTRA` line behind
+	// (SPEC-ANKICARD-005 REQ-AKX-001, REQ-AKX-002).
+	//
+	// Like CodeMultilineAnswerMissing it is decided during the render, not by
+	// the validation gate, so it never competes with the gate's three codes. It
+	// is checked right after the split, before every other render-time
+	// diagnostic, because an unpaired marker moves the boundary between the
+	// question and the supplementary content and can itself be the cause of a
+	// missing marker or a missing answer list (REQ-AKX-004).
+	CodeExtraBlockUnbalanced = "extra_block_unbalanced"
 )
 
 // Request is the document the front end writes to the binary's stdin.
