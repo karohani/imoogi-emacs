@@ -187,7 +187,6 @@ All modules are loaded from the explicit list in `boot.el:65-100`; each load is 
 **Known gaps**
 
 - Card `t15` (picked): "Swift" arrow cards (`:->`, `:<-`, `:<->`), planned in `internal/anki/orgdoc/swift.go`.
-- Card `t16` (queued): nested or unbalanced `#+BEGIN_EXTRA` blocks are split incorrectly by `splitExtraBlocks`; currently pinned by a test but not reported.
 
 ### 6b. Local flashcards (SQLite)
 

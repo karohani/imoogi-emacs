@@ -1135,6 +1135,11 @@ heading은 옵션을 켠 것이 아니므로 이 제한에 걸리지 않는다. 
 목록은 `-`도 `1.`도 `용어 :: 뜻`도 모두 받는다. 항목 아래에 한 단 들여 쓴
 하위 항목은 답이 아니라 보이는 설명으로 남는다. `#+BEGIN_EXTRA` 블록은 답으로
 읽지 않는다 — 답 사이에 끼워 넣어도 앞뒤 답이 하나로 이어진다.
+보조 블록은 중첩되지 않는다(Org와 같이 첫 `#+END_EXTRA`가 첫 `#+BEGIN_EXTRA`를
+닫는다). 짝 없는 표식이 남은 heading은 건너뛰고 `extra_block_unbalanced`로
+보고하며, Anki에 이미 있던 노트는 그대로 둔다. 표식 글자 자체를 카드에 보이려면
+`=#+BEGIN_EXTRA=`처럼 verbatim으로 쓰거나 줄 중간에 두고, src/example 블록
+안에서는 `,#+BEGIN_EXTRA`처럼 앞에 쉼표를 붙인다.
 
 본문에 목록이 아예 없으면 그 heading만 건너뛰고 `multiline_answer_missing`으로
 보고한다. 방향이 `<-`여도 마찬가지다.
