@@ -28,12 +28,12 @@
     "card_option_invalid"
     "card_option_conflict"
     "card_option_needs_cloze"
-    "multiline_answer_missing")
+    "multiline_answer_missing"
+    "extra_block_unbalanced")
   "The `Code...' string constants internal/anki/protocol/protocol.go
 declares today -- hardcoded here because this suite has no Go parser
-available.  The last four are the card-styling SPEC's own codes
-(design.md SS 5), declared alongside the AnkiConnect client surface they
-describe rather than with the milestones that first raise them.
+available.  Each later SPEC appends its own codes here in the order
+protocol.go declares them.
 `imoogi-error-test-codes-match-source-file' below cross-checks this
 list against the actual source file by regexp, so drift between the
 two is caught as a test failure rather than silently assumed away.

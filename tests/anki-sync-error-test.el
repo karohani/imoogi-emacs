@@ -222,5 +222,36 @@ for a missing {{cN:: marker looked like Cloze silently not working."
         (should (string-match-p "marker" report))
         (should-not (string-match-p "declared but no" report))))))
 
+(ert-deftest imoogi-sync-error-test-extra-block-unbalanced-names-the-heading ()
+  "SPEC-ANKICARD-005 AC-AKX-007: an entry skipped for an unpaired
+`#+BEGIN_EXTRA' / `#+END_EXTRA' line reaches the user with the heading it
+names and the table's full explanation of extra_block_unbalanced -- the
+whole message, not a fragment: `BEGIN_EXTRA' alone also appears in the
+multiline_answer_missing entry, so a mis-mapped code would pass a
+substring check."
+  (imoogi-sync-error-test--with-scan (imoogi-sync-error-test--scan-with-one-target)
+    (let* ((imoogi-anki-binary-path (executable-find "true"))
+           (imoogi-sync-root "/tmp/root")
+           (raw "a #+BEGIN_EXTRA or #+END_EXTRA line has no partner after the supplementary split")
+           (response-json
+            (json-serialize
+             (list (cons 'protocol_version 2) (cons 'ok t)
+                   (cons 'results (vector (list (cons 'key "a.org::0")
+                                                 (cons 'action "skipped")
+                                                 (cons 'note_id 1001))))
+                   (cons 'errors
+                         (vector (list (cons 'code "extra_block_unbalanced")
+                                       (cons 'message raw)
+                                       (cons 'key "a.org::0")))))))
+           (imoogi-process-runner
+            (lambda (&rest _args) (cons 0 response-json))))
+      ;; A real table entry, not the generic fallback that would also be
+      ;; reproduced verbatim below.
+      (should (assoc "extra_block_unbalanced" imoogi-error-table))
+      (let ((report (imoogi-sync)))
+        (should (string-match-p "a\\.org::0" report))
+        (should (string-search (imoogi-error-message "extra_block_unbalanced") report))
+        (should-not (string-search raw report))))))
+
 (provide 'imoogi-sync-error-test)
 ;;; imoogi-sync-error-test.el ends here
