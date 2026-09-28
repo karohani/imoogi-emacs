@@ -32,3 +32,13 @@ modules/.omc/
 .DS_Store
 *~
 *.exe
+
+# MoAI-ADK runtime byproducts (state, logs, caches, backups) — regenerated
+# on every run, never project content.
+.moai/state/
+.moai/logs/
+.moai/cache/
+.moai/backup/
+.moai/backups/
+.moai-backups/
+.moai/lessons-inbox.jsonl
