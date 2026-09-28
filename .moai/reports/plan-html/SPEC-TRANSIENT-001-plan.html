@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan Report — SPEC-TRANSIENT-001</title>
+<style>
+  :root {
+    --bg: #FAF9F5; --paper: #FFFFFF; --ink: #141413; --clay: #D97757;
+    --muted: #87867F; --line: #D1CFC5; --ok: #788C5D; --warn: #B85C3E;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--ink); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 15px; line-height: 1.6; padding: 40px 20px 80px; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  header { background: var(--paper); border: 1.5px solid var(--line); border-radius: 12px; padding: 24px 28px; margin-bottom: 20px; }
+  header h1 { font-size: 20px; font-weight: 700; }
+  header .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  section { background: var(--paper); border: 1.5px solid var(--line); border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; }
+  section h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 12px; }
+  .goal { border-left: 4px solid var(--clay); padding: 12px 16px; background: #FBF6F2; border-radius: 8px; font-size: 16px; }
+  .audit-score { display: inline-block; padding: 4px 12px; border-radius: 4px; font-weight: 700; font-size: 14px; }
+  .audit-score.PASS { background: #E8EEDC; color: var(--ok); }
+  .audit-score.FAIL { background: #FBE9E3; color: var(--warn); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; }
+  .placeholder { color: var(--muted); font-style: italic; }
+  ul.checklist { list-style: none; }
+  ul.checklist li { padding: 4px 0; }
+  .milestones { display: flex; flex-wrap: wrap; gap: 8px; }
+  .milestone { padding: 4px 10px; border: 1px solid var(--line); border-radius: 4px; font-size: 13px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 24px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Migrate hydra pop-up keybinding menus to transient</h1>
+    <div class="sub">SPEC-TRANSIENT-001 · Plan Report</div>
+  </header>
+
+  <section>
+    <h2>Goal</h2>
+    <div class="goal">undetermined — no &#39;so that&#39; goal clause found in §A</div>
+  </section>
+
+  <section>
+    <h2>Plan-Auditor Verdict</h2>
+    
+    <p><span class="audit-score PASS">PASS</span> overall score <strong>0.92</strong></p>
+    
+    
+    <h2 style="margin-top:16px;">Defects</h2>
+    <ul class="checklist">
+      <li>D1. TRACE-001 — `acceptance.md:L135,L146` — AC-015 (&#34;Unbound key inside a sub-menu&#34;) and AC-016 (&#34;Graceful degradation on missing package&#34;) are placed under a separate &#34;Edge Cases&#34; heading and carry no `(REQ-XXX)` back-reference, unlike every AC in the &#34;AC Matrix&#34; section. AC-015 does cross-reference `spec.md` §4 (Out of Scope) and `plan.md` §B.5 in its own body, and AC-016 cross-references `boot.el`&#39;s pre-existing `condition-case` isolation behavior — both are traceable to *something*, just not to a formal REQ-XXX. — Severity: minor — Class: optional — Required fix (if the author wants to close the gap formally rather than leave it as an intentionally-scoped edge case): add an explicit `(no REQ — accepted behavioral gap; see spec.md §4)` / `(no REQ — regression check against existing boot.el behavior)` annotation to each heading so the omission reads as a deliberate documentation choice rather than an unexplained traceability hole.</li><li>D2. RQ-DETAIL-001 — `spec.md:L57-65 (REQ-001)`, `L103-107 (REQ-009)`, `L116-122 (REQ-012)` — three requirements embed specific Elisp API/symbol names inside the requirement text (`transient-define-prefix`, the five `imoogi-transient-*` target symbol names, `transient-get-suffix`) rather than staying at pure outcome/behavior language. — Severity: minor — Class: optional — Required fix: none required. This SPEC&#39;s subject matter *is* an identifier migration (hydra symbols → transient symbols); the target symbol names are the observable contract being specified, not an incidental implementation choice, and `plan.md` §B.1 explicitly documents this as &#34;the single most reviewable naming choice in the SPEC.&#34; AC-011 and AC-013 directly test these exact symbols. Flagging this as a genuine RQ-3/RQ-4 violation would penalize a correctly-scoped rename/migration SPEC for naming the thing it renames.</li>
+    </ul>
+    
+    
+  </section>
+
+  <section>
+    <h2>Autonomy Contract (8 fields)</h2>
+    <table>
+      <tr><th>Field</th><th>Derived Value</th></tr>
+      
+      <tr>
+        <td><strong>goal</strong></td>
+        <td>undetermined — no &#39;so that&#39; goal clause found in §A</td>
+      </tr>
+      
+      <tr>
+        <td><strong>scope</strong></td>
+        <td>undetermined — no REQ bullets found in §B scope</td>
+      </tr>
+      
+      <tr>
+        <td><strong>non-goals</strong></td>
+        <td>Package surface beyond hydra/transient; Functional or behavioral changes; Module renumbering; Go toolchain / vendor tooling; Pre-existing documentation inaccuracies unrelated to this migration</td>
+      </tr>
+      
+      <tr>
+        <td><strong>tools-permissions</strong></td>
+        <td>undetermined — settings.json absent or unreadable</td>
+      </tr>
+      
+      <tr>
+        <td><strong>stopping-condition</strong></td>
+        <td>undetermined — no AC rows found in acceptance.md §D</td>
+      </tr>
+      
+      <tr>
+        <td><strong>evidence</strong></td>
+        <td>16 Given-When-Then &#39;Then&#39; clauses</td>
+      </tr>
+      
+      <tr>
+        <td><strong>escalation</strong></td>
+        <td>undetermined — no open-questions / blocker cross-references in plan.md</td>
+      </tr>
+      
+      <tr>
+        <td><strong>budget</strong></td>
+        <td>tier=M; phase=v0.1.0 target; milestone_count=0</td>
+      </tr>
+      
+    </table>
+  </section>
+
+  <section>
+    <h2>Milestones</h2>
+    
+    <p class="placeholder">no milestones found in plan.md §F</p>
+    
+  </section>
+
+  <footer>Rendered by MoAI plan report · open this file in a browser to review offline</footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Org → Anki 카드 유형 확장 계획 — Action Plan</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    :root {
+      --ivory:#FAF9F5; --paper:#FFFFFF; --slate:#141413; --clay:#D97757; --clay-d:#B85C3E; --oat:#E3DACC; --olive:#788C5D;
+      --g100:#F0EEE6; --g300:#D1CFC5; --g500:#87867F; --g700:#3D3D3A;
+      --sans:"Pretendard",system-ui,-apple-system,"Segoe UI",sans-serif;
+      --serif:"Noto Serif KR",ui-serif,Georgia,serif;
+      --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+      --max-width:1100px; --radius-panel:12px; --radius-row:8px; --border:1.5px solid var(--g300);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--ivory);color:var(--g700);font-family:var(--sans);font-size:15px;line-height:1.6;padding:56px 32px 120px;-webkit-font-smoothing:antialiased}
+    .page{max-width:var(--max-width);margin:0 auto}
+    header.page-head{margin-bottom:48px;max-width:820px}
+    .eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--g500);margin-bottom:12px}
+    h1{font-family:var(--serif);font-weight:700;font-size:36px;line-height:1.15;color:var(--slate);margin-bottom:16px;letter-spacing:-.01em}
+    .goal-box{background:var(--g100);border:var(--border);border-radius:var(--radius-panel);padding:16px 20px;font-size:14.5px;color:var(--g700)}
+    .goal-box .label{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--g500);display:block;margin-bottom:6px}
+    section{margin-bottom:64px}
+    .sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:8px}
+    .sec-head .num{font-family:var(--mono);font-size:12px;background:var(--oat);color:var(--slate);padding:3px 9px;border-radius:8px;flex-shrink:0}
+    .sec-head h2{font-family:var(--serif);font-weight:700;font-size:24px;color:var(--slate);letter-spacing:-.01em}
+    .sec-intro{font-size:14.5px;color:var(--g500);max-width:720px;margin-bottom:28px}
+    .lead{font-size:14.5px;color:var(--g700);max-width:760px;margin-bottom:20px;background:var(--paper);border-left:4px solid var(--clay);padding:12px 16px;border-radius:0 var(--radius-row) var(--radius-row) 0}
+    .summary-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:64px}
+    @media(max-width:900px){.summary-strip{grid-template-columns:repeat(2,1fr)}}
+    .sum-cell{background:var(--paper);border:var(--border);border-radius:var(--radius-panel);padding:18px 20px}
+    .sum-cell .k{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--g500);margin-bottom:6px}
+    .sum-cell .v{font-size:17px;color:var(--slate);font-weight:600}
+    .sum-cell .v.accent{color:var(--clay)}
+    .milestones{display:flex;flex-direction:column}
+    .milestone{display:grid;grid-template-columns:130px 28px 1fr;gap:0 18px;position:relative}
+    .milestone .when{text-align:right;font-family:var(--mono);font-size:12px;color:var(--g500);padding-top:4px}
+    .milestone .dot-col{display:flex;flex-direction:column;align-items:center}
+    .milestone .dot{width:14px;height:14px;border-radius:50%;background:var(--paper);border:3px solid var(--clay);margin-top:4px;flex-shrink:0}
+    .milestone .line{width:2px;flex:1;background:var(--g300);margin:4px 0}
+    .milestone:last-child .line{display:none}
+    .milestone .body{padding-bottom:36px}
+    .milestone .body h3{font-family:var(--serif);font-weight:700;font-size:18px;color:var(--slate);margin-bottom:4px}
+    .milestone .body p{font-size:14px;color:var(--g500);margin-bottom:10px;max-width:620px}
+    .milestone .body ul{font-size:13.5px;color:var(--g700);margin:0 0 10px 18px;max-width:640px}
+    .tag-row{display:flex;gap:8px;flex-wrap:wrap}
+    .tag{font-family:var(--mono);font-size:11.5px;background:var(--g100);border:1px solid var(--g300);border-radius:6px;padding:3px 8px;color:var(--g700)}
+    .diagram{background:var(--paper);border:var(--border);border-radius:var(--radius-panel);padding:28px;overflow-x:auto}
+    .diagram svg{display:block;min-width:760px}
+    .caption{font-size:13px;color:var(--g500);margin-top:12px}
+    table.grid{width:100%;border-collapse:separate;border-spacing:0;background:var(--paper);border:var(--border);border-radius:var(--radius-panel);overflow:hidden;font-size:13.5px}
+    table.grid th,table.grid td{padding:11px 14px;text-align:left;vertical-align:top;border-top:1px solid var(--g300)}
+    table.grid th{background:var(--g100);font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--slate);border-top:none}
+    table.grid code,.ex code,p code,li code{font-family:var(--mono);font-size:12.5px;background:var(--g100);padding:1px 5px;border-radius:4px}
+    .risks{border:var(--border);border-radius:var(--radius-panel);overflow:hidden;background:var(--paper)}
+    .risks .row{display:grid;grid-template-columns:1.6fr 90px 1.6fr}
+    @media(max-width:780px){.risks .row{grid-template-columns:1fr}}
+    .risks .row+.row{border-top:var(--border)}
+    .risks .cell{padding:14px 18px;font-size:13.5px}
+    .risks .cell+.cell{border-left:var(--border)}
+    .risks .head{background:var(--g100);font-weight:600;color:var(--slate);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+    .sev{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:6px;font-weight:600}
+    .sev.high{background:#F3D9CC;color:#8A3B1E}.sev.med{background:var(--oat);color:var(--slate)}.sev.low{background:#E4E9DC;color:#4B5C39}
+    .metrics-list{display:flex;flex-direction:column;gap:10px;max-width:760px}
+    .metric-row{display:flex;align-items:center;gap:16px;background:var(--paper);border:var(--border);border-radius:var(--radius-row);padding:14px 18px}
+    .metric-indicator{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:var(--g300)}
+    .metric-label{flex:1;font-size:14px;color:var(--slate)}
+    .metric-target{font-family:var(--mono);font-size:12px;color:var(--g500)}
+    .ex{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+    @media(max-width:780px){.ex{grid-template-columns:1fr}}
+    .ex .box{background:var(--paper);border:var(--border);border-radius:var(--radius-panel);padding:14px 16px}
+    .ex .box h4{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--g500);margin-bottom:8px}
+    .ex pre{font-family:var(--mono);font-size:12.5px;white-space:pre-wrap;word-break:break-word;color:var(--slate);line-height:1.5}
+    pre.mermaid{background:var(--paper);border:var(--border);border-radius:var(--radius-panel);padding:20px;font-family:var(--mono);font-size:12.5px;overflow-x:auto}
+    .gloss{background:var(--g100);border:var(--border);border-radius:var(--radius-panel);padding:14px 18px;font-size:13.5px;max-width:760px;margin-top:16px}
+    .gloss dt{font-weight:600;color:var(--slate);margin-top:8px}.gloss dt:first-child{margin-top:0}
+    .gloss dd{margin-left:0;color:var(--g700)}
+    footer{margin-top:64px;padding-top:20px;border-top:1px solid var(--g300);font-family:var(--mono);font-size:12px;color:var(--g500)}
+    footer a{color:var(--clay)}
+    @media print{body{background:#fff;color:#000;padding:0;font-size:12pt}.page{max-width:none}a[href]::after{content:" (" attr(href) ")";font-size:10pt;color:#555}h1,h2,h3{page-break-after:avoid}table,.risks,.diagram{page-break-inside:avoid}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style>
+</head>
+<body>
+<div class="page">
+
+<header class="page-head">
+  <div class="eyebrow">Action Plan · imoogi-anki · 최종 (백로그 t11–t15 등록, 코드 변경 없음)</div>
+  <h1>Org → Anki 카드 유형 확장 계획</h1>
+  <div class="goal-box">
+    <span class="label">Goal</span>
+    logseq-anki-sync의 카드 유형 중 Org와 Emacs에 자연스럽게 맞는 것(빈칸 편집 명령, Extra, Multiline Q/A, Swift 화살표)을 골라, 기존 <code>imoogi-Cloze</code> 노트 타입 위에서 구현한다. Cloze 표기는 Go가 대체 문법을 해석하는 대신 <b>편집기 명령</b>이 만들고, 노트 타입은 <b>편집 시점에 drawer에 기록</b>한다. Image Occlusion은 그래픽 편집기가 필요해 제외한다.
+  </div>
+</header>
+
+<div class="summary-strip">
+  <div class="sum-cell"><div class="k">백로그 카드</div><div class="v accent">5장 (t11–t15)</div></div>
+  <div class="sum-cell"><div class="k">새 Anki 노트 타입</div><div class="v">0개 (Cloze 재사용)</div></div>
+  <div class="sum-cell"><div class="k">프로토콜 변경</div><div class="v">t13에서 v1 → v2</div></div>
+  <div class="sum-cell"><div class="k">선행 조건</div><div class="v">t12–t15: ANKICARD-001 종료</div></div>
+</div>
+
+<section aria-label="Background">
+  <div class="sec-head"><span class="num">00</span><h2>조사에서 알게 된 것</h2></div>
+  <p class="lead">먼저 쉬운 말로: Anki에는 "노트 타입"이라는 카드 틀이 있고, 그중 <b>Cloze</b>(빈칸 채우기) 틀은 문장 안의 <code>{{c1::정답}}</code> 표시를 빈칸으로 바꿔 보여줍니다. logseq 플러그인은 겉보기엔 카드 유형이 여러 개지만, 실제로는 <b>모든 유형을 이 Cloze 틀 하나로 변환</b>합니다. 우리 프로젝트에는 이미 <code>imoogi-Cloze</code> 틀이 있으니, 바꿔야 하는 건 "본문을 어떻게 Cloze 문장으로 조립하느냐"뿐입니다.</p>
+  <ul style="margin-left:18px;max-width:760px;font-size:14px">
+    <li>요청하신 문서 URL(<code>…/docs/card-types</code>)은 404였습니다. 대신 GitHub 위키(클론)와 <code>src/notes/*.ts</code> 소스를 읽었습니다.</li>
+    <li>현재 imoogi-anki는 <code>ANKI_NOTE_TYPE</code>이 붙은 <b>헤딩 1개 = 노트 1개</b>이고, 본문은 다음 헤딩 직전까지만 읽습니다(하위 헤딩 제외). <code>orgdoc.Render</code>를 부르는 곳은 <code>planner.go</code>와 <code>migrate.go</code> 두 군데입니다.</li>
+    <li>go-org 렌더를 직접 돌려본 결과(실측): <code>#+BEGIN_CLOZE</code>는 <code>&lt;div class="cloze-block"&gt;</code>, 목록은 <code>&lt;ul&gt;&lt;li&gt;</code>, <code>{{c1::bar}}</code>는 그대로 통과, <code>:-&gt;</code> 화살표는 <code>:-&amp;gt;</code>로 이스케이프됩니다.</li>
+    <li>"가상 노트 타입명" 꼼수(예: <code>imoogi-Multiline</code>)는 planner와 registry가 실제 Anki 모델명을 가정하고 있어 쓸 수 없습니다.</li>
+  </ul>
+  <dl class="gloss">
+    <dt>Cloze (빈칸 카드)</dt><dd>문장 일부를 가리고 맞히는 카드. Anki는 <code>{{c1::…}}</code> 표시 하나당 카드 1장을 만들고, 같은 번호는 같은 카드에서 함께 가려집니다.</dd>
+    <dt>프로토콜 (protocol)</dt><dd>Emacs와 Go 바이너리가 주고받는 JSON 문서의 약속. 필드가 늘면 버전 번호를 올려 구버전 바이너리를 걸러냅니다.</dd>
+    <dt>registry</dt><dd>어떤 헤딩이 Anki의 어떤 노트 ID와 짝인지 기록한 로컬 장부. 헤딩 1개당 1건입니다.</dd>
+    <dt>drawer</dt><dd>Org 헤딩 바로 아래 <code>:PROPERTIES: … :END:</code> 사이의 속성 목록. <code>ANKI_NOTE_TYPE</code> 같은 값이 여기 들어갑니다.</dd>
+  </dl>
+</section>
+
+<section aria-label="Principles">
+  <div class="sec-head"><span class="num">01</span><h2>확정된 원칙</h2></div>
+  <p class="sec-intro">대화에서 합의한 다섯 가지입니다. 아래 모든 카드가 이 원칙 위에 서 있어요.</p>
+  <ol style="margin-left:22px;max-width:780px;font-size:14.5px;line-height:1.8">
+    <li><b>새 Anki 노트 타입 없음.</b> 모든 카드 유형은 기존 <code>imoogi-Cloze</code>로 만듭니다.</li>
+    <li><b>Cloze 표기는 편집기 명령이 만듭니다.</b> Go가 <code>{{cloze X}}</code> 같은 대체 문법을 해석하지 않아요. 영역을 잡고 <code>imoogi-anki-cloze</code>를 부르면 <code>{{cN::…}}</code>가 됩니다.</li>
+    <li><b>노트 타입은 편집 시점에 drawer에 기록됩니다.</b> cloze 명령이나 방향 지정 명령이 <code>ANKI_NOTE_TYPE</code>이 없으면 <code>imoogi-Cloze</code>를 써 줍니다. 동기화 때 Go는 타입을 바꾸지 않고 <b>검증만</b> 합니다.</li>
+    <li><b>카드 옵션 속성은 세 개.</b> <code>ANKI_DIRECTION</code>(<code>-&gt;</code>|<code>&lt;-</code>|<code>&lt;-&gt;</code>), <code>ANKI_INCREMENTAL</code>(<code>t</code>), <code>ANKI_SWIFT</code>(<code>t</code>). 방향이나 incremental이 있으면 Multiline(Q/A) 카드, <code>ANKI_SWIFT</code>가 있으면 Swift 카드입니다. 별도 <code>ANKI_CARD_KIND</code>는 두지 않아요.</li>
+    <li><b>세 속성 모두 상속됩니다.</b> <code>ANKI_DECK</code>처럼 가까운 값이 이기고, <code>#+PROPERTY:</code>로 파일 전체에 지정할 수 있어요. 다만 "이 헤딩이 카드인가"는 여전히 자기 drawer의 <code>ANKI_NOTE_TYPE</code>이 정합니다.</li>
+  </ol>
+</section>
+
+<section aria-label="Mapping">
+  <div class="sec-head"><span class="num">02</span><h2>카드 유형 매핑</h2></div>
+  <p class="sec-intro">logseq 문법을 imoogi에서 어떻게 대신할지, 어느 카드가 맡는지 정리했습니다.</p>
+  <table class="grid">
+    <thead><tr><th>logseq 유형</th><th>logseq 문법</th><th>imoogi 방식</th><th>어디서</th><th>카드</th></tr></thead>
+    <tbody>
+      <tr><td>Cloze 매크로/블록</td><td><code>{{cloze X}}</code>, <code>{{c1 X}}</code>, <code>#+BEGIN_CLOZE</code></td><td>영역 선택 → <code>imoogi-anki-cloze</code> → <code>{{cN::X}}</code> (번호 자동, <code>C-u N</code>으로 지정, 안쪽 <code>}}</code>→<code>} }</code>, 끝이 <code>}</code>면 닫기 앞에 공백)</td><td>Elisp</td><td>t11</td></tr>
+      <tr><td>Extra</td><td><code>extra::</code>, <code>#+BEGIN_EXTRA</code></td><td><code>#+BEGIN_EXTRA … #+END_EXTRA</code> → 기존 <code>Back Extra</code> 필드</td><td>Go orgdoc</td><td>t12</td></tr>
+      <tr><td>(토대)</td><td>—</td><td>속성 3개 → 프로토콜 v2 → Go 검증(<code>card_option_needs_cloze</code>)</td><td>Elisp + Go</td><td>t13</td></tr>
+      <tr><td>Multiline 카드</td><td><code>#card</code> + 자식, <code>#forward/#reversed/#bidirectional</code>, <code>#incremental</code></td><td>헤딩 = 질문, 본문 최상위 목록 = 답. <code>ANKI_DIRECTION</code>, <code>ANKI_INCREMENTAL</code></td><td>Go orgdoc + Elisp 명령</td><td>t14</td></tr>
+      <tr><td>Swift 카드</td><td><code>A :-&gt; B</code>, <code>:&lt;-</code>, <code>:&lt;-&gt;</code></td><td><code>ANKI_SWIFT: t</code> 헤딩의 본문 각 줄. 헤딩 1개 = 노트 1개, 줄마다 카드</td><td>Go orgdoc</td><td>t15</td></tr>
+      <tr><td>replacecloze</td><td><code>replacecloze:: " 'a', /re/ "</code></td><td>보류 (정규식 속성, 수요 낮음)</td><td>—</td><td>—</td></tr>
+      <tr><td>Image Occlusion</td><td>편집기 UI + occlusion 데이터</td><td><b>제외</b> (그래픽 편집기 필요)</td><td>—</td><td>—</td></tr>
+      <tr><td>deck</td><td><code>deck::</code></td><td>기존 <code>ANKI_DECK</code> 그대로</td><td>—</td><td>기존</td></tr>
+    </tbody>
+  </table>
+
+  <p class="lead" style="margin-top:28px">질문/답 카드는 이미 <code>imoogi-Basic</code>(앞면=제목, 뒷면=본문)으로 만들 수 있지 않나요? 맞습니다. Multiline이 새로 보태는 건 <b>역방향·양방향</b>(<code>&lt;-</code>, <code>&lt;-&gt;</code>)과 <b>incremental</b>(답 항목마다 카드 한 장씩)입니다. 단순 정방향 Q/A는 지금처럼 Basic을 쓰면 됩니다.</p>
+  <p class="lead">실제 예시로 보면 이렇습니다. 사용자가 Anki 메뉴에서 방향 <code>&lt;-&gt;</code>를 고르면 왼쪽처럼 속성 두 줄이 drawer에 기록되고(노트 타입은 명령이 채워 줌), Go가 오른쪽처럼 Cloze 문장을 조립해 Anki에 보냅니다. 답(c1)과 질문(c2)이 각각 가려지는 카드 2장이 생깁니다.</p>
+  <div class="ex">
+    <div class="box"><h4>Org (명령이 기록한 결과)</h4><pre>* 일본의 수도는?
+:PROPERTIES:
+:ANKI_NOTE_TYPE: imoogi-Cloze
+:ANKI_DIRECTION: &lt;-&gt;
+:END:
+- 도쿄
+#+BEGIN_EXTRA
+일본 최대 도시. 인구 약 1,400만.
+#+END_EXTRA</pre></div>
+    <div class="box"><h4>Anki 필드 (Go가 만드는 것)</h4><pre>Text:
+{{c2::&lt;p&gt;일본의 수도는?&lt;/p&gt;}}
+&lt;ul class="children-list"&gt;
+  &lt;li&gt;{{c1::도쿄}}&lt;/li&gt;
+&lt;/ul&gt;
+
+Back Extra:
+&lt;p&gt;일본 최대 도시. 인구 약 1,400만.&lt;/p&gt;</pre></div>
+  </div>
+  <p class="lead" style="margin-top:20px">빈칸 카드 하나만 만들 때는 더 간단해요. 본문에서 <code>도쿄</code>를 드래그하고 <code>imoogi-anki-cloze</code>를 부르면 <code>{{c1::도쿄}}</code>로 바뀌고, 헤딩에 <code>ANKI_NOTE_TYPE</code>이 없으면 <code>imoogi-Cloze</code>가 같이 기록됩니다. 같은 헤딩에서 한 번 더 부르면 <code>c2</code>, 같은 카드로 묶고 싶으면 <code>C-u 1</code>을 앞에 붙이면 됩니다.</p>
+</section>
+
+<section aria-label="Decisions">
+  <div class="sec-head"><span class="num">03</span><h2>결정 기록</h2></div>
+  <p class="sec-intro">왜 이렇게 정했는지 남겨 둡니다. 나중에 "왜 그랬지?"가 생기면 이 표를 보면 돼요.</p>
+  <table class="grid">
+    <thead><tr><th>#</th><th>결정</th><th>확정안</th><th>배제한 대안</th></tr></thead>
+    <tbody>
+      <tr><td>A</td><td>카드 옵션 전달</td><td>Org 속성 3개 → <code>protocol.Entry</code> 필드 <code>direction</code>/<code>incremental</code>/<code>swift</code> → <code>Version</code> 1→2</td><td>가상 노트 타입명: 설치·registry·planner가 실제 모델명을 가정</td></tr>
+      <tr><td>B</td><td>"답"의 정의</td><td>본문 최상위 목록 항목</td><td>하위 헤딩: 스캔 경계 변경, 자체 엔트리와 충돌</td></tr>
+      <tr><td>C</td><td>Swift 카드 개수</td><td>헤딩당 노트 1개, 줄마다 cloze 번호</td><td>줄마다 노트: 헤딩↔<code>ANKI_NOTE_ID</code> 1:1 불변식 파괴</td></tr>
+      <tr><td>D</td><td>속성 이름</td><td><code>ANKI_DIRECTION</code>, <code>ANKI_INCREMENTAL</code>, <code>ANKI_SWIFT</code> (종류는 속성 존재로 결정)</td><td><code>ANKI_CARD_KIND</code> 별도 속성: 기억할 이름만 늘어남</td></tr>
+      <tr><td>E</td><td>상속</td><td>세 속성 모두 nearest-wins 상속</td><td>자기 drawer만: 파일 전체가 Q/A일 때 반복 기입</td></tr>
+      <tr><td>F</td><td>답 없는 Multiline</td><td><code>multiline_answer_missing</code>으로 건너뜀</td><td>빈 <code>{{c1::}}</code> 생성: 빈 카드가 Anki에 남음</td></tr>
+      <tr><td>G</td><td>Cloze 문법</td><td>Go 대체 문법 없음, Elisp 영역 명령</td><td><code>{{cloze X}}</code>/<code>#+BEGIN_CLOZE</code>를 Go가 해석: logseq 흉내일 뿐, 편집기에서는 명령이 자연스러움</td></tr>
+      <tr><td>H</td><td>노트 타입 자동 지정</td><td>편집 명령이 drawer에 <code>imoogi-Cloze</code> 기록, 동기화는 검증만</td><td>동기화 때 암묵 변경: Org와 registry의 타입이 어긋나고, 상속된 방향값이 파일 전체를 카드로 만듦</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section aria-label="Milestones">
+  <div class="sec-head"><span class="num">04</span><h2>작업 분할 — 백로그 카드</h2></div>
+  <p class="sec-intro"><code>moai todo</code>에 등록한 순서입니다. t11과 t12는 서로 독립이고 프로토콜을 건드리지 않아 단독 배포할 수 있어요. t13이 t14·t15의 토대입니다.</p>
+  <div class="milestones">
+    <div class="milestone">
+      <div class="when">t11 · Elisp만</div>
+      <div class="dot-col"><span class="dot"></span><span class="line"></span></div>
+      <div class="body">
+        <h3>cloze 편집 명령 <code>imoogi-anki-cloze</code></h3>
+        <p>영역을 <code>{{cN::…}}</code>로 감싸는 명령. Go와 프로토콜은 손대지 않습니다.</p>
+        <ul>
+          <li>N은 현재 헤딩 본문의 최대 cloze 번호 + 1, <code>C-u N</code>으로 직접 지정, 영역이 없으면 커서 단어</li>
+          <li>영역 안 <code>}}</code>는 <code>} }</code>로 띄우고, 선택이 <code>}</code>로 끝나면 <code>{{cN::…&nbsp;}}</code>처럼 닫기 앞에 공백을 넣음 — Anki의 cloze 정규식은 첫 <code>}}</code>에서 닫히기 때문 (LaTeX에는 무해)</li>
+          <li><code>ANKI_NOTE_TYPE</code>이 없으면 <code>imoogi-Cloze</code> 기록, 다른 값이면 바꾸지 않고 알림</li>
+          <li>Anki transient(<code>C-c a</code>)에 바인딩. 되돌리기 <code>imoogi-anki-uncloze</code>는 선택</li>
+        </ul>
+        <div class="tag-row"><span class="tag">modules/org/anki/imoogi-cloze.el (신규)</span><span class="tag">imoogi.el (transient)</span><span class="tag">선행 없음</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="when">t12 · Go orgdoc</div>
+      <div class="dot-col"><span class="dot"></span><span class="line"></span></div>
+      <div class="body">
+        <h3>Back Extra 지원</h3>
+        <p><code>#+BEGIN_EXTRA … #+END_EXTRA</code> 블록을 본문에서 떼어 <code>Back Extra</code> 필드로 보냅니다.</p>
+        <ul>
+          <li>go-org가 사용자 블록을 <code>&lt;div class="&lt;name&gt;-block"&gt;</code>로 렌더하므로(CLOZE 블록 실측) 렌더 후 분리</li>
+          <li>기존 <code>{{cN::}}</code> 카드의 Text 렌더 결과가 바이트 단위로 같은지 회귀 테스트, <code>orgdoc</code> 커버리지 100% 유지</li>
+        </ul>
+        <div class="tag-row"><span class="tag">internal/anki/orgdoc/extra.go</span><span class="tag">프로토콜 변경 없음</span><span class="tag">선행: ANKICARD-001 종료</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="when">t13 · 토대</div>
+      <div class="dot-col"><span class="dot"></span><span class="line"></span></div>
+      <div class="body">
+        <h3>카드 옵션 속성 + 프로토콜 v2</h3>
+        <p>속성 세 개를 Emacs에서 읽어 Go까지 전달하고, Go는 타입이 맞는지 검증만 합니다. 렌더는 바뀌지 않아요.</p>
+        <ul>
+          <li>Elisp: <code>imoogi-props.el</code>에 <code>ANKI_DIRECTION</code>/<code>ANKI_INCREMENTAL</code>/<code>ANKI_SWIFT</code> 상속 해석, <code>imoogi-scan.el</code> 엔트리 확장, <code>imoogi-process.el</code> JSON 키 + 버전 2</li>
+          <li>Go: <code>protocol.go</code> Entry 필드 3개 + <code>Version = 2</code>; <code>planner.go</code>·<code>migrate.go</code>의 Render 호출부 2곳에 옵션 전달 (해시는 렌더 결과에 이미 반영되므로 <code>hashing</code> 변경 없음)</li>
+          <li>검증: 옵션이 있는데 타입이 <code>imoogi-Cloze</code>가 아니면 새 진단 <code>card_option_needs_cloze</code>로 건너뜀 (+ <code>imoogi-error.el</code> 문구)</li>
+          <li><code>protocol_version</code>을 고정하는 anki 테스트 약 10개 갱신</li>
+        </ul>
+        <div class="tag-row"><span class="tag">protocol.go</span><span class="tag">planner.go · migrate.go</span><span class="tag">imoogi-props/scan/process/error.el</span><span class="tag">tests/anki-*-test.el</span><span class="tag">선행: ANKICARD-001 종료</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="when">t14 · Multiline</div>
+      <div class="dot-col"><span class="dot"></span><span class="line"></span></div>
+      <div class="body">
+        <h3>Multiline(Q/A) 카드</h3>
+        <p>헤딩 = 질문, 본문 목록 = 답. 방향과 incremental대로 Cloze 문장을 조립합니다.</p>
+        <ul>
+          <li><code>orgdoc/multiline.go</code>: <code>-&gt;</code>이면 항목을 <code>{{c1::}}</code>, <code>&lt;-</code>이면 제목을 <code>{{c2::}}</code>, <code>&lt;-&gt;</code>이면 둘 다; incremental이면 항목마다 c1…cN</li>
+          <li>답 항목이 없으면 <code>multiline_answer_missing</code>; <code>base.css</code>에 <code>.children-list</code></li>
+          <li>Elisp: Anki transient에서 방향/incremental을 고르는 명령 — 속성 기록 + <code>ANKI_NOTE_TYPE</code> 없으면 <code>imoogi-Cloze</code> 기록</li>
+          <li>README에 작성법과 "단순 <code>-&gt;</code>는 <code>imoogi-Basic</code>으로 충분" 명시</li>
+        </ul>
+        <div class="tag-row"><span class="tag">orgdoc/multiline.go</span><span class="tag">base.css</span><span class="tag">imoogi.el (transient)</span><span class="tag">README</span><span class="tag">선행: t13</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="when">t15 · Swift</div>
+      <div class="dot-col"><span class="dot"></span><span class="line"></span></div>
+      <div class="body">
+        <h3>Swift 화살표 카드</h3>
+        <p><code>ANKI_SWIFT: t</code> 헤딩의 본문에서 <code>설명 :-&gt; 내용</code> 같은 줄을 찾아 화살표 방향대로 가립니다. 렌더 전 텍스트 단계에서 처리합니다(렌더 후에는 <code>&gt;</code>가 이스케이프됨).</p>
+        <ul>
+          <li>줄 단위 정규식 <code>(.+?)\s*(:&lt;-&gt;|:-&gt;|:&lt;-)\s*(.+)</code>. i번째 줄은 오른쪽 c(2i−1), 왼쪽 c(2i) — <code>:-&gt;</code>는 오른쪽만, <code>:&lt;-</code>는 왼쪽만, <code>:&lt;-&gt;</code>는 둘 다(카드 2장)</li>
+          <li>화살표는 <code>&lt;b&gt;</code>로 강조, 제목은 문맥으로 상단. 헤딩당 노트 1개(카드 N장)</li>
+          <li>화살표가 없으면 <code>swift_arrow_missing</code></li>
+        </ul>
+        <div class="tag-row"><span class="tag">orgdoc/swift.go</span><span class="tag">imoogi-error.el</span><span class="tag">README</span><span class="tag">선행: t13</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section aria-label="Data flow">
+  <div class="sec-head"><span class="num">05</span><h2>Data Flow</h2></div>
+  <p class="sec-intro">한 헤딩이 Anki 노트가 되기까지의 흐름입니다. 굵은 테두리가 이번 계획에서 바뀌는 곳입니다.</p>
+  <div class="diagram">
+    <svg viewBox="0 0 860 300" xmlns="http://www.w3.org/2000/svg" font-family="Pretendard, sans-serif" font-size="13">
+      <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#87867F"/></marker></defs>
+      <rect x="20" y="40" width="170" height="70" rx="10" fill="#FFFFFF" stroke="#D97757" stroke-width="2.5"/>
+      <text x="105" y="68" text-anchor="middle" fill="#141413" font-weight="600">Emacs 편집 명령</text>
+      <text x="105" y="90" text-anchor="middle" fill="#87867F" font-size="11.5">cloze 감싸기 · 방향 지정 (t11, t14)</text>
+      <rect x="240" y="40" width="170" height="70" rx="10" fill="#FFFFFF" stroke="#D97757" stroke-width="2.5"/>
+      <text x="325" y="68" text-anchor="middle" fill="#141413" font-weight="600">Emacs 스캔</text>
+      <text x="325" y="90" text-anchor="middle" fill="#87867F" font-size="11.5">속성 3개 상속 읽기 (t13)</text>
+      <rect x="460" y="40" width="170" height="70" rx="10" fill="#FFFFFF" stroke="#D97757" stroke-width="2.5"/>
+      <text x="545" y="68" text-anchor="middle" fill="#141413" font-weight="600">JSON 요청 (v2)</text>
+      <text x="545" y="90" text-anchor="middle" fill="#87867F" font-size="11.5">direction · incremental · swift</text>
+      <rect x="680" y="40" width="160" height="70" rx="10" fill="#F0EEE6" stroke="#D1CFC5" stroke-width="1.5"/>
+      <text x="760" y="68" text-anchor="middle" fill="#141413" font-weight="600">imoogi-anki (Go)</text>
+      <text x="760" y="90" text-anchor="middle" fill="#87867F" font-size="11.5">planner · 타입 검증</text>
+      <path d="M190,75 L240,75" stroke="#87867F" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <path d="M410,75 L460,75" stroke="#87867F" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <path d="M630,75 L680,75" stroke="#87867F" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <path d="M760,110 L760,150" stroke="#87867F" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <rect x="460" y="150" width="380" height="80" rx="10" fill="#FFFFFF" stroke="#D97757" stroke-width="2.5"/>
+      <text x="650" y="176" text-anchor="middle" fill="#141413" font-weight="600">orgdoc 렌더러 — 새 패스 3개</text>
+      <text x="650" y="198" text-anchor="middle" fill="#87867F" font-size="11.5">Extra 분리 (t12) · multiline 조립 (t14) · swift 화살표 (t15)</text>
+      <text x="650" y="216" text-anchor="middle" fill="#87867F" font-size="11.5">→ Text / Back Extra 필드</text>
+      <path d="M460,190 L410,190" stroke="#87867F" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <rect x="240" y="150" width="170" height="80" rx="10" fill="#F0EEE6" stroke="#D1CFC5" stroke-width="1.5"/>
+      <text x="325" y="180" text-anchor="middle" fill="#141413" font-weight="600">imoogi-Cloze 노트</text>
+      <text x="325" y="202" text-anchor="middle" fill="#87867F" font-size="11.5">기존 타입 그대로</text>
+      <path d="M240,190 L190,190" stroke="#D97757" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+      <rect x="20" y="150" width="170" height="80" rx="10" fill="#F0EEE6" stroke="#D1CFC5" stroke-width="1.5"/>
+      <text x="105" y="180" text-anchor="middle" fill="#141413" font-weight="600">AnkiConnect</text>
+      <text x="105" y="202" text-anchor="middle" fill="#87867F" font-size="11.5">addNote / updateNote</text>
+      <text x="430" y="275" text-anchor="middle" fill="#87867F" font-size="12">굵은 주황 테두리 = 이번 계획에서 바뀌는 곳 · 점선 = 네트워크 호출</text>
+    </svg>
+    <p class="caption">t11은 맨 왼쪽 편집 명령만, t12는 orgdoc 상자만 바꿉니다. t13에서 스캔과 JSON 요청(v2)이 바뀌고, t14·t15가 orgdoc에 조립 패스를 더합니다. Anki 쪽 노트 타입과 AnkiConnect 호출은 그대로입니다.</p>
+  </div>
+
+  <p class="lead" style="margin-top:28px">아래는 Go 렌더러가 속성에 따라 어떤 순서로 처리하는지 보여주는 흐름도입니다. 화살표 감지는 렌더 <b>전</b>에 해야 <code>&gt;</code>가 이스케이프되기 전에 찾을 수 있고, Extra 분리와 목록 감싸기는 렌더 <b>후</b> HTML에서 합니다.</p>
+  <pre class="mermaid">
+flowchart TD
+  A[본문 원문 + 속성] --> V{"note type이 imoogi-Cloze?"}
+  V -->|아니고 옵션 있음| X[card_option_needs_cloze 건너뜀]
+  V -->|예| B{속성}
+  B -->|없음| F{"cN:: 마커 있음?"}
+  B -->|ANKI_DIRECTION / INCREMENTAL| D[제목·목록 항목 표시]
+  B -->|ANKI_SWIFT| E[화살표 줄 감지<br/>렌더 전 텍스트]
+  F -->|없음| G[cloze_marker_missing 건너뜀]
+  F -->|있음| H[go-org 렌더]
+  D --> H
+  E --> H
+  H --> I[수식 구분자 변환]
+  I --> J[EXTRA 블록 분리<br/>목록 항목 cN 감싸기]
+  J --> K[Text · Back Extra 필드]
+  </pre>
+  <noscript><p>흐름: 본문 원문과 속성 → 노트 타입이 imoogi-Cloze인지 검증(아니면서 옵션이 있으면 건너뜀) → 속성에 따라 분기(없음: 마커 검사 / 방향·incremental: 목록 조립 / swift: 화살표 감지) → go-org 렌더 → 수식 구분자 변환 → EXTRA 블록 분리와 목록 항목 cN 감싸기 → Text와 Back Extra 필드 완성.</p></noscript>
+</section>
+
+<section aria-label="Risks">
+  <div class="sec-head"><span class="num">06</span><h2>Risks &amp; Mitigation</h2></div>
+  <div class="risks">
+    <div class="row"><div class="cell head">Risk</div><div class="cell head">Severity</div><div class="cell head">Mitigation</div></div>
+    <div class="row"><div class="cell">SPEC-ANKICARD-001이 아직 <code>in-progress</code> (sync-audit FAIL 재감사 중)</div><div class="cell"><span class="sev high">HIGH</span></div><div class="cell">t12–t15는 001 종료 후 착수. t11은 Elisp만이라 독립</div></div>
+    <div class="row"><div class="cell">프로토콜 v2로 Emacs와 바이너리 버전이 어긋남</div><div class="cell"><span class="sev med">MED</span></div><div class="cell">기존 <code>binary_incompatible</code> 진단이 잡아냄. <code>make build-anki</code> 재설치 안내</div></div>
+    <div class="row"><div class="cell">기존 Cloze 카드의 렌더 결과가 달라져 불필요한 update 발생</div><div class="cell"><span class="sev med">MED</span></div><div class="cell">바이트 불변 회귀 테스트 (t12, t13)</div></div>
+    <div class="row"><div class="cell">cloze 안의 <code>}}</code> (LaTeX 중괄호)</div><div class="cell"><span class="sev low">LOW</span></div><div class="cell">t11 명령이 안쪽 <code>}}</code>는 <code>} }</code>로, 선택이 <code>}</code>로 끝나면 닫는 <code>}}</code> 앞에 공백을 넣음</div></div>
+    <div class="row"><div class="cell">여러 줄 HTML이 든 cloze의 Anki 표시</div><div class="cell"><span class="sev med">MED</span></div><div class="cell">실제 Anki 렌더 확인 (AnkiConnect 연결 필요)</div></div>
+    <div class="row"><div class="cell">워킹트리 미커밋 변경 (<code>CLAUDE.md</code>, <code>04-projects.el</code>, <code>workspace-bridge-test.el</code>)</div><div class="cell"><span class="sev low">LOW</span></div><div class="cell">별도 worktree에서 작업</div></div>
+  </div>
+</section>
+
+<section aria-label="Success metrics">
+  <div class="sec-head"><span class="num">07</span><h2>Success Metrics</h2></div>
+  <div class="metrics-list">
+    <div class="metric-row"><div class="metric-indicator"></div><div class="metric-label">영역을 잡고 <code>imoogi-anki-cloze</code>를 부르면 <code>{{cN::…}}</code>가 되고, 헤딩에 <code>imoogi-Cloze</code>가 기록됨</div><div class="metric-target">Target: t11</div></div>
+    <div class="metric-row"><div class="metric-indicator"></div><div class="metric-label"><code>#+BEGIN_EXTRA</code> 내용이 Anki 카드 뒷면의 Back Extra에 보임</div><div class="metric-target">Target: t12</div></div>
+    <div class="metric-row"><div class="metric-indicator"></div><div class="metric-label">기존 <code>{{cN::}}</code> 카드의 Text 필드 렌더 결과가 바이트 단위로 불변</div><div class="metric-target">Target: t12, t13</div></div>
+    <div class="metric-row"><div class="metric-indicator"></div><div class="metric-label">옵션 속성이 있는데 타입이 Cloze가 아닌 헤딩이 진단과 함께 건너뛰어짐</div><div class="metric-target">Target: t13</div></div>
+    <div class="metric-row"><div class="metric-indicator"></div><div class="metric-label">헤딩 + 목록으로 쓴 Q/A 카드가 방향(→, ←, ↔)·incremental대로 카드 장수가 맞음</div><div class="metric-target">Target: t14</div></div>
+    <div class="metric-row"><div class="metric-indicator"></div><div class="metric-label">화살표 줄 N개인 헤딩이 노트 1개·카드 N장(양방향 줄은 2장)으로 생성됨</div><div class="metric-target">Target: t15</div></div>
+    <div class="metric-row"><div class="metric-indicator"></div><div class="metric-label"><code>orgdoc</code> 커버리지 100% 유지, <code>make test</code>·<code>make lint</code> 통과</div><div class="metric-target">Target: 전 카드</div></div>
+  </div>
+  <p class="lead" style="margin-top:24px">직접 확인해 보고 싶다면: t11이 끝난 뒤 Org 본문에서 단어 하나를 드래그하고 <code>M-x imoogi-anki-cloze</code>, 그다음 <code>M-x imoogi-sync</code>를 실행해 Anki에 빈칸 카드가 하나 생기는지 보면 됩니다.</p>
+</section>
+
+<section aria-label="Execution log">
+  <div class="sec-head"><span class="num">08</span><h2>실행 기록 (2026-09-20)</h2></div>
+  <p class="lead">계획을 세운 뒤 실제로 t11과 t12를 진행했습니다. 가장 중요한 건 <b>t11이 이미 대부분 구현돼 있었다는 것</b>이에요. 계획서는 이를 신규 작업으로 적었는데, 코드를 확인하지 않고 세운 가정이었습니다. 같은 실수를 반복하지 않으려고 나머지 카드도 착수 전에 전부 확인했어요.</p>
+
+  <h3 style="font-family:var(--serif);font-size:19px;color:var(--slate);margin:28px 0 10px">t11 — 계획 정정: 90%는 이미 있었다</h3>
+  <table class="grid">
+    <thead><tr><th>t11 항목</th><th>착수 전 상태</th></tr></thead>
+    <tbody>
+      <tr><td>영역을 <code>{{cN::…}}</code>로 감싸기</td><td>구현됨 (<code>24-anki.el:201</code>)</td></tr>
+      <tr><td>번호 자동 = subtree 최대 + 1</td><td>구현됨 (<code>imoogi-anki--next-cloze-number</code>)</td></tr>
+      <tr><td><code>C-u N</code>으로 번호 지정</td><td>구현됨 (prefix arg)</td></tr>
+      <tr><td><code>ANKI_NOTE_TYPE</code> 없으면 <code>imoogi-Cloze</code> 기록, 다른 값이면 알림만</td><td>구현됨 (스톡 <code>Cloze</code>도 인정)</td></tr>
+      <tr><td><code>C-c a z</code> + transient 바인딩</td><td>구현됨</td></tr>
+      <tr><td>테스트</td><td>3개 존재</td></tr>
+      <tr><td><b><code>}}</code> 이스케이프</b></td><td><b>없음 → 이번에 추가</b></td></tr>
+      <tr><td><b>영역 없을 때 커서 낱말</b></td><td><b>없음(<code>user-error</code>였음) → 이번에 추가</b></td></tr>
+      <tr><td><code>imoogi-anki-uncloze</code></td><td>없음 (카드에서 '선택' 항목, 구현 안 함)</td></tr>
+    </tbody>
+  </table>
+  <p class="lead" style="margin-top:20px">실제로 고친 건 빈칸이 한 글자 일찍 닫히는 버그예요. Anki의 cloze 정규식은 비탐욕이라 여는 <code>{{cN::</code> 뒤 <b>처음 나오는</b> <code>}}</code>에서 닫습니다. 수식을 빈칸으로 만들면 이런 일이 벌어졌어요.</p>
+  <div class="ex">
+    <div class="box"><h4>고치기 전</h4><pre>선택: \sqrt{a^{2}}
+결과: {{c1::\sqrt{a^{2}}}}
+Anki가 읽는 빈칸 내용:
+      \sqrt{a^{2}
+      ← 닫는 중괄호를 잃어버림</pre></div>
+    <div class="box"><h4>고친 뒤</h4><pre>선택: \sqrt{a^{2}}
+결과: {{c1::\sqrt{a^{2} } }}
+Anki가 읽는 빈칸 내용:
+      \sqrt{a^{2} }
+      ← 수식 그대로 (LaTeX은 공백 무시)</pre></div>
+  </div>
+  <ul style="margin-left:18px;max-width:780px;font-size:14px;margin-top:16px">
+    <li><code>imoogi-anki--cloze-safe-text</code> 신규: 연속한 <code>}</code>를 한 칸씩 띄움 (<code>}}</code>→<code>} }</code>, <code>}}}}</code>→<code>} } } }</code>)</li>
+    <li>영역이 <code>}</code>로 끝나면 닫는 <code>}}</code> 앞에도 공백 하나</li>
+    <li><code>interactive</code> 사양이 경계를 직접 결정: 영역 있으면 영역, 없으면 커서 낱말, 낱말도 없으면 안내 후 중단</li>
+    <li>테스트 4개 추가 — RED <code>Ran 406 tests, 402 as expected, 2 unexpected</code> → GREEN <code>Ran 407 tests, 405 as expected, 0 unexpected</code>, <code>make test-elisp</code> exit 0</li>
+  </ul>
+
+  <h3 style="font-family:var(--serif);font-size:19px;color:var(--slate);margin:32px 0 10px">t12 — 죽어 있던 Back Extra 필드를 살림</h3>
+  <p class="lead"><code>Back Extra</code> 필드는 노트 타입에 선언돼 있고(<code>model.go:99</code>) 카드 뒷면 템플릿도 그 필드를 렌더하는데(<code>assets/cloze-back.html:4</code>), 채우는 코드가 없어 <b>지금까지 영구히 비어 있었어요</b>. t12는 신규 기능이자 이 죽은 필드를 되살리는 작업이었습니다. <code>Render</code> 시그니처를 바꾸지 않아 프로토콜·planner·registry는 그대로예요.</p>
+  <ul style="margin-left:18px;max-width:780px;font-size:14px">
+    <li><code>internal/anki/orgdoc/extra.go</code> 신규 — <code>splitExtraBlocks</code>가 본문에서 <code>#+BEGIN_EXTRA … #+END_EXTRA</code>를 떼어냅니다. 대소문자 무시(Org 키워드 규칙), 줄 시작 고정, 여러 블록은 빈 줄로 이어 붙임</li>
+    <li><b>블록이 없는 본문은 바이트 그대로 반환</b> — 트림조차 하지 않습니다. planner가 렌더 결과를 해시하므로 여기서 정규화하면 기존 카드 전부가 내용 변화 없이 <code>updated</code>로 뜹니다</li>
+    <li>마커 검사는 EXTRA를 뺀 나머지에만 겁니다 — Anki의 cloze 템플릿은 <code>{{cloze:Text}}</code>만 읽으므로, 마커가 EXTRA 안에만 있으면 빈칸 없는 노트가 되어 Anki가 거부합니다</li>
+    <li><b><code>Back Extra</code>는 비어 있어도 항상 내보냅니다</b> — AnkiConnect는 주지 않은 필드를 그대로 두기 때문에, 키를 생략하면 EXTRA를 지운 카드의 예전 내용이 컬렉션에 영원히 남습니다</li>
+    <li><code>imoogi-Basic</code>은 그대로 — Basic에는 그 필드가 없어 키를 내보내면 <code>note_field_missing</code>이 납니다. EXTRA는 지금처럼 Back 안에 인라인으로 남습니다</li>
+    <li>테스트 7개 추가 — RED 5개 실패·골든 2개 통과 → GREEN <code>go test ./... -count=1</code> exit 0, orgdoc 커버리지 <b>100.0% 유지</b>, <code>make lint</code> 0, <code>make fmt-check</code> 0, host·windows 빌드 0</li>
+  </ul>
+  <div class="risks" style="margin-top:20px">
+    <div class="row"><div class="cell head">알려진 영향</div><div class="cell head">정도</div><div class="cell head">내용</div></div>
+    <div class="row"><div class="cell">기존 Cloze 노트 일회성 재갱신</div><div class="cell"><span class="sev med">1회</span></div><div class="cell"><code>hashing.Hash</code>는 필드 맵의 모든 키를 해시에 넣습니다(<code>hashing.go:47-57</code> 확인). <code>Back Extra</code>가 새로 들어가므로 기존 Cloze 노트 전부가 다음 동기화에서 <code>updated</code> 한 번씩 뜹니다. 내용과 복습 이력은 그대로이고, 첫 동기화 결과 개수만 평소보다 많아 보입니다</div></div>
+    <div class="row"><div class="cell">Anki 실기기 렌더</div><div class="cell"><span class="sev med">미검증</span></div><div class="cell">AnkiConnect가 연결돼 있지 않아 t11의 빈칸 표시와 t12의 Back Extra가 실제 카드에서 어떻게 보이는지는 확인하지 못했습니다</div></div>
+  </div>
+
+  <h3 style="font-family:var(--serif);font-size:19px;color:var(--slate);margin:32px 0 10px">t12 — 경계에서 잡은 회귀 하나</h3>
+  <p class="lead"><code>Back Extra</code>를 내보내기 시작하자 <b>스톡 <code>Cloze</code> 노트 타입이 깨졌습니다.</b> <code>imoogi-Cloze</code>의 필드는 <code>Text</code>/<code>Back Extra</code>인데 스톡 <code>Cloze</code>는 <code>Text</code>/<code>Extra</code>이고, 필드 해석이 이름을 정확히 맞춰 찾기 때문에 손으로 쓴 스톡 Cloze heading이 <code>note_field_missing</code>으로 실패했어요. 이 프로젝트는 스톡 타입 동기화를 명시적으로 지원하므로 회귀입니다. Go 전체 테스트는 통과하고 있었는데, 스톡 Cloze를 add 경로로 통과시키는 테스트가 없었기 때문이에요.</p>
+  <ul style="margin-left:18px;max-width:780px;font-size:14px">
+    <li>재현 테스트를 먼저 써서 실패를 확인한 뒤 고쳤습니다 (<code>internal/anki/planner/extra_alias_test.go</code>, 2개)</li>
+    <li><code>clozeExtraAliases</code> 추가: <code>back extra</code> ↔ <code>extra</code>. 정확한 이름 매칭이 <b>실패한 뒤에만</b> 참조하고, 두 이름 다 없는 모델은 여전히 <code>note_field_missing</code>으로 실패합니다</li>
+    <li>제 변경으로 거짓이 된 <code>fake_client_test.go</code>의 주석도 함께 고쳤습니다</li>
+    <li>재검증: <code>go test ./... -count=1</code> exit 0 · orgdoc 100.0% · planner 91.6% · lint 0 · fmt 0</li>
+  </ul>
+  <p class="lead" style="margin-top:20px"><b>관찰 (가설, 미검증).</b> 고아 삭제 로직은 AnkiConnect가 돌려준 <b>모든</b> 필드로 해시를 다시 계산합니다. 실제 Anki가 빈 필드까지 돌려준다면, t12 이전에는 Cloze 노트의 고아 삭제가 항상 보류돼 왔을 것이고 t12가 그것을 맞춰 주는 셈이에요. 다만 테스트의 fake는 seed한 필드만 돌려주도록 만들어져 있어 스위트로는 판별할 수 없고, 실제 컬렉션으로 확인하지 않았습니다. 안전한 방향(삭제 안 함)으로 치우쳐 있어 급하지는 않아요.</p>
+
+  <h3 style="font-family:var(--serif);font-size:19px;color:var(--slate);margin:32px 0 10px">t13~t15 — 착수 전 확인 결과</h3>
+  <p class="lead"><code>ANKI_DIRECTION</code>·<code>ANKI_INCREMENTAL</code>·<code>ANKI_SWIFT</code>·multiline·화살표 관련 코드가 Go와 Elisp 어디에도 없습니다. 전부 신규 작업이 맞아요. 다만 <b>t13부터는 진행 방식이 달라집니다</b>: 프로토콜 v1→v2는 Go와 Elisp를 가로지르고 계약 테스트 약 10개를 건드리는 다중 파일 변경이라, 바로 편집하지 않고 <code>/moai plan</code>으로 SPEC을 쓴 뒤 착수 승인 게이트를 거칩니다.</p>
+
+  <table class="grid" style="margin-top:20px">
+    <thead><tr><th>카드</th><th>변경 파일</th><th>상태</th></tr></thead>
+    <tbody>
+      <tr><td>t11</td><td><code>modules/org/24-anki.el</code>, <code>tests/anki-commands-test.el</code></td><td>구현 완료 (미커밋)</td></tr>
+      <tr><td>t12</td><td><code>orgdoc/orgdoc.go</code>, <code>orgdoc/extra.go</code>(신규), <code>orgdoc/extra_test.go</code>(신규), <code>planner/planner.go</code>, <code>planner/extra_alias_test.go</code>(신규), <code>planner/fake_client_test.go</code>(주석)</td><td>구현 완료 (미커밋)</td></tr>
+      <tr><td>t13~t15</td><td>—</td><td>미착수</td></tr>
+    </tbody>
+  </table>
+  <p class="lead" style="margin-top:16px">두 카드의 파일 집합이 겹치지 않아 pathspec으로 따로 스테이징할 수 있습니다. 사용자가 <code>SPEC-ANKICARD-001</code>이 아직 <code>in-progress</code>인 것을 알고도 순서대로 진행하도록 지시했으므로, 001의 sync-audit는 나중에 움직인 HEAD를 대상으로 돌게 됩니다.</p>
+</section>
+
+<footer>
+  Sources:
+  <a href="https://github.com/debanjandhar12/logseq-anki-sync/wiki">logseq-anki-sync Wiki</a> ·
+  <a href="https://github.com/debanjandhar12/logseq-anki-sync/tree/main/src/notes">src/notes/*.ts (main)</a> ·
+  <a href="https://debanjandhar12.github.io/logseq-anki-sync/docs/card-types">docs/card-types</a> (404, 2026-09-20) ·
+  로컬 <code>internal/anki/**</code>, <code>modules/org/anki/**</code>, <code>.moai/specs/SPEC-ANKICARD-001/progress.md</code>
+  &nbsp;&mdash;&nbsp; Generated: 2026-09-20
+</footer>
+
+</div>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "base", themeVariables: {
+    primaryColor: "#FAF9F5", primaryTextColor: "#141413", primaryBorderColor: "#D97757",
+    lineColor: "#87867F", secondaryColor: "#E3DACC", tertiaryColor: "#F0EEE6" } });
+</script>
+</body>
+</html>

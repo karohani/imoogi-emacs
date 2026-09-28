@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>imoogi-emacs Security Review — 2026-08-23</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{--ivory:#FAF9F5;--paper:#FFF;--slate:#141413;--clay:#D97757;--clay-d:#B85C3E;--oat:#E3DACC;--olive:#788C5D;
+--g100:#F0EEE6;--g300:#D1CFC5;--g500:#87867F;--g700:#3D3D3A;
+--sans:"Pretendard",system-ui,-apple-system,sans-serif;--mono:"JetBrains Mono",ui-monospace,"SF Mono",monospace;
+--max-width:860px;--radius-panel:12px;--radius-row:8px;--border:1.5px solid var(--g300)}
+*{box-sizing:border-box}body{margin:0;background:var(--ivory);color:var(--slate);font:16px/1.6 var(--sans)}
+main{max-width:var(--max-width);margin:0 auto;padding:32px 20px 64px}
+h1{font-size:1.9rem;line-height:1.2;margin:0 0 6px}h2{font-size:1.3rem;margin:40px 0 10px;border-bottom:var(--border);padding-bottom:6px}
+h3{font-size:1.05rem;margin:24px 0 6px}p{margin:8px 0}code,pre{font-family:var(--mono);font-size:.86em}
+code{background:var(--g100);padding:1px 5px;border-radius:4px}pre{background:var(--g100);padding:12px 14px;border-radius:var(--radius-row);overflow-x:auto;line-height:1.45}
+.meta{color:var(--g500);font-size:.9rem}
+.tldr{background:var(--slate);color:var(--ivory);border-radius:var(--radius-panel);padding:18px 22px;margin:20px 0}
+.tldr strong{color:var(--clay)}
+.lead{background:var(--paper);border-left:4px solid var(--olive);padding:10px 14px;border-radius:0 var(--radius-row) var(--radius-row) 0;margin:10px 0 14px;color:var(--g700)}
+.lead b{color:var(--olive)}
+table{width:100%;border-collapse:collapse;margin:12px 0;background:var(--paper);border-radius:var(--radius-row);overflow:hidden;font-size:.93rem}
+th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--g300);vertical-align:top}th{background:var(--g100);font-weight:600}
+tr:last-child td{border-bottom:0}
+.sev{display:inline-block;padding:2px 9px;border-radius:999px;font-size:.78rem;font-weight:600;white-space:nowrap}
+.high{background:var(--clay);color:#fff}.med{background:var(--oat);color:var(--g700)}.low{background:var(--g100);color:var(--g500);border:1px solid var(--g300)}
+.card{background:var(--paper);border:var(--border);border-radius:var(--radius-panel);padding:16px 20px;margin:14px 0}
+.ok{border-left:4px solid var(--olive)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:16px 0}
+.kpi{background:var(--paper);border:var(--border);border-radius:var(--radius-panel);padding:14px 16px}
+.kpi .n{font-size:1.7rem;font-weight:700;line-height:1.1}.kpi .l{color:var(--g500);font-size:.85rem}
+.callout{background:var(--g100);border-radius:var(--radius-row);padding:12px 16px;margin:12px 0;font-size:.93rem}
+ul{padding-left:22px}li{margin:4px 0}
+pre.mermaid{background:var(--paper);border:var(--border);text-align:center}
+.check li{list-style:none;margin-left:-22px}.check li::before{content:"☐ ";color:var(--clay)}
+@media print{.tldr{background:#222;-webkit-print-color-adjust:exact}a{color:inherit}}
+a{color:var(--clay-d)}
+</style>
+</head>
+<body>
+<main>
+<h1>imoogi-emacs Security Review</h1>
+<p class="meta">2026-08-23 · baseline HEAD <code>511777b</code> (main), uncommitted <code>.el</code> edits present · scope: boot path, Go toolchain CLI, scripts, git hooks, vendored artifacts, devcontainer (local-only)</p>
+
+<div class="tldr">
+<strong>TL;DR.</strong> Nothing remotely exploitable was found. This is an Emacs config whose only server is a local socket — the real attack surface is the <strong>supply chain</strong>: what gets committed into <code>vendor/</code> and whether the air-gapped target can trust it. Six findings; <strong>one is a live, confirmed break</strong> (the committed CLI binary is stale and <code>setup</code> fails on a target machine). The Go extraction/setup code itself is notably well hardened.
+</div>
+
+<div class="cards">
+<div class="kpi"><div class="n" style="color:var(--clay)">1</div><div class="l">High (confirmed by running it)</div></div>
+<div class="kpi"><div class="n">2</div><div class="l">Medium</div></div>
+<div class="kpi"><div class="n">3</div><div class="l">Low</div></div>
+<div class="kpi"><div class="n" style="color:var(--olive)">5/5</div><div class="l">lock artifacts hash-verified OK</div></div>
+</div>
+
+<h2>How trust flows (and where it breaks)</h2>
+<div class="lead"><b>Plain words:</b> an <b>air-gap</b> (a machine with no internet) can't download anything, so everything it needs is checked in to git. The question a security review asks is: <i>at each hand-off, what proves the bytes are the ones you meant?</i> The chart below is that chain. The dashed red arrow is the gap behind Finding 1.</div>
+<pre class="mermaid">
+flowchart LR
+  SRC[Go source<br/>cmd/ internal/] -->|go build| BIN[CLI binary +<br/>provenance.json]
+  SRC -. nothing binds<br/>binary to source .-> BIN
+  NET[nodejs.org / npm / proxy.golang.org] -->|fetch| ART[vendor/toolchains/*<br/>+ toolchains.lock.json]
+  BIN --> GIT[(git commit)]
+  ART --> GIT
+  GIT -->|clone into air-gap| SETUP[imoogi-toolchain setup]
+  SETUP -->|SHA-256 from lock ✓| LOCAL[.local/toolchains/&lt;bundle&gt;]
+  LOCAL -->|.local/bin on PATH| EMACS[Emacs eglot]
+  style BIN stroke:#D97757,stroke-width:3px
+</pre>
+<noscript><p>Flow: Go source is built into a CLI binary plus a provenance file, but nothing ties the binary back to the source commit. Online <code>fetch</code> downloads node/npm/gopls artifacts and records their hashes in the lock. Both are committed to git. On the air-gapped machine, <code>setup</code> verifies each artifact against the lock (this part is good), extracts to <code>.local/toolchains</code>, and Emacs puts <code>.local/bin</code> on its PATH.</p></noscript>
+
+<h2>Findings</h2>
+<table>
+<tr><th>#</th><th>Severity</th><th>Finding</th><th>Where</th></tr>
+<tr><td>1</td><td><span class="sev high">High</span></td><td>Committed air-gap CLI binary is stale — <code>setup</code> fails on target</td><td><code>vendor/toolchains/cli/1.0.0/…/imoogi-toolchain</code>, <code>internal/fetch/fetch.go</code> <code>buildBootstrap</code></td></tr>
+<tr><td>2</td><td><span class="sev med">Medium</span></td><td>Devcontainer sandbox can switch off its own firewall; egress porous; unpinned installs <i>(local-only, gitignored)</i></td><td><code>.devcontainer/Dockerfile</code>, <code>init-firewall.sh</code></td></tr>
+<tr><td>3</td><td><span class="sev med">Medium</span></td><td>Opaque committed binaries with no way to re-verify them later</td><td><code>vendor/tree-sitter/*.dylib</code>, <code>vendor/ghostel-module/</code>, 313 <code>.elc</code>, <code>packages.lock</code></td></tr>
+<tr><td>4</td><td><span class="sev low">Low–Med</span></td><td>Online <code>fetch</code> hardening gaps (TOFU npm, same-origin node checksums, inherited Go env, unbounded HTTP)</td><td><code>internal/fetch/fetch.go</code></td></tr>
+<tr><td>5</td><td><span class="sev low">Low</span></td><td><code>vendor.el</code> runs with <code>-Q</code>, so the TLS hardening in <code>early-init.el</code> never loads; MELPA is unsigned</td><td><code>scripts/vendor.el:6-8,34-46</code>, <code>early-init.el:96-99</code></td></tr>
+<tr><td>6</td><td><span class="sev low">Low</span></td><td><code>.local/bin</code> prepended to <code>PATH</code> for every Emacs subprocess, content unverified</td><td><code>modules/17-lsp.el:36-55</code></td></tr>
+</table>
+
+<h3>F1 — Stale committed CLI binary <span class="sev high">High · confirmed</span></h3>
+<div class="lead"><b>Plain words:</b> the air-gapped machine runs a pre-built program (<code>imoogi-toolchain</code>) that's checked into git. That program was built <i>one commit before</i> basedpyright was added, so it doesn't know basedpyright exists and refuses to install anything. It works on your Mac only because your local install was made from a fresh build, not the committed file.</div>
+<div class="card">
+<p><b>Worked example — how I proved it.</b> A <b>reproducible build</b> means the same source always yields byte-identical output, so hashes can be compared.</p>
+<pre>$ go build -trimpath -buildvcs=false -ldflags="-buildid= -X main.version=1.0.0" ./cmd/imoogi-toolchain   # at HEAD
+491492881ff4…   (fresh build)
+a5ea1ffa79f3…   (committed binary)          ← mismatch
+
+$ git archive 5808620 | … go build …        # one commit earlier
+a5ea1ffa79f3…                               ← exact match: build IS reproducible, binary is just old
+
+$ strings imoogi-toolchain | grep -c basedpyright
+0   (committed)      8   (HEAD build)
+
+$ imoogi-toolchain setup                    # committed binary, in a replica of the air-gap repo
+imoogi-toolchain setup: no provider for component "basedpyright" kind "python-language-server"
+exit=10</pre>
+<p><b>Control gap.</b> <code>buildBootstrap</code> skips the rebuild whenever a binary and its <code>provenance.json</code> already exist, and <code>validateBootstrapProvenance</code> only checks that the two match <i>each other</i>. Nothing ties either to the source commit — so a stale <i>or tampered</i> binary passes <code>fetch</code>'s own check.</p>
+<p><b>Fix.</b> Have <code>fetch</code> always rebuild into staging and compare with the committed hash (fail loudly on mismatch); refresh binary + provenance together; record the source commit SHA in provenance. A CI/test gate doing the same <code>go build && shasum</code> catches it too.</p>
+</div>
+
+<h3>F2 — Devcontainer sandbox <span class="sev med">Medium · local-only</span></h3>
+<div class="lead"><b>Plain words:</b> the container exists to safely run an AI agent with permission checks off (<code>alias cc="claude --dangerously-skip-permissions"</code>). A <b>firewall</b> limits where it can talk. But the agent is allowed to run the firewall script as root without a password — and that script has an <code>--off</code> switch. The thing being contained can uncontain itself.</div>
+<div class="card">
+<ul>
+<li><code>/etc/sudoers.d/node-firewall</code>: <code>node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh</code> + script accepts <code>--off</code> → <code>sudo init-firewall.sh --off</code> removes all egress rules.</li>
+<li>Egress: <code>tcp/22</code> to <b>any</b> host and DNS (<code>53</code>) to <b>any</b> host — both are classic tunnel/exfiltration channels; the domain allowlist is resolved to IPs once at start and rots.</li>
+<li>Unpinned: lazygit via <code>curl | tar</code> from "latest release" (no checksum), <code>npm install -g …@latest</code>, <code>uv:latest</code>.</li>
+</ul>
+<p><b>Fix.</b> Move <code>--off</code> into a separate root-only script; restrict 22/53 to the hosts you need; pin versions and checksums. Note <code>.devcontainer/</code> is gitignored, so this affects only this machine.</p>
+</div>
+
+<h3>F3 — Opaque binaries without re-verifiable provenance <span class="sev med">Medium</span></h3>
+<div class="lead"><b>Plain words:</b> the design says "git commit = the lock" — fine. But several committed files are compiled <b>binaries</b> (you can't read them), and nothing records <i>exactly what they were built from</i>, so a year from now nobody can re-check them.</div>
+<div class="card">
+<ul>
+<li>12 tree-sitter <code>.dylib</code> built by <code>scripts/build-grammars.sh</code> from git <b>tags</b> (tags can be moved), no commit SHA, no output hashes, compiler warnings hidden (<code>2&gt;/dev/null</code>).</li>
+<li><code>vendor/ghostel-module/ghostel-module.dylib</code> (1.2 MB): only a version string <code>0.34.0</code>; no hash, no release URL.</li>
+<li>313 committed <code>.elc</code> (byte-compiled Lisp): no mechanism confirms they match their <code>.el</code> source.</li>
+<li><code>packages.lock</code>: names + versions only; archive column is <code>?</code>; no hashes.</li>
+</ul>
+<p><b>Fix.</b> Record commit SHA + SHA-256 per grammar; hash + upstream URL for the ghostel module; a rebuild-and-compare step on the online machine for grammars and <code>.elc</code>.</p>
+</div>
+
+<h3>F4 — Online <code>fetch</code> hardening <span class="sev low">Low–Medium</span></h3>
+<div class="lead"><b>Plain words:</b> the first time something is downloaded, its hash is written into the lock and trusted forever (<b>TOFU</b> — trust on first use). A few extra checks at that moment would make the lock more than "whatever the server sent that day".</div>
+<div class="card">
+<ul>
+<li>npm tarballs (<code>typescript</code>, <code>typescript-language-server</code>, <code>basedpyright</code>): no independent hash on first fetch (<code>validate</code> is nil or a file-presence check). Registry <code>dist.integrity</code> is same-channel, so the gain is marginal — but it's free.</li>
+<li>node: <code>SHASUMS256.txt</code> is fetched from the <i>same origin</i> as the tarball; the GPG-signed <code>SHASUMS256.txt.sig</code> is not verified.</li>
+<li><code>buildGopls</code> / <code>buildBootstrap</code>: <code>go</code> inherits <code>os.Environ()</code>, so <code>GOFLAGS</code>, <code>GONOSUMDB</code>, <code>GOINSECURE</code>, <code>GOPROXY</code> from the shell silently bypass the checksum database.</li>
+<li><code>http.DefaultClient</code> has no timeout; <code>download</code> has no body-size cap.</li>
+</ul>
+</div>
+
+<h3>F5 — <code>vendor.el</code> TLS posture <span class="sev low">Low</span></h3>
+<div class="card"><p>It runs as <code>emacs --batch -Q</code>, so <code>gnutls-verify-error t</code> from <code>early-init.el</code> is <i>not</i> loaded; <code>package-check-signature</code> stays at its default; MELPA packages carry no signatures at all. What Emacs actually does with a bad certificate in batch mode was <b>not executed</b> — only the configuration was read.</p></div>
+
+<h3>F6 — <code>.local/bin</code> PATH prepend <span class="sev low">Low</span></h3>
+<div class="card"><p><code>imoogi-lsp-prepend-local-bin</code> puts a git-ignored, user-writable directory <i>first</i> on <code>PATH</code> and <code>exec-path</code> for every subprocess Emacs spawns. It validates the symlink's shape, not the bundle's contents. Anyone who can write there as your user can shadow any binary name — but that attacker already has your account, so: low.</p></div>
+
+<h2>What's done well (keep it)</h2>
+<div class="lead"><b>Plain words:</b> these are the places a reviewer normally finds bugs, and they're clean. Worth saying so, so nobody "simplifies" them away.</div>
+<div class="card ok">
+<ul>
+<li><code>internal/artifact/artifact.go</code> — extracts into a staging dir then renames atomically; refuses absolute/escaping paths, hardlinks, devices; symlinks only relative, in-archive, non-chained; <code>O_EXCL</code> on every file; entry/size caps.</li>
+<li><code>internal/setup/setup.go</code> — <code>flock</code> against concurrent runs; probes execute with <code>PATH=/usr/bin:/bin</code>, <code>HOME=&lt;tmp&gt;</code>, <code>NO_PROXY=*</code>; whole-bundle tree SHA-256 recorded and re-checked; lock artifact paths validated (<code>config.go:325</code>).</li>
+<li>All 5 <code>toolchains.lock.json</code> artifacts: size + SHA-256 <b>OK</b> against the committed files.</li>
+<li>Boot path makes no network calls; <code>ffap-machine-p-known 'reject</code>; <code>clojure-ts-ensure-grammars nil</code>; <code>ghostel-module-auto-install nil</code>; <code>gnutls-verify-error t</code> in <code>early-init.el</code>.</li>
+<li>No secrets found in tracked files (pattern scan).</li>
+</ul>
+</div>
+
+<h2>What I did not verify</h2>
+<div class="callout">
+<ul>
+<li>Not read in full: <code>internal/cli/cli.go</code>, <code>internal/config/config.go</code>, the 87 vendored elpa packages, <code>tests/docker/</code>.</li>
+<li>Secrets scan covered <code>git ls-files</code> only — untracked <code>.moai/</code>, <code>.claude/</code>, <code>.omc/</code>, <code>.omx/</code> were not scanned.</li>
+<li>Batch-mode TLS/NSM behavior of <code>vendor.el</code> not executed.</li>
+<li>Emacs modules reviewed statically only.</li>
+</ul>
+</div>
+
+<h2>Action items</h2>
+<ul class="check">
+<li><b>F1</b> Rebuild + recommit the CLI binary and <code>provenance.json</code>; add a rebuild-and-compare gate to <code>fetch</code> (or CI).</li>
+<li><b>F2</b> Remove <code>--off</code> from the sudo-allowed script; tighten ports 22/53; pin devcontainer installs.</li>
+<li><b>F3</b> Record commit SHA + SHA-256 for each grammar and the ghostel module; add an <code>.elc</code> rebuild check.</li>
+<li><b>F4</b> Scrub Go env in <code>fetch</code> (<code>GOFLAGS=</code>, <code>GONOSUMDB=</code>, <code>GOINSECURE=</code>); add HTTP timeout + size cap; optionally verify node's GPG signature.</li>
+<li><b>F5</b> Set <code>gnutls-verify-error t</code> and <code>network-security-level 'high</code> inside <code>vendor.el</code>.</li>
+</ul>
+<p><b>What to check yourself:</b> on any machine, run <code>go build -trimpath -buildvcs=false -ldflags="-buildid= -X main.version=1.0.0" -o /tmp/t ./cmd/imoogi-toolchain &amp;&amp; shasum -a 256 /tmp/t vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain</code> — the two hashes should be identical. Today they are not.</p>
+</main>
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+mermaid.initialize({startOnLoad:true,theme:"base",themeVariables:{primaryColor:"#FAF9F5",primaryTextColor:"#141413",primaryBorderColor:"#D97757",lineColor:"#87867F",secondaryColor:"#E3DACC",tertiaryColor:"#F0EEE6"}});
+</script>
+</body>
+</html>

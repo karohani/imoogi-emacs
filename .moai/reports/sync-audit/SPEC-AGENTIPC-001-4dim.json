@@ -1,0 +1,229 @@
+{
+  "verdict": "PASS",
+  "harmonic_mean": 0.8732537775534241,
+  "threshold": 0.8,
+  "tier": "M",
+  "spec_id": "SPEC-AGENTIPC-001",
+  "scores": [
+    {
+      "dimension": "Functionality",
+      "score": 0.93
+    },
+    {
+      "dimension": "Security",
+      "score": 0.87
+    },
+    {
+      "dimension": "Craft",
+      "score": 0.82
+    },
+    {
+      "dimension": "Consistency",
+      "score": 0.88
+    }
+  ],
+  "findings": [
+    {
+      "dimension": "Functionality",
+      "severity": "minor",
+      "summary": "AC-004 test cannot tell whether artifactType is logged: its check `(string-match-p \"report\" (car log))` also matches the fixture filename `260927-104700-report.md`, so it passes either way. The implementation is correct: a probe with a path that has no 'report' in it shows artifactType logged. This is a test-coverage weakness, not a functional defect.",
+      "file": "tests/agent-test.el",
+      "evidence": "$ sed-free read of tests/agent-test.el lines 436,446-452: (file (expand-file-name \"260927-104700-report.md\" dir)) ... (should (string-match-p \"report\" (car log)))\n\nIndependent probe (Emacs 30.2 batch, path without 'report'):\n$ Emacs --batch -Q --eval '(progn (defun imoogi-require (&rest _) nil) (load \".../30-agent.el\" nil t) ... (imoogi-agent-receive-json <artifact-created path=README.md artifactType=report title=주간 보고>) ... (princ (with-current-buffer \"*imoogi-agent*\" (buffer-string))))'\nP4 artifact titled (path w/o 'report'): \"ok\"\n---- *imoogi-agent* log ----\n[2026-09-27 20:55:28] artifact-created project=- session=- ok report 주간 보고 /Users/jay/workspace/imoogi-emacs/README.md\nlog read-only=t"
+    },
+    {
+      "dimension": "Functionality",
+      "severity": "minor",
+      "summary": "Event-file cleanup relies only on `defer os.Remove(path)` inside Emacsclient.Deliver, and the CLI installs no signal handling. If a parent harness sends SIGINT/SIGTERM while emacsclient is still running, the process can exit before the deferred remove runs, leaving a 0600 imoogi-agent-*.json in TMPDIR. The ACs only list the internal --timeout case, which is covered, so this is outside their stated scenarios.",
+      "file": "internal/agentipc/emacsclient.go",
+      "evidence": "$ grep -n -e 'os/signal' -e 'signal.Notify' -e 'NotifyContext' cmd/imoogi-agent/*.go internal/agentipc/*.go; echo \"grep exit=$?\"\ngrep exit=1\n\ninternal/agentipc/emacsclient.go:54-59:\n\tpath, err := writeEventFile(event)\n\tif path != \"\" {\n\t\t// Removal failure has no remaining channel to report on; ...\n\t\tdefer func() { _ = os.Remove(path) }()\n\t}"
+    },
+    {
+      "dimension": "Security",
+      "severity": "minor",
+      "summary": "The receiver does not check who owns the event file or its mode. Plan D-10 accepts that the server may read the file late, after the CLI has timed out and deleted it. On a shared, world-writable TMPDIR (the Linux default /tmp when TMPDIR is unset), another local user could recreate a file with the same name in that window. The receiver would then process that user's JSON as a genuine event. This works around the spec's premise that 'the default socket is user-only, so other users cannot send events'. The impact is limited to message, open-file, goto and notice actions on files the victim can already read; no code runs. On this macOS host the per-user TMPDIR is drwx------, which blocks it. Possible fix: check that file-attribute-user-id equals (user-uid) and that the file is not group- or world-writable, or have the CLI create a private 0700 subdirectory.",
+      "file": "modules/development/30-agent.el",
+      "evidence": "$ grep -n -E \"user-id|user-uid|file-attribute-user|file-modes|owner\" modules/development/30-agent.el || echo \"(none)\"\n(none)\n\n$ sed -n 87,100p .moai/specs/SPEC-AGENTIPC-001/plan.md   (excerpt of output)\n### D-10 시간 초과 뒤의 이벤트 파일\n\nCLI 가 emacsclient 를 죽인 뒤 파일을 지우므로, 서버가 요청을 뒤늦게 처리하면 파일이 없어 `unreadable` 거부로 로그에 남는다.\n재시도하지 않는다. 드물게 서버가 이미 파일을 읽고 표시하던 중에 CLI 가 시간 초과로 끝나면 표시는 되었는데 종료 코드는 1 일 수 있다.\n\n$ ls -ld \"$TMPDIR\" /tmp /private/tmp\ndrwxrwxrwt    187 root  wheel      5984 Sep 27 20:56 /private/tmp\nlrwxr-xr-x@     1 root  wheel        11 Aug 13 11:51 /tmp -> private/tmp\ndrwx------@ 65535 jay   staff  11797888 Sep 27 20:56 /var/folders/pf/j6kdd6r12fz2s1xqq6plv0r00000gn/T/\n\nRead modules/development/30-agent.el lines 53-58 (event-file preconditions; no owner or mode test):\n  (unless (and (stringp file)\n               (file-name-absolute-p file)\n               (not (file-remote-p file))\n               (file-regular-p file)\n               (file-readable-p file))\n    (imoogi-agent--reject \"unreadable\"))\n\nRead internal/agentipc/emacsclient.go line 92:\n\tf, err := os.CreateTemp(\"\", \"imoogi-agent-*.json\")"
+    },
+    {
+      "dimension": "Security",
+      "severity": "minor",
+      "summary": "When EMACSCLIENT is a bare name (no slash), the CLI resolves it against the current working directory with filepath.Abs and runs ./<name>. REQ-AIPC-013 says discovery matches scripts/imoogi-editor, but that script's `exec \"${emacsclient}\"` looks a slash-less name up in PATH. So in the one case both accept, the Go CLI can run an executable planted in the agent's working directory, such as an untrusted repo. This is the hazard Go's exec.ErrDot exists to prevent. The comment on line 125 shows it is deliberate, and a test pins it. It needs the user to set EMACSCLIENT to a bare name, so it is minor. Possible fix: use exec.LookPath for slash-less values, or reject them.",
+      "file": "internal/agentipc/emacsclient.go",
+      "evidence": "$ sed -n 121,127p internal/agentipc/emacsclient.go\n\tif explicit := os.Getenv(\"EMACSCLIENT\"); explicit != \"\" {\n\t\tif !isExecutable(explicit) {\n\t\t\treturn \"\", fmt.Errorf(\"EMACSCLIENT is not executable: %s\", explicit)\n\t\t}\n\t\t// A bare name would otherwise be looked up in PATH by exec.\n\t\treturn filepath.Abs(explicit)\n\t}\n\n$ sed -n 1,45p scripts/imoogi-editor   (excerpt of output, lines 8-14 and 44)\n  if [[ -n \"${EMACSCLIENT:-}\" ]]; then\n    if [[ ! -x \"${EMACSCLIENT}\" ]]; then\n      echo \"imoogi-editor: EMACSCLIENT is not executable: ${EMACSCLIENT}\" >&2\n      return 1\n    fi\n    printf '%s\\n' \"${EMACSCLIENT}\"\n    return\nexec \"${emacsclient}\" --create-frame \"$@\"\n\nRead internal/agentipc/emacsclient_test.go lines 355-362:\n\tdir := t.TempDir()\n\tinstallExecutable(t, filepath.Join(dir, \"ec\"))\n\tt.Chdir(dir)\n\tt.Setenv(\"EMACSCLIENT\", \"ec\")\n\tgot, err := findEmacsclient()\n\tif err != nil || !filepath.IsAbs(got) {\n\t\tt.Errorf(\"relative EMACSCLIENT resolved to %q, %v; want an absolute path\", got, err)\n\t}"
+    },
+    {
+      "dimension": "Security",
+      "severity": "minor",
+      "summary": "Nothing limits the size of the payload file the receiver opens. The 1 MiB cap applies only to the event itself. imoogi-agent--visit sets large-file-warning-threshold to nil and calls find-file-noselect directly. So an open-file, goto-location, artifact-created or task-finished event naming a multi-GB regular file makes the Emacs server read the whole file into memory. That can freeze the user's editor well past the CLI's 5 s timeout. AC-010 requires suppressing the prompt, not removing every bound; a hard cap that rejects oversized files, such as error:too-large, would keep the no-prompt rule.",
+      "file": "modules/development/30-agent.el",
+      "evidence": "$ grep -n -E \"large-file-warning-threshold|imoogi-agent-max-bytes|find-file-noselect\" modules/development/30-agent.el\n19:(defconst imoogi-agent-max-bytes 1048576\n50:`imoogi-agent-max-bytes' bytes. The remote test comes before anything that\n62:    (when (> size imoogi-agent-max-bytes)\n73:  (when (> (string-bytes json) imoogi-agent-max-bytes)\n247:  (let ((large-file-warning-threshold nil)\n250:    (find-file-noselect file t)))"
+    },
+    {
+      "dimension": "Security",
+      "severity": "minor",
+      "summary": "Leftover-data hygiene: the event file is removed only by a deferred call in Deliver, and the CLI installs no signal handler. If the calling agent's harness sends SIGINT or SIGTERM mid-delivery (for example, a cancelled tool call), the file stays in TMPDIR. The file is mode 0600 and, on macOS, sits in a per-user directory; SIGKILL can never be handled anyway. The spec's list of 'every path' (success, reject, delivery failure, timeout) does not mention signals, so this is hygiene rather than a spec violation.",
+      "file": "internal/agentipc/emacsclient.go",
+      "evidence": "$ grep -rn -E \"signal\\.|os/signal|Notify\" cmd/imoogi-agent internal/agentipc || echo \"(none)\"\n(none)\n\n$ grep -n -E \"defer func|os.Remove|CreateTemp\" internal/agentipc/emacsclient.go\n58:\t\tdefer func() { _ = os.Remove(path) }()\n92:\tf, err := os.CreateTemp(\"\", \"imoogi-agent-*.json\")"
+    },
+    {
+      "dimension": "Craft",
+      "severity": "minor",
+      "summary": "The fake emacsclient helper (about 45 lines) is copied between the two test packages, and the copies have already drifted apart. The accept mode is \"\" in one and \"ok\" in the other. The env-var names differ (IMOOGI_AGENT_TEST_FAKE_MARKER vs IMOOGI_AGENT_FAKE_RECORD / IMOOGI_AGENT_FAKE_MODE vs IMOOGI_AGENT_TEST_FAKE_MODE). Only one copy records argv0 and makes the record file optional. A change to the measured emacsclient answer shapes has to be made twice, and the two copies are already inconsistent.",
+      "file": "cmd/imoogi-agent/main_test.go",
+      "evidence": "$ diff <(sed -n '35,79p' cmd/imoogi-agent/main_test.go) <(sed -n '36,80p' internal/agentipc/emacsclient_test.go); echo \"diff exit=$?\"\n1,5c1,2\n< // fakeEmacsclient records its arguments and the event file's permission bits\n< // and contents, then answers the way emacsclient 30.2 was measured to\n< // (acceptance.md § 0.3). Mode \"\" accepts.\n< func fakeEmacsclient(marker, mode string) int {\n< \trecord := fakeRecord{Args: os.Args[1:]}\n---\n> func fakeEmacsclient(mode string) int {\n> \trecord := fakeRecord{Argv0: os.Args[0], Args: os.Args[1:]}\n7c4,5\n< \t\tif info, err := os.Stat(record.Args[n-1]); err == nil {\n---\n> \t\tpath := record.Args[n-1]\n> \t\tif info, err := os.Stat(path); err == nil {\n10c8\n< \t\tif data, err := os.ReadFile(record.Args[n-1]); err == nil {\n---\n> \t\tif data, err := os.ReadFile(path); err == nil {\n14,16c12,16\n< \tdata, _ := json.Marshal(record)\n< \tif err := os.WriteFile(marker, data, 0o600); err != nil {\n< \t\treturn 97\n---\n> \tif recordPath := os.Getenv(fakeRecordEnv); recordPath != \"\" {\n> \t\tdata, _ := json.Marshal(record)\n> \t\tif err := os.WriteFile(recordPath, data, 0o600); err != nil {\n> \t\t\treturn 97\n> \t\t}\n21c21\n< \t\tmode = \"\"\n---\n> \t\tmode = \"ok\"\n24c24\n< \tcase \"\":\n---\n> \tcase \"ok\":\ndiff exit=1\n(the remaining switch arms, 'reject' / 'elisp-error' / 'connect-fail' / 'nil' / 'empty', are byte-identical)"
+    },
+    {
+      "dimension": "Craft",
+      "severity": "minor",
+      "summary": "parseRequest is a single function of about 125 lines with cognitive complexity 53, above the gocognit default of 30. The same pattern, an arity check followed by abs(rest[0]) and error propagation, repeats in the open-file, goto, artifact and finish cases. One small builder per subcommand would make each grammar rule readable on its own. This is advisory: the repo has no .golangci config, so gocognit is opt-in, and the flat switch does read linearly.",
+      "file": "internal/agentipc/request.go",
+      "evidence": "$ golangci-lint run --default none --enable gocyclo,funlen,dupl,errorlint,gocognit,nestif ./cmd/imoogi-agent/... ./internal/agentipc/...\ninternal/agentipc/emacsclient_test.go:275:1: cognitive complexity 31 of func `TestAC14DiscoveryOrder` is high (> 30) (gocognit)\nfunc TestAC14DiscoveryOrder(t *testing.T) {\n^\ninternal/agentipc/request.go:138:1: cognitive complexity 53 of func `parseRequest` is high (> 30) (gocognit)\nfunc parseRequest(args []string, getenv func(string) string, getwd func() (string, error), now time.Time) (*request, error) {\n^\ninternal/agentipc/request_test.go:112:1: cognitive complexity 34 of func `TestAC11SubcommandsBuildEvents` is high (> 30) (gocognit)\nfunc TestAC11SubcommandsBuildEvents(t *testing.T) {\n^\n3 issues:\n* gocognit: 3"
+    },
+    {
+      "dimension": "Craft",
+      "severity": "minor",
+      "summary": "The 'default limit is 5 seconds' subtest spends 5 s of real sleep, and the whole TestAC14CLITimeLimits test takes about 8 s. Resolving the default 5 s limit is already proven in 0 ms by TestTimeoutPrecedence/default using fakeTransport, and killing on timeout is already proven at 1 s by the --timeout 1 subtest. The 5 s case adds most of the cmd package's 9.2 s runtime and no new coverage of logic.",
+      "file": "cmd/imoogi-agent/main_test.go",
+      "evidence": "$ go test -v -count=1 -run 'TestAC14CLITimeLimits|TestAC14TimeoutKillsEmacsclient|TestAC13' ./cmd/imoogi-agent/ ./internal/agentipc/ | grep -E \"^(---|ok|FAIL)|    ---\"\n--- PASS: TestAC14CLITimeLimits (8.01s)\n    --- PASS: TestAC14CLITimeLimits/--timeout_1_kills_a_hung_emacsclient (1.00s)\n    --- PASS: TestAC14CLITimeLimits/--timeout_3_beats_IMOOGI_AGENT_TIMEOUT=1 (2.00s)\n    --- PASS: TestAC14CLITimeLimits/default_limit_is_5_seconds (5.00s)\nok  \tgithub.com/karohani/imoogi-emacs/cmd/imoogi-agent\t9.238s\n\n$ go test -v -count=1 -run 'TestTimeoutPrecedence' ./internal/agentipc/ | grep -E \"^(---|ok)|    ---\"\n--- PASS: TestTimeoutPrecedence (0.00s)\n    --- PASS: TestTimeoutPrecedence/default (0.00s)\n    --- PASS: TestTimeoutPrecedence/environment (0.00s)\n    --- PASS: TestTimeoutPrecedence/empty_environment_is_unset (0.00s)\n    --- PASS: TestTimeoutPrecedence/option_beats_environment (0.00s)\n    --- PASS: TestTimeoutPrecedence/option_ignores_invalid_environment (0.00s)\nok  \tgithub.com/karohani/imoogi-emacs/internal/agentipc\t0.448s"
+    },
+    {
+      "dimension": "Craft",
+      "severity": "minor",
+      "summary": "Dependency injection is done two different ways. Deps injects Getenv and Getwd so request parsing is testable. emacsclient discovery ignores Deps: it reads os.Getenv(\"EMACSCLIENT\") and os.Getenv(\"EMACS_VERSION\") directly, and tests override the mutable package global appBundleCandidates. That leaves two test-substitution mechanisms and package-level state that tests mutate, which rules out t.Parallel for those tests.",
+      "file": "internal/agentipc/emacsclient.go",
+      "evidence": "$ grep -n \"os.Getenv\\|appBundleCandidates = \\|Getenv  *func\\|Getwd  *func\" internal/agentipc/agentipc.go internal/agentipc/emacsclient.go internal/agentipc/emacsclient_test.go\ninternal/agentipc/agentipc.go:39:\tGetenv    func(string) string\ninternal/agentipc/agentipc.go:40:\tGetwd     func() (string, error)\ninternal/agentipc/emacsclient.go:33:var appBundleCandidates = []string{\ninternal/agentipc/emacsclient.go:121:\tif explicit := os.Getenv(\"EMACSCLIENT\"); explicit != \"\" {\ninternal/agentipc/emacsclient.go:132:\tversion := os.Getenv(\"EMACS_VERSION\")\ninternal/agentipc/emacsclient_test.go:30:\tif mode := os.Getenv(fakeModeEnv); mode != \"\" {\ninternal/agentipc/emacsclient_test.go:47:\tif recordPath := os.Getenv(fakeRecordEnv); recordPath != \"\" {\ninternal/agentipc/emacsclient_test.go:262:\tt.Cleanup(func() { appBundleCandidates = saved })\ninternal/agentipc/emacsclient_test.go:263:\tappBundleCandidates = nil\ninternal/agentipc/emacsclient_test.go:265:\t\tappBundleCandidates = append(appBundleCandidates,"
+    },
+    {
+      "dimension": "Craft",
+      "severity": "minor",
+      "summary": "The (min column most-positive-fixnum) guard in imoogi-agent--display has no stated reason. It exists because json-parse-buffer can return a bignum and move-to-column requires a fixnum. Neither the docstring (lines 253-256) nor an inline comment says so. A future reader could remove it as noise and bring back a wrong-type-argument error, which would surface as error:handler.",
+      "file": "modules/development/30-agent.el",
+      "evidence": "$ grep -n \"most-positive-fixnum\" modules/development/30-agent.el\n270:             (move-to-column (1- (min column most-positive-fixnum)))\n(Read of lines 252-256: docstring says only \"When LINE is non-nil, move that window's point to LINE and COLUMN (both 1-based); a line past the end clamps to the line holding `point-max' and a column past the end of the line clamps to the line end.\" There is no mention of bignum/fixnum.)"
+    },
+    {
+      "dimension": "Craft",
+      "severity": "minor",
+      "summary": "There is duplication in the ERT test file. imoogi-agent-test--receive-json and imoogi-agent-test--receive-file differ only in which entry function they call, so they could be one helper that takes the function as an argument. ac10 repeats the same input-stub lambda 7 times inside cl-letf. Temp-file cleanup is also mixed: the file defines the imoogi-agent-test--with-temp-files macro, which handles directories, but ac04, ac09 and ac10 hand-roll unwind-protect plus delete-directory.",
+      "file": "tests/agent-test.el",
+      "evidence": "$ diff <(sed -n '65,72p' tests/agent-test.el) <(sed -n '74,81p' tests/agent-test.el); echo \"diff exit=$?\"\n1,2c1,2\n< (defun imoogi-agent-test--receive-json (json)\n<   \"Receive JSON through the string entry point; return (STATUS MESSAGES NEW-LOG).\"\n---\n> (defun imoogi-agent-test--receive-file (file)\n>   \"Receive FILE through the file entry point; return (STATUS MESSAGES NEW-LOG).\"\n5c5\n<          (status (imoogi-agent-receive-json json)))\n---\n>          (status (imoogi-agent-receive-file file)))\ndiff exit=1\n--- identical input-stub lambdas in ac10 ---\n$ grep -c '(lambda (&rest _) (cl-incf inputs) (error \"Input requested\"))' tests/agent-test.el\n7\n$ grep -n \"imoogi-agent-test--with-temp-files (\\|delete-directory dir t\" tests/agent-test.el\n83:(defmacro imoogi-agent-test--with-temp-files (vars &rest body)\n118:    (imoogi-agent-test--with-temp-files (file)\n292:    (imoogi-agent-test--with-temp-files (big exact dir)\n372:  (imoogi-agent-test--with-temp-files (file)\n396:  (imoogi-agent-test--with-temp-files (file)\n467:      (delete-directory dir t))))\n473:  (imoogi-agent-test--with-temp-files (file)\n565:      (delete-directory dir t))))\n651:      (delete-directory dir t))))"
+    },
+    {
+      "dimension": "Craft",
+      "severity": "minor",
+      "summary": "The module header comment says \"Only defvar/defconst/defun forms live here\". The file has zero defvar forms and has top-level imoogi-require, require and provide forms. The intent (no side-effecting top-level forms, so reloading is harmless) still holds, but the literal claim is wrong.",
+      "file": "modules/development/30-agent.el",
+      "evidence": "$ grep -n \"^(\" modules/development/30-agent.el | grep -v \"^[0-9]*:(def\"\n15:(imoogi-require \"30-agent\")\n17:(require 'subr-x)\n362:(provide 'imoogi-agent)\n--- defvar count ---\n$ grep -c \"^(defvar\" modules/development/30-agent.el\n0\n$ grep -n \"defvar/defconst/defun\" modules/development/30-agent.el\n10:;; defvar/defconst/defun forms live here so that loading the file twice (the"
+    },
+    {
+      "dimension": "Consistency",
+      "severity": "minor",
+      "summary": "The two helper-process fake emacsclients in the same SPEC follow different conventions. They use different env var names (IMOOGI_AGENT_FAKE_MODE/IMOOGI_AGENT_FAKE_RECORD vs IMOOGI_AGENT_TEST_FAKE_MODE/IMOOGI_AGENT_TEST_FAKE_MARKER), a different trigger env, a different accept-mode token (\"ok\" vs \"\"), different helper names (useFake vs useFakeEmacsclient) and different record structs (Argv0 in only one). Go cannot share unexported test helpers across packages, so some duplication is structural. The naming and token drift is not forced by that.",
+      "file": "internal/agentipc/emacsclient_test.go",
+      "evidence": "$ sed -n 1,108p internal/agentipc/emacsclient_test.go   (excerpt, verbatim)\nconst (\n\tfakeModeEnv   = \"IMOOGI_AGENT_FAKE_MODE\"\n\tfakeRecordEnv = \"IMOOGI_AGENT_FAKE_RECORD\"\n)\ntype fakeRecord struct {\n\tArgv0   string   `json:\"argv0\"`\n...\n\tif mode := os.Getenv(fakeModeEnv); mode != \"\" {\n...\n\tcase \"ok\":\n\t\t_, _ = os.Stdout.WriteString(\"\\\"ok\\\"\\n\")\n...\nfunc useFake(t *testing.T, mode string) string {\n\n$ sed -n 1,60p cmd/imoogi-agent/main_test.go   (excerpt, verbatim)\nconst (\n\tfakeMarkerEnv = \"IMOOGI_AGENT_TEST_FAKE_MARKER\"\n\tfakeModeEnv   = \"IMOOGI_AGENT_TEST_FAKE_MODE\"\n)\ntype fakeRecord struct {\n\tArgs    []string `json:\"args\"`\n...\n\tif marker := os.Getenv(fakeMarkerEnv); marker != \"\" {\n...\n\tcase \"\":\n\t\t_, _ = os.Stdout.WriteString(\"\\\"ok\\\"\\n\")\n\n$ sed -n 60,116p cmd/imoogi-agent/main_test.go   (excerpt, verbatim)\nfunc useFakeEmacsclient(t *testing.T, mode ...string) string {"
+    },
+    {
+      "dimension": "Consistency",
+      "severity": "minor",
+      "summary": "Transport.Deliver takes `timeout time.Duration` and creates its own context from context.Background(). Sibling packages that run subprocesses or block (internal/setup, internal/fetch, internal/orgpreview, internal/anki/planner) take a caller-supplied context.Context, and no sibling function takes a timeout Duration parameter. This also differs from the repo Go rule 'Use context.Context as first parameter for functions that may block'. Behaviour is correct; the API shape differs from its neighbours.",
+      "file": "internal/agentipc/agentipc.go",
+      "evidence": "$ grep -n 'Deliver(event \\[\\]byte, timeout time.Duration)\\|context.WithTimeout(context.Background()' internal/agentipc/agentipc.go internal/agentipc/emacsclient.go; echo \"## sibling funcs with timeout time.Duration param: $(grep -rnE 'func .*(timeout|Timeout) time\\.Duration' --include='*.go' internal cmd | grep -v _test | grep -vc 'agentipc\\|imoogi-agent')\"; grep -n 'func runProbe\\|exec.CommandContext' internal/setup/setup.go\ninternal/agentipc/agentipc.go:32:\tDeliver(event []byte, timeout time.Duration) Result\ninternal/agentipc/emacsclient.go:49:func (Emacsclient) Deliver(event []byte, timeout time.Duration) Result {\ninternal/agentipc/emacsclient.go:64:\tctx, cancel := context.WithTimeout(context.Background(), timeout)\n## sibling funcs with timeout time.Duration param: 0\n338:func runProbes(ctx context.Context, opts Options, probes []lang.Probe, bundleRoot, localRoot string) error {\n355:func runProbe(ctx context.Context, probe lang.Probe, bundleRoot, probeRoot string) error {\n356:\tcmd := exec.CommandContext(ctx, probe.Command, probe.Args...)\n\n$ grep -rn 'func .*context\\.Context' --include='*.go' internal cmd | grep -v _test | grep -v 'agentipc\\|imoogi-agent' | wc -l\n      41"
+    },
+    {
+      "dimension": "Consistency",
+      "severity": "minor",
+      "summary": "This is history metadata, not code style, and it does not affect the score. The SPEC's M4 commit carries a placeholder author identity, unlike every other commit in recent history. The cause is traced to an unrelated provenance-test git env leak into .git/config during the pre-commit hook, fixed later in 43f88d1. It is not fixable without rewriting pushed history.",
+      "file": "internal/agentipc/emacsclient.go",
+      "evidence": "$ git log --format='%h %an <%ae> | %s' -40 | awk -F'|' '{print $1}' | awk '{$1=\"\"; print}' | sort | uniq -c\n  39  jay <a@gmail.com>\n   1  t <t@example.invalid>\n\n$ git log --format='%h %an <%ae> %cn <%ce> | %s' --author='example.invalid'\n4b72a86 t <t@example.invalid> jay <a@gmail.com> | feat(SPEC-AGENTIPC-001): M4 imoogi-agent emacsclient discovery, delivery and exit codes\n\n$ git show --stat 43f88d1 | head -20   (excerpt)\n    fix(provenance): keep git subprocesses out of the hook's repository\n    ... gitFixture's `git init` / `git config user.*` in a\n    temp dir wrote core.bare=true and user t <t@example.invalid> into the\n    real .git/config whenever the pre-commit gate ran go test"
+    }
+  ],
+  "evidence_gaps": [
+    {
+      "dimension": "Functionality",
+      "gap": "AC-015 real Emacs 30.2 daemon smoke test was NOT run. It spawns daemons and sockets, which is outside read-only scope. Expected results are exit=0 message, exit=3 bad-path, exit=3 not-loaded, exit=1 no socket, and no leftover event file. The only record of these is a self-report in .moai/specs/SPEC-AGENTIPC-001/progress.md:106 ('smoke_emacs_30_2: exit=0 | exit=3 bad-path | exit=3 not-loaded | exit=1 ...'). Partial support: a batch probe of the exact evalExpr in real Emacs 30.2 with server-eval-args-left bound gave: P1 not-loaded: \"error:not-loaded\" left=nil; P2 loaded+missing file: \"error:unreadable\" left=nil; P3 loaded+non-JSON file: \"error:parse\". The emacsclient-to-server transport itself was not exercised."
+    },
+    {
+      "dimension": "Functionality",
+      "gap": "AC-015 `make build-agent && test -x bin/imoogi-agent` was not run literally, to avoid writing into the repo's bin/ (currently absent and gitignored: `.gitignore:29:/bin/ bin/imoogi-agent`). Substitutes that were run: `make -n build-agent` printed 'mkdir -p bin / go build -o bin/imoogi-agent ./cmd/imoogi-agent' with exit=0. `go build -o $SCRATCH/imoogi-agent ./cmd/imoogi-agent && test -x ...` gave 'build+test-x exit=0'. The built binary printed 'imoogi-agent dev' (exit 0) for --version, exited 1 for a non-executable EMACSCLIENT, and exited 2 for 'finish done'."
+    },
+    {
+      "dimension": "Functionality",
+      "gap": "AC-003(c) on a file WITHOUT a trailing newline was verified only by reading the code: goto point-max, then move-to-column measured from line start. No such tracked file existed to probe, and creating one would violate read-only scope. The ERT test covers only a file with a trailing newline."
+    },
+    {
+      "dimension": "Functionality",
+      "gap": "AC-009's full rejection list (relative, missing, dir, symlink-dir, dangling, /dev/null, TRAMP) is exercised only for open-file. goto-location, artifact-created and task-finished are tested only with the missing-path case. They share imoogi-agent--resolve-paths, so the policy is uniform by construction, but that uniformity was checked by reading the code rather than by running each rejection case."
+    },
+    {
+      "dimension": "Security",
+      "gap": "Read-only mode ruled out creating an on-disk symlink to a TRAMP path. That case was simulated in memory by advising file-symlink-p on a fake path. In both TRAMP states (preloaded, and not preloaded with the recorder hooked via with-eval-after-load 'tramp-sh) the receiver returned error:bad-path and tramp-maybe-open-connection was never called. The positive control (file-exists-p on /ssh:nonexistent.invalid:/etc/hosts) did record OPEN-CONNECTION, so the probe is valid. A real on-disk symlink was not exercised."
+    },
+    {
+      "dimension": "Security",
+      "gap": "The late-read substitution race (finding 1) was not reproduced. It needs a multi-user Linux host with a shared /tmp and file creation, neither of which was available. The finding rests on code reading, plan D-10 and the TMPDIR permissions shown."
+    },
+    {
+      "dimension": "Security",
+      "gap": "The EMACSCLIENT cwd-binary case (finding 2) was not executed, because that needs a planted ./emacsclient file. The behavior is shown by the source and by the existing test TestAC14DiscoveryIgnoresDirectoriesAndRelativePath."
+    },
+    {
+      "dimension": "Security",
+      "gap": "Only Emacs 30.2 was used for probes; server-eval-args-left behavior on Emacs 31.1 was not run. Emacs older than 30.1 (no server-eval-args-left, so the path argument might be evaluated) is out of scope in the spec and was not tested."
+    },
+    {
+      "dimension": "Security",
+      "gap": "The AC-015 real-daemon smoke test (exit codes against a live Emacs server, event-file cleanup after timeout) was not run."
+    },
+    {
+      "dimension": "Security",
+      "gap": "Side effects of visiting non-text payload files were not exercised: jka-compr running gzip, doc-view running Ghostscript, vc-refresh-state running git in the payload's repo, and deferred eglot-ensure starting language servers. These come from the environment and config, not from the receiver itself."
+    },
+    {
+      "dimension": "Security",
+      "gap": "Tests run and passing: `go test ./cmd/imoogi-agent/... ./internal/agentipc/... -count=1` gave 'ok ... cmd/imoogi-agent 9.321s' and 'ok ... internal/agentipc 2.430s'. The ERT selector ^imoogi-agent-ac gave 'Ran 12 tests, 12 results as expected, 0 unexpected' (exit=0). These cover the security-relevant AC-006 to AC-010 (parse, schema, size, path policy, no-prompt, no local eval)."
+    },
+    {
+      "dimension": "Craft",
+      "gap": "`make ci-local` and `make build-agent` were not run: both write build artifacts into bin/, which read-only mode forbids. AC-015 wiring is a Functionality concern, but repo-wide ci-local lint and format compliance for the changed files is unverified."
+    },
+    {
+      "dimension": "Craft",
+      "gap": "shellcheck is not installed (`which shellcheck` returned 'shellcheck not found'), so scripts/install.sh and tests/setup-toolchain-test.sh got no static shell lint. They were only read by eye; both use `set -euo pipefail`."
+    },
+    {
+      "dimension": "Craft",
+      "gap": "The repo has no .golangci config (`ls .golangci*` matched nothing). golangci-lint therefore ran with its default linters (0 issues) plus an ad-hoc opt-in run of gocognit, gocyclo, funlen, dupl, errorlint and nestif. There is no repo-defined lint policy to check compliance against."
+    },
+    {
+      "dimension": "Craft",
+      "gap": "checkdoc was run only on modules/development/30-agent.el, not on tests/agent-test.el. Its 11 nits (two spaces after a period, imperative mood, missing ';;; Commentary:') were not raised as findings because neighbouring modules show the same pattern (28-clipboard: 13, 26-project-notes: 43, 29-org-roam: 1)."
+    },
+    {
+      "dimension": "Craft",
+      "gap": "The real-daemon smoke test (AC-015: Emacs 30.2 server with exit 0/3/3/1) was not attempted, because it needs a running Emacs server and writes socket state."
+    },
+    {
+      "dimension": "Craft",
+      "gap": "Positive evidence for the score (not findings): the Go tests pass with 100.0% coverage in cmd/imoogi-agent and 97.2% in internal/agentipc. The ERT selector ^imoogi-agent-ac ran 12 of 12 passing. go vet exited 0, `gofmt -l` produced no output, golangci-lint default reported 0 issues, and byte-compiling 30-agent.el in memory gave 0 warnings (the method was confirmed to surface a planted 'not known to be defined' warning)."
+    },
+    {
+      "dimension": "Consistency",
+      "gap": "Project docs were not reconciled; this is deferred to sync by plan.md §7 and is not scored. .moai/project/structure.md:5/:86/:170, tech.md:8/:55/:66/:112/:155, product.md:9 and codemaps/overview.md:8/:14 still say 'six Go CLIs' / 'Every Go CLI is invoked by Emacs as a subprocess', and README.md has no imoogi-agent section. progress.md §E.4 reads '_<pending sync-phase>_', so doc consistency after sync cannot be verified yet."
+    },
+    {
+      "dimension": "Consistency",
+      "gap": "No root .golangci.yml exists ('no matches found: .golangci*'). `golangci-lint run ./cmd/imoogi-agent/... ./internal/agentipc/...` returned '0 issues.' with default linters only, so it was not compared against a project lint configuration."
+    },
+    {
+      "dimension": "Consistency",
+      "gap": "`make ci-local` was not run end to end in this session. Its parts were run individually: gofmt -l (empty) and go vet (exit 0) on the new packages, `go test ./cmd/imoogi-agent/... ./internal/agentipc/... -count=1` (both ok), ERT `^imoogi-agent-ac` (Ran 12 tests, 12 results as expected), the module-layout ERT (1/1 passed) and `bash tests/setup-toolchain-test.sh` (PASS)."
+    },
+    {
+      "dimension": "Consistency",
+      "gap": "AC-AIPC-015's real-daemon smoke against Emacs 30.2/31.1 servers was not re-run here. Only progress.md's recorded claim exists for it."
+    },
+    {
+      "dimension": "Consistency",
+      "gap": "Byte-compile and checkdoc were checked in memory on Emacs 30.2 only; Emacs 31.1 compile behaviour was not checked."
+    }
+  ]
+}
