@@ -113,19 +113,50 @@ type selected struct {
 	pyright config.LockComponent
 }
 
+type componentRole int
+
+const (
+	componentRoleUnknown componentRole = iota
+	componentRoleNode
+	componentRoleTypeScript
+	componentRoleTypeScriptLanguageServer
+	componentRolePythonLanguageServer
+)
+
+// SupportsComponent reports whether this provider owns installation for a
+// component. Validation of required component sets happens in selectComponents.
+func SupportsComponent(component config.LockComponent) bool {
+	return classifyComponent(component) != componentRoleUnknown
+}
+
+func classifyComponent(component config.LockComponent) componentRole {
+	switch {
+	case component.Name == "node" || component.Kind == "node-runtime":
+		return componentRoleNode
+	case component.Name == "typescript" || component.Kind == "typescript-sdk":
+		return componentRoleTypeScript
+	case component.Name == "typescript-language-server" || component.Kind == "typescript-language-server":
+		return componentRoleTypeScriptLanguageServer
+	// node 를 공유하는 서버라 이 provider 가 함께 설치한다. 선택 사항이므로
+	// 없어도 실패시키지 않는다.
+	case component.Name == "basedpyright" || component.Kind == "python-language-server":
+		return componentRolePythonLanguageServer
+	default:
+		return componentRoleUnknown
+	}
+}
+
 func selectComponents(components []config.LockComponent) (selected, error) {
 	var out selected
 	for _, component := range components {
-		switch {
-		case component.Name == "node" || component.Kind == "node-runtime":
+		switch classifyComponent(component) {
+		case componentRoleNode:
 			out.node = component
-		case component.Name == "typescript" || component.Kind == "typescript-sdk":
+		case componentRoleTypeScript:
 			out.typescript = component
-		case component.Name == "typescript-language-server" || component.Kind == "typescript-language-server":
+		case componentRoleTypeScriptLanguageServer:
 			out.tls = component
-		case component.Name == "basedpyright" || component.Kind == "python-language-server":
-			// node 를 공유하는 서버라 이 provider 가 함께 설치한다. 선택 사항이므로
-			// 없어도 실패시키지 않는다.
+		case componentRolePythonLanguageServer:
 			out.pyright = component
 		}
 	}

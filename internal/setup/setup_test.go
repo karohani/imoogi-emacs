@@ -16,6 +16,8 @@ import (
 
 	"github.com/karohani/imoogi-emacs/internal/config"
 	"github.com/karohani/imoogi-emacs/internal/lang"
+	"github.com/karohani/imoogi-emacs/internal/lang/golang"
+	"github.com/karohani/imoogi-emacs/internal/lang/typescript"
 )
 
 const lockHelperEnv = "IMOOGI_SETUP_LOCK_HELPER"
@@ -459,6 +461,87 @@ func TestProbeFailureDoesNotActivate(t *testing.T) {
 	assertNoTransactionTemp(t, root)
 }
 
+func TestDefaultProviderFactoryClassifiesLanguageComponents(t *testing.T) {
+	tests := []struct {
+		name       string
+		components []config.LockComponent
+		want       []string
+	}{
+		{
+			name: "go first even when typescript components appear first",
+			components: []config.LockComponent{
+				providerComponent("node", "node-runtime"),
+				providerComponent("typescript", "typescript-sdk"),
+				providerComponent("typescript-language-server", "typescript-language-server"),
+				providerComponent("gopls", "go-language-server"),
+			},
+			want: []string{"go:gopls", "typescript:node,typescript,typescript-language-server"},
+		},
+		{
+			name: "kind aliases with non-canonical names route to typescript provider",
+			components: []config.LockComponent{
+				providerComponent("runtime", "node-runtime"),
+				providerComponent("sdk", "typescript-sdk"),
+				providerComponent("server", "typescript-language-server"),
+				providerComponent("py", "python-language-server"),
+			},
+			want: []string{"typescript:runtime,sdk,server,py"},
+		},
+		{
+			name: "canonical typescript names route regardless of kind aliases",
+			components: []config.LockComponent{
+				providerComponent("node", "custom-runtime"),
+				providerComponent("typescript", "custom-sdk"),
+				providerComponent("typescript-language-server", "custom-server"),
+				providerComponent("basedpyright", "custom-python"),
+			},
+			want: []string{"typescript:node,typescript,typescript-language-server,basedpyright"},
+		},
+		{
+			name: "name takes go precedence over conflicting typescript kind",
+			components: []config.LockComponent{
+				providerComponent("gopls", "node-runtime"),
+				providerComponent("node", "node-runtime"),
+				providerComponent("typescript", "typescript-sdk"),
+				providerComponent("typescript-language-server", "typescript-language-server"),
+			},
+			want: []string{"go:gopls", "typescript:node,typescript,typescript-language-server"},
+		},
+		{
+			name: "empty name classified by kind preserves processed-name behavior",
+			components: []config.LockComponent{
+				providerComponent("", "node-runtime"),
+				providerComponent("", "unsupported-kind"),
+			},
+			want: []string{"typescript:"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			providers, err := DefaultProviderFactory(config.ResolvedLock{Components: tt.components})
+			if err != nil {
+				t.Fatalf("DefaultProviderFactory failed: %v", err)
+			}
+			if got := describeProviders(t, providers); strings.Join(got, "|") != strings.Join(tt.want, "|") {
+				t.Fatalf("providers = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDefaultProviderFactoryRejectsUnsupportedComponent(t *testing.T) {
+	_, err := DefaultProviderFactory(config.ResolvedLock{Components: []config.LockComponent{
+		providerComponent("mystery", "strange"),
+	}})
+	if err == nil {
+		t.Fatal("DefaultProviderFactory succeeded with unsupported component")
+	}
+	if got, want := err.Error(), `no provider for component "mystery" kind "strange"`; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
 type fakeProvider struct {
 	components []config.LockComponent
 	onRun      func()
@@ -494,6 +577,30 @@ func fakeProviderFactory(t *testing.T, onRun func()) ProviderFactory {
 }
 
 func okProbe(context.Context, lang.Probe, string, string) error { return nil }
+
+func providerComponent(name, kind string) config.LockComponent {
+	return config.LockComponent{Name: name, Kind: kind}
+}
+
+func describeProviders(t *testing.T, providers []lang.Provider) []string {
+	t.Helper()
+	out := make([]string, 0, len(providers))
+	for _, provider := range providers {
+		switch p := provider.(type) {
+		case golang.GoplsProvider:
+			out = append(out, "go:"+p.Component.Name)
+		case typescript.Provider:
+			names := make([]string, 0, len(p.Components))
+			for _, component := range p.Components {
+				names = append(names, component.Name)
+			}
+			out = append(out, "typescript:"+strings.Join(names, ","))
+		default:
+			t.Fatalf("unexpected provider type %T", provider)
+		}
+	}
+	return out
+}
 
 func makeRepo(t *testing.T, name string, components ...string) string {
 	t.Helper()

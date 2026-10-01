@@ -279,7 +279,7 @@ func DefaultProviderFactory(lock config.ResolvedLock) ([]lang.Provider, error) {
 		case component.Name == "gopls" || component.Kind == "go-language-server":
 			providers = append(providers, golang.New(component))
 			processed[component.Name] = struct{}{}
-		case isTypeScriptComponent(component):
+		case typescript.SupportsComponent(component):
 			tsComponents = append(tsComponents, component)
 			processed[component.Name] = struct{}{}
 		}
@@ -293,23 +293,6 @@ func DefaultProviderFactory(lock config.ResolvedLock) ([]lang.Provider, error) {
 		}
 	}
 	return providers, nil
-}
-
-func isTypeScriptComponent(component config.LockComponent) bool {
-	switch {
-	case component.Name == "node" || component.Kind == "node-runtime":
-		return true
-	case component.Name == "typescript" || component.Kind == "typescript-sdk":
-		return true
-	case component.Name == "typescript-language-server" || component.Kind == "typescript-language-server":
-		return true
-	// node 런타임을 공유하므로 같은 provider 가 설치한다(typescript 와 무관한
-	// 서버지만, 묶는 기준은 언어가 아니라 런타임이다).
-	case component.Name == "basedpyright" || component.Kind == "python-language-server":
-		return true
-	default:
-		return false
-	}
 }
 
 func verifyArtifacts(repoRoot string, components []config.LockComponent) error {
