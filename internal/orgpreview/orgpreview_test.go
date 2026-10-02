@@ -931,3 +931,36 @@ func TestHeadingColorsPreserveOrgDepth(t *testing.T) {
 		}
 	}
 }
+
+func TestOrgWebURLsPreserveSchemeAndSlashes(t *testing.T) {
+	for _, source := range []string{"https://example.com/a/b", "http://example.com", "[[https://example.com/a/b]]", "[[https://example.com][site]]"} {
+		t.Run(source, func(t *testing.T) {
+			doc, err := (FallbackParser{}).Parse(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out := (Renderer{}).Render(doc)
+			target := "https://example.com"
+			if strings.Contains(source, "/a/b") {
+				target += "/a/b"
+			}
+			if strings.HasPrefix(source, "http:") {
+				target = "http://example.com"
+			}
+			if !strings.Contains(out, `href="`+target+`"`) {
+				t.Fatalf("URL lost: %s", out)
+			}
+			label := target
+			if strings.Contains(source, "[site]") {
+				label = "site"
+			}
+			if !strings.Contains(out, ">"+label+"</a>") || strings.Contains(out, "<em") {
+				t.Fatalf("URL markup corrupted: %s", out)
+			}
+		})
+	}
+	doc, _ := (FallbackParser{}).Parse("https://example.com/a/b and /italic/")
+	if !contains(flattenTypes(doc.Nodes), "emphasis") {
+		t.Fatal("ordinary emphasis lost")
+	}
+}

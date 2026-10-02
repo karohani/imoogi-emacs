@@ -31,7 +31,7 @@ var (
 	headingRE     = regexp.MustCompile(`^(\*+)\s+(.*)$`)
 	listItemRE    = regexp.MustCompile(`^(\s*)([-+*]|\d+[.)])\s+(.*)$`)
 	orgCheckboxRE = regexp.MustCompile(`^\[([ Xx-])\](?:[ \t]+|$)(.*)$`)
-	linkRE        = regexp.MustCompile(`\[\[file:([^\]\n]+)\](?:\[([^\]\n]*)\])?\]`)
+	linkRE        = regexp.MustCompile(`\[\[((?:file:|https?://)[^\]\n]+)\](?:\[([^\]\n]*)\])?\]|(https?://[^\s<>\[\]]+)`)
 	propertyRE    = regexp.MustCompile(`^:([[:alnum:]_@#%+.-]+):[[:space:]]*(.*)$`)
 )
 
@@ -307,13 +307,22 @@ func parseInline(text string, base int, ids map[string]int) []Node {
 	pos := 0
 	for _, loc := range linkRE.FindAllStringSubmatchIndex(text, -1) {
 		emitText(pos, loc[0])
-		target := text[loc[2]:loc[3]]
+		target := ""
+		if loc[2] >= 0 {
+			target = text[loc[2]:loc[3]]
+		} else {
+			target = text[loc[6]:loc[7]]
+		}
+		local := strings.HasPrefix(target, "file:")
+		if local {
+			target = strings.TrimPrefix(target, "file:")
+		}
 		label := target
 		if loc[4] >= 0 {
 			label = text[loc[4]:loc[5]]
 		}
 		linkType := "link"
-		if isImageTarget(target) {
+		if local && isImageTarget(target) {
 			linkType = "image"
 		}
 		nodes = append(nodes, Node{

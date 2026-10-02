@@ -189,6 +189,13 @@ func (r Renderer) renderLink(b *strings.Builder, n Node) {
 	if label == "" {
 		label = target
 	}
+	if parsed, err := url.Parse(target); err == nil &&
+		(parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != "" {
+		r.openMappedAttrs(b, "a", n, map[string]string{"href": target})
+		b.WriteString(escapeText(label))
+		b.WriteString("</a>")
+		return
+	}
 	resolved, err := r.Assets.Resolve(r.BaseFile, target)
 	if err != nil {
 		r.openMapped(b, "a", n)
