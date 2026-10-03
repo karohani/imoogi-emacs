@@ -128,6 +128,12 @@ boot.el의 `dolist`에서 정의된 순서대로 로딩된다. 의존성이 있�
     project note는 읽기 전용 inactive 상태로 유지한다. 물리 unmount는 mount/device
     preflight와 저장 성공 뒤에만 플랫폼 adapter를 호출한다.
     Git common directory로 worktree의 기록을 공유하고 재개 지점은 경로별로 나눈다.
+    기존 프로젝트 문서 연결 목록은 `cmd/imoogi-notes`가 `catalog`/`index`/`lookup`/
+    `backlinks` JSON 요청으로 제공한다. CLI는 `{project_id, notes_root, tasks_file,
+    excluded_roots}` scope별 SQLite 캐시를 만들고 파일 내용 해시가 같은 Org parse
+    결과를 재사용한다. Emacs는 비동기 subprocess와 live buffer overlay만 넘기며,
+    overlay 내용은 캐시에 저장하지 않는다. 캐시는 disposable projection이고 Org
+    문서가 source of truth다.
 
 언어별 LSP 설정은 `modules/development/lang/` 아래의 이름 기반 파일로 분리한다. `17-lsp`가
 `*.el`을 정렬해 자동 로드하고 각 파일의 실패를 격리하므로, 새 언어는

@@ -40,6 +40,8 @@
                                     t "-test\\.el\\'"))
   (load test-file nil t))
 
-(ert-run-tests-batch-and-exit)
+(ert-run-tests-batch-and-exit
+ (let ((selector (getenv "IMOOGI_ERT_SELECTOR")))
+   (if (and selector (> (length selector) 0)) selector t)))
 
 ;;; run.el ends here

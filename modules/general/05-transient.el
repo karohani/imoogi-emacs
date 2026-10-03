@@ -34,6 +34,10 @@
     (imoogi-transient-window . "창 이동, 분할, 크기 조절과 버퍼 열기를 한곳에서 다룹니다.")
     (imoogi-transient-project . "프로젝트 탐색과 Perspective 작업공간을 전환·관리합니다.")
     (imoogi-project-notes-transient . "프로젝트의 개요·할 일·작업 기록과 영속 Scratch를 엽니다.")
+    (imoogi-project-notes-link-transient . "작업과 문서 산출물 사이의 링크를 만들고 고칩니다.")
+    (imoogi-project-notes-setup-transient . "프로젝트 문서 폴더와 학습 노트 작업공간을 준비합니다.")
+    (imoogi-project-notes-external-transient . "외장 노트 루트와 소스 연결 상태를 관리합니다.")
+    (imoogi-project-notes-repair-transient . "프로젝트 번호와 문서 구조를 점검하고 복구합니다.")
     (imoogi-transient-zoom . "현재 버퍼의 글자 크기를 확대·축소합니다.")
     (imoogi-transient-git . "현재 저장소의 상태·이력·차이를 Magit으로 확인합니다.")
     (imoogi-transient-code . "현재 코드의 심볼, 구조, 정의와 참조를 단계별로 탐색합니다.")
@@ -334,40 +338,78 @@ Window parameters stay in place, so Treemacs side-window layouts remain valid."
     ("F" "목록에서 제거" project-forget-project)
     ("q" "종료" transient-quit-one)]])
 
-(transient-define-prefix imoogi-project-notes-transient ()
-  "프로젝트 기록과 영속 Scratch 메뉴."
-  :column-widths '(23 23 23 25)
-  [["프로젝트 기록 --------"
-    ("o" "개요" imoogi-project-notes-open)
-    ("t" "할 일" imoogi-project-notes-tasks)
-    ("j" "작업 기록·재개" imoogi-project-notes-journal)
-    ("l" "프로젝트·학습 목록" imoogi-project-notes-list)]
-   ["실행·산출물 ----------"
-    ("a" "현재 Focus Agenda" imoogi-project-notes-agenda-current)
-    ("A" "전체 Dashboard" imoogi-project-notes-agenda-all)
-    ("r" "TODO 산출물 생성" imoogi-project-notes-create-artifact)]
-   ["번호·복구 --------------"
-    ("U" "상위 번호로 승격" imoogi-project-notes-raiseup)
-    ("T" "구조 doctor" imoogi-project-notes-setup-doctor)]
-   ["준비 -----------------"
-    ("s" "작업 폴더에 문서 연결" imoogi-project-notes-setup)
-    ("S" "학습 노트·작업공간 생성" imoogi-project-notes-setup-study)
-    ("d" "개발 문서 추가" imoogi-project-notes-add-document)
-    ("n" "영속 Scratch" imoogi-notes-scratch)
+(transient-define-prefix imoogi-project-notes-link-transient ()
+  "프로젝트 작업과 산출물 문서의 링크 메뉴."
+  :column-widths '(24 24)
+  [["문서 연결"
+    ("1" "기존 문서 연결" imoogi-project-notes-link-artifact)
+    ("2" "문서 연결 해제" imoogi-project-notes-unlink-artifact)
+    ("3" "문서 링크 삽입" imoogi-project-notes-insert-link)]
+   ["복구/이관"
+    ("4" "누락 링크 교체" imoogi-project-notes-repair-link)
+    ("5" "링크 저장 재시도" imoogi-project-notes-retry-link-operation)
+    ("6" "다른 프로젝트로 복사" imoogi-project-notes-copy-to-project)
+    ("b" "뒤로" transient-quit-one)
+    ("q" "종료" transient-quit-all)]])
+
+(transient-define-prefix imoogi-project-notes-setup-transient ()
+  "프로젝트 문서 폴더와 학습 노트 준비 메뉴."
+  :column-widths '(28)
+  [["프로젝트 준비"
+    ("p" "작업 폴더에 문서 연결" imoogi-project-notes-setup)
+    ("s" "학습 노트·작업공간 생성" imoogi-project-notes-setup-study)
     ("h" "폴더 구조 안내" imoogi-project-notes-setup-guide)
-    ("q" "종료" transient-quit-one)]
-   ["외장 노트 ------------"
+    ("b" "뒤로" transient-quit-one)
+    ("q" "종료" transient-quit-all)]])
+
+(transient-define-prefix imoogi-project-notes-external-transient ()
+  "외장 노트 루트와 소스 연결 메뉴."
+  :column-widths '(24 24)
+  [["루트"
     ("+" "루트 등록" imoogi-project-notes-mounted-root-add)
     ("L" "루트·노트 목록" imoogi-project-notes-mounted-root-list)
     ("E" "루트 설정 편집" imoogi-project-notes-mounted-root-edit)
     ("R" "다시 검색" imoogi-project-notes-mounted-root-refresh)
-    ("v" "로컬 노트를 외장으로 이동" imoogi-project-notes-move-to-mounted-root)
-    ("D" "루트 등록 제거" imoogi-project-notes-mounted-root-remove)
-    ("x" "노트 세션 분리" imoogi-project-notes-detach)
-    ("u" "장치 안전 unmount" imoogi-project-notes-unmount-device)
+    ("D" "루트 등록 제거" imoogi-project-notes-mounted-root-remove)]
+   ["소스/세션"
+    ("v" "외장으로 이동" imoogi-project-notes-move-to-mounted-root)
+    ("x" "세션 분리" imoogi-project-notes-detach)
+    ("u" "안전 unmount" imoogi-project-notes-unmount-device)
     ("c" "소스 재연결" imoogi-project-notes-reconnect-source)
     ("C" "소스 연결 해제" imoogi-project-notes-clear-source-override)
-    ("e" "현재 버퍼 강제 편집" imoogi-project-notes-force-edit-session)]])
+    ("e" "강제 편집" imoogi-project-notes-force-edit-session)
+    ("b" "뒤로" transient-quit-one)
+    ("q" "종료" transient-quit-all)]])
+
+(transient-define-prefix imoogi-project-notes-repair-transient ()
+  "프로젝트 번호와 구조 복구 메뉴."
+  :column-widths '(20)
+  [["구조/복구"
+    ("U" "상위 번호로 승격" imoogi-project-notes-raiseup)
+    ("T" "구조 doctor" imoogi-project-notes-setup-doctor)
+    ("b" "뒤로" transient-quit-one)
+    ("q" "종료" transient-quit-all)]])
+
+(transient-define-prefix imoogi-project-notes-transient ()
+  "프로젝트 기록과 영속 Scratch 메뉴."
+  :column-widths '(22 22 22)
+  [["바로 실행"
+    ("o" "개요" imoogi-project-notes-open)
+    ("t" "할 일" imoogi-project-notes-tasks)
+    ("j" "작업 기록·재개" imoogi-project-notes-journal)
+    ("a" "현재 Focus Agenda" imoogi-project-notes-agenda-current)
+    ("A" "전체 Dashboard" imoogi-project-notes-agenda-all)
+    ("l" "프로젝트·학습 목록" imoogi-project-notes-list)]
+   ["문서·산출물"
+    ("r" "TODO 산출물 생성" imoogi-project-notes-create-artifact)
+    ("d" "개발 문서 추가" imoogi-project-notes-add-document)
+    ("n" "영속 Scratch" imoogi-notes-scratch)
+    ("L" "문서 연결" imoogi-project-notes-link-transient)]
+   ["관리"
+    ("s" "프로젝트 준비" imoogi-project-notes-setup-transient)
+    ("e" "외장 노트" imoogi-project-notes-external-transient)
+    ("R" "구조·복구" imoogi-project-notes-repair-transient)
+    ("q" "종료" transient-quit-all)]])
 
 ;; 텍스트 확대/축소
 (defun imoogi-transient-zoom-reset ()

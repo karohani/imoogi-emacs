@@ -90,6 +90,55 @@
      (persp-kill                       transient--do-exit)
      (project-forget-project           transient--do-exit)
      (transient-quit-one               transient--do-quit-one))
+    (imoogi-project-notes-transient
+     (imoogi-project-notes-open        transient--do-exit)
+     (imoogi-project-notes-tasks       transient--do-exit)
+     (imoogi-project-notes-journal     transient--do-exit)
+     (imoogi-project-notes-agenda-current transient--do-exit)
+     (imoogi-project-notes-agenda-all  transient--do-exit)
+     (imoogi-project-notes-list        transient--do-exit)
+     (imoogi-project-notes-create-artifact transient--do-exit)
+     (imoogi-project-notes-add-document transient--do-exit)
+     (imoogi-notes-scratch             transient--do-exit)
+     (imoogi-project-notes-link-transient transient--do-stack)
+     (imoogi-project-notes-setup-transient transient--do-stack)
+     (imoogi-project-notes-external-transient transient--do-stack)
+     (imoogi-project-notes-repair-transient transient--do-stack)
+     (transient-quit-all               transient--do-quit-all))
+    (imoogi-project-notes-link-transient
+     (imoogi-project-notes-link-artifact transient--do-exit)
+     (imoogi-project-notes-unlink-artifact transient--do-exit)
+     (imoogi-project-notes-insert-link transient--do-exit)
+     (imoogi-project-notes-repair-link transient--do-exit)
+     (imoogi-project-notes-retry-link-operation transient--do-exit)
+     (imoogi-project-notes-copy-to-project transient--do-exit)
+     (transient-quit-one               transient--do-quit-one)
+     (transient-quit-all               transient--do-quit-all))
+    (imoogi-project-notes-setup-transient
+     (imoogi-project-notes-setup       transient--do-exit)
+     (imoogi-project-notes-setup-study transient--do-exit)
+     (imoogi-project-notes-setup-guide transient--do-exit)
+     (transient-quit-one               transient--do-quit-one)
+     (transient-quit-all               transient--do-quit-all))
+    (imoogi-project-notes-external-transient
+     (imoogi-project-notes-mounted-root-add transient--do-exit)
+     (imoogi-project-notes-mounted-root-list transient--do-exit)
+     (imoogi-project-notes-mounted-root-edit transient--do-exit)
+     (imoogi-project-notes-mounted-root-refresh transient--do-exit)
+     (imoogi-project-notes-mounted-root-remove transient--do-exit)
+     (imoogi-project-notes-move-to-mounted-root transient--do-exit)
+     (imoogi-project-notes-detach      transient--do-exit)
+     (imoogi-project-notes-unmount-device transient--do-exit)
+     (imoogi-project-notes-reconnect-source transient--do-exit)
+     (imoogi-project-notes-clear-source-override transient--do-exit)
+     (imoogi-project-notes-force-edit-session transient--do-exit)
+     (transient-quit-one               transient--do-quit-one)
+     (transient-quit-all               transient--do-quit-all))
+    (imoogi-project-notes-repair-transient
+     (imoogi-project-notes-raiseup     transient--do-exit)
+     (imoogi-project-notes-setup-doctor transient--do-exit)
+     (transient-quit-one               transient--do-quit-one)
+     (transient-quit-all               transient--do-quit-all))
     (imoogi-transient-zoom                        ; §C.3
      (text-scale-increase              transient--do-call)
      (text-scale-decrease              transient--do-call)
@@ -462,6 +511,25 @@ q 만 예외 — 접두 맵에서는 eglot-shutdown 이지만 transient 에서 q
                     'transient-quit-one)))
     (transient--stack-zap)))
 
+(ert-deftest imoogi-project-notes-submenus-return-or-quit-as-a-stack ()
+  "Project-note child menus use b for parent return and q for full exit."
+  (unwind-protect
+      (progn
+        (transient-setup 'imoogi-project-notes-transient)
+        (execute-kbd-macro (kbd "L"))
+        (should (eq (imoogi-test--active-prefix)
+                    'imoogi-project-notes-link-transient))
+        (execute-kbd-macro (kbd "b"))
+        (should (eq (imoogi-test--active-prefix)
+                    'imoogi-project-notes-transient))
+        (execute-kbd-macro (kbd "e"))
+        (should (eq (imoogi-test--active-prefix)
+                    'imoogi-project-notes-external-transient))
+        (execute-kbd-macro (kbd "q"))
+        (should-not (imoogi-test--active-prefix))
+        (should-not transient--stack))
+    (transient--stack-zap)))
+
 (ert-deftest imoogi-window-swap-exchanges-dedicated-window-state ()
   "A dedicated scratch window can exchange places with an editor buffer."
   (let ((config (current-window-configuration))
@@ -687,7 +755,12 @@ tests/assert-boot.el 이 잘못 읽는다(실제로 발생했던 버그).
   (dolist (prefix '(imoogi-transient-master imoogi-transient-window
                     imoogi-transient-project imoogi-transient-zoom
                     imoogi-transient-git imoogi-transient-code
-                    imoogi-transient-lsp imoogi-transient-tab))
+                    imoogi-transient-lsp imoogi-transient-tab
+                    imoogi-project-notes-transient
+                    imoogi-project-notes-link-transient
+                    imoogi-project-notes-setup-transient
+                    imoogi-project-notes-external-transient
+                    imoogi-project-notes-repair-transient))
     (let ((layout (format "%S" (get prefix (quote transient--layout)))))
       (dolist (ch (string-to-list imoogi-test--ambiguous-width-chars))
         (should-not (string-search (char-to-string ch) layout))))))

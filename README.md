@@ -581,6 +581,41 @@ Emacs가 로컬 등록·Agenda 경로·열린 버퍼 경로를 새 위치로 바
 중앙 `agenda.org`를 사용하는 프로젝트는 노트 폴더 밖에 TODO 원본이 있으므로 이동
 대상에서 제외한다. 외장 이동은 프로젝트 자체의 `tasks.org`를 쓰는 항목에 지원된다.
 
+같은 `imoogi-notes` 바이너리는 기존 프로젝트 문서 연결 목록도 만든다. Emacs는
+문서 선택 전에 `catalog` 요청을 비동기로 보내고, CLI는 프로젝트 문서 폴더의 Org
+파일과 현재 프로젝트 작업 파일을 스캔해 SQLite 캐시에 저장한다. 이후 파일 내용
+해시가 같으면 파싱 결과를 재사용하므로 Emacs 쪽 인터페이스는 가볍게 유지된다.
+캐시는 `index`, `lookup`, `backlinks` 요청도 같은 JSON 입출력으로 처리한다.
+
+```bash
+printf '%s\n' '{
+  "version": 1,
+  "operation": "catalog",
+  "scope": {
+    "project_id": "261003-source",
+    "notes_root": "/Users/me/project-notes/261003-source",
+    "tasks_file": "/Users/me/project-notes/261003-source/tasks.org",
+    "excluded_roots": []
+  },
+  "overlays": [
+    {
+      "path": "/Users/me/project-notes/261003-source/artifacts/draft.org",
+      "text": "* Draft\n:PROPERTIES:\n:ID: DRAFT\n:END:\n",
+      "revision": 42
+    }
+  ]
+}' | bin/imoogi-notes
+```
+
+SQLite 파일은 재생성 가능한 파생 캐시일 뿐이고 Org 파일이 진실의 원천이다. 기본
+위치는 CLI가 정하는 운영체제 사용자 캐시 디렉터리 아래 `imoogi-emacs/notes/`다.
+필요하면 `imoogi-project-notes-cache-directory`나 JSON 요청의 `cache_dir`로 위치를
+명시할 수 있다. 저장하지 않은 열린 버퍼는 `overlays`로 함께 보내므로 디스크에
+쓰지 않고도 중복 ID와 링크 후보를 볼 수 있지만, overlay 내용은 캐시에 남기지
+않는다. 파일 이름 변경·삭제는 다음 catalog/index 때 캐시에서 정리된다. 최초
+실행이나 많은 파일이 바뀐 경우에는 여전히 디스크를 한 번 훑고 해시를 계산해야
+하므로 무한한 문서 수에서 즉시 끝난다고 보장하지 않는다.
+
 목록에는 장치 표시 이름이 함께 나오며 study note는 노트 폴더 자체를 작업공간으로
 열 수 있다. project note의 원래 소스 폴더가 현재 PC에 없으면 `[비활성]`으로
 표시되고 문서는 읽기 전용으로 열린다. `c`로 이 PC의 소스 폴더를 재연결할 수 있고,

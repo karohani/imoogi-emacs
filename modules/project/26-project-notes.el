@@ -37,6 +37,14 @@ a navigation file.  Changing this option does not migrate existing projects."
   :type '(repeat string)
   :group 'imoogi-project-notes)
 
+(defcustom imoogi-project-notes-cache-directory nil
+  "Optional directory passed to the imoogi-notes document cache CLI.
+When nil, Emacs omits cache_dir and lets the CLI choose its own user cache
+location.  This keeps project folders free of editor-local cache databases."
+  :type '(choice (const :tag "Use CLI default user cache" nil)
+                 directory)
+  :group 'imoogi-project-notes)
+
 (defvar-local imoogi-project-notes-source-root nil
   "Source root associated with the current project notes buffer.")
 
@@ -69,6 +77,18 @@ a navigation file.  Changing this option does not migrate existing projects."
 (defvar imoogi-project-notes-move-runner-function
   #'imoogi-project-notes--run-move-command
   "Function that asks the Go helper to move a verified note tree.")
+
+(defvar imoogi-project-notes--pending-link-operation nil
+  "Recoverable in-memory project document relation operation.")
+
+(defvar imoogi-project-notes--document-cache-snapshot nil
+  "Dynamic CLI catalog snapshot used to avoid project-wide Emacs scans.")
+
+(defvar imoogi-project-notes--pending-cache-process nil
+  "Current asynchronous imoogi-notes catalog process.")
+
+(defvar imoogi-project-notes--snapshot-live-record-cache (make-hash-table :test #'equal)
+  "Live buffer records layered over a CLI document cache snapshot.")
 
 (defconst imoogi-project-notes--metadata-file-name ".imoogi-project.json"
   "File that identifies the kind and layout of a project-notes directory.")
@@ -475,16 +495,30 @@ Git worktrees share the same key by using Git's common directory."
   (let ((value (alist-get key alist)))
     (and (stringp value) value)))
 
-(defun imoogi-project-notes--new-note-id ()
-  "Return a new portable note id."
-  (upcase (org-id-new)))
+(defvar imoogi-project-notes--note-id-counter 0
+  "Process-local salt for portable note IDs.")
+
+(defun imoogi-project-notes--new-note-id (&optional seed)
+  "Return a new portable note id, salted by optional SEED."
+  (setq imoogi-project-notes--note-id-counter
+        (1+ imoogi-project-notes--note-id-counter))
+  (upcase
+   (if (fboundp 'uuidgen-4)
+       (uuidgen-4)
+     (secure-hash
+      'sha1
+      (format "%s\0%s\0%s\0%s\0%s\0%s"
+              seed
+              imoogi-project-notes--note-id-counter
+              (float-time) (random) (emacs-pid) (user-uid))))))
 
 (defun imoogi-project-notes--entry-note-id (entry &optional create)
   "Return ENTRY's portable note id.
 When CREATE is non-nil, create and store a new id in ENTRY when absent."
   (or (imoogi-project-notes--alist-string 'note-id entry)
       (and create
-           (let ((note-id (imoogi-project-notes--new-note-id)))
+           (let ((note-id (imoogi-project-notes--new-note-id
+                           (format "%S" entry))))
              (setf (alist-get 'note-id entry) note-id)
              note-id))))
 
@@ -1461,7 +1495,7 @@ The folder lives below BASE, or `imoogi-project-notes-directory' when nil."
     (imoogi-project-notes--template "tasks" values)))
 
 (defun imoogi-project-notes--write-new-file (file content)
-  "Create FILE with CONTENT, preserving any existing file or unsaved buffer."
+  "Create FILE with CONTENT when absent, preserving any existing file."
   (when (file-directory-p file)
     (signal 'file-error (list "Project notes file path is a directory" file)))
   (when-let* ((buffer (find-buffer-visiting file)))
@@ -1469,7 +1503,20 @@ The folder lives below BASE, or `imoogi-project-notes-directory' when nil."
       (user-error "먼저 저장하거나 버퍼를 닫으세요: %s" file)))
   (unless (file-exists-p file)
     (make-directory (file-name-directory file) t)
-    (write-region content nil file nil 'silent nil 'excl)))
+    (write-region content nil file nil 'silent)))
+
+(defun imoogi-project-notes--exclusive-create-file (file content)
+  "Create new FILE with CONTENT, failing when FILE already exists."
+  (when (file-directory-p file)
+    (signal 'file-error (list "Project notes file path is a directory" file)))
+  (when-let* ((buffer (find-buffer-visiting file)))
+    (when (buffer-modified-p buffer)
+      (user-error "먼저 저장하거나 버퍼를 닫으세요: %s" file)))
+  (when (file-exists-p file)
+    (signal 'file-already-exists
+            (list "Project notes file already exists" file)))
+  (make-directory (file-name-directory file) t)
+  (write-region content nil file nil 'silent nil 'excl))
 
 (defun imoogi-project-notes--metadata-data (entry created-at)
   "Return folder metadata for ENTRY created at CREATED-AT."
@@ -1972,6 +2019,14 @@ files are never overwritten."
 ;; without this, the `let' below would be a lexical binding Treemacs never sees.
 (defvar treemacs-override-workspace)
 
+(defun imoogi-project-notes--set-treemacs-struct-slot
+    (type slot object value)
+  "Set Treemacs struct TYPE SLOT on OBJECT to VALUE at runtime."
+  (let ((offset (cl-struct-slot-offset type slot)))
+    (if (eq (cl-struct-sequence-type type) 'list)
+        (setcar (nthcdr offset object) value)
+      (aset object offset value))))
+
 (defun imoogi-project-notes--replace-treemacs-root (old-root new-root)
   "Replace OLD-ROOT with NEW-ROOT in existing Treemacs workspaces.
 Never remove a workspace or a project: every project whose path is OLD-ROOT
@@ -1993,10 +2048,11 @@ or failed with \"arrayp, nil\" (a window showing another workspace)."
            (failures nil))
       (dolist (workspace (treemacs-workspaces))
         (dolist (project (treemacs-workspace->projects workspace))
-          (when (equal old-path
-                       (directory-file-name
-                        (expand-file-name (treemacs-project->path project))))
-            (setf (cl-struct-slot-value 'treemacs-project 'path project) new-path)
+            (when (equal old-path
+                         (directory-file-name
+                          (expand-file-name (treemacs-project->path project))))
+            (imoogi-project-notes--set-treemacs-struct-slot
+             'treemacs-project 'path project new-path)
             (cl-pushnew workspace changed :test #'eq))))
       (when changed
         ;; Open Treemacs windows still index projects by the old path, so a
@@ -2070,10 +2126,10 @@ or failed with \"arrayp, nil\" (a window showing another workspace)."
     (let ((workspace (car workspace-state))
           (projects (cdr workspace-state)))
       (dolist (project-state projects)
-        (setf (cl-struct-slot-value 'treemacs-project 'path (car project-state))
-              (cdr project-state)))
-      (setf (cl-struct-slot-value 'treemacs-workspace 'projects workspace)
-            (mapcar #'car projects))))
+        (imoogi-project-notes--set-treemacs-struct-slot
+         'treemacs-project 'path (car project-state) (cdr project-state)))
+      (imoogi-project-notes--set-treemacs-struct-slot
+       'treemacs-workspace 'projects workspace (mapcar #'car projects))))
   (when (and treemacs-before (fboundp 'treemacs--persist))
     (treemacs--persist))
   (dolist (buffer-file buffer-files)
@@ -2976,6 +3032,372 @@ no enabled mounted root is currently attached."
         (when (file-exists-p stderr-file)
           (delete-file stderr-file)))))
 
+(defun imoogi-project-notes--cache-command ()
+  "Return the executable command for project-note cache operations."
+  (imoogi-project-notes--move-command))
+
+(defun imoogi-project-notes--cache-command-or-error ()
+  "Return the project note CLI command or signal an actionable error."
+  (or (imoogi-project-notes--cache-command)
+      (user-error
+       "imoogi-notes 실행 파일이 없습니다. 저장소에서 make build-notes를 실행하세요")))
+
+(defun imoogi-project-notes--cache-available-p ()
+  "Return non-nil when the project note CLI is available."
+  (not (null (imoogi-project-notes--cache-command))))
+
+(defun imoogi-project-notes--cache-dir (entry)
+  "Return the cache directory for ENTRY."
+  (when (and (stringp imoogi-project-notes-cache-directory)
+             (> (length imoogi-project-notes-cache-directory) 0))
+    (file-truename imoogi-project-notes-cache-directory)))
+
+(defun imoogi-project-notes--cache-scope (entry)
+  "Return the CLI cache scope for ENTRY."
+  (let* ((notes-dir (file-truename
+                     (imoogi-project-notes--alist-string 'notes-dir entry)))
+         (tasks-file (file-truename
+                      (imoogi-project-notes--alist-string 'tasks-file entry)))
+         (project-id (imoogi-project-notes--entry-derived-note-id entry))
+         (excluded-roots
+          (cl-remove-if
+           (lambda (dir)
+             (or (string= dir notes-dir)
+                 (not (file-in-directory-p dir notes-dir))))
+           (mapcar (lambda (candidate)
+                     (file-truename
+                      (imoogi-project-notes--alist-string 'notes-dir candidate)))
+                   (imoogi-project-notes--all-entries)))))
+    `((project_id . ,project-id)
+      (notes_root . ,notes-dir)
+      (tasks_file . ,tasks-file)
+      (excluded_roots . ,(vconcat excluded-roots)))))
+
+(defun imoogi-project-notes--cache-buffer-overlay-p (entry buffer)
+  "Return non-nil when BUFFER belongs to ENTRY's note scope."
+  (when-let* ((file (buffer-file-name buffer)))
+    (let ((notes-dir (imoogi-project-notes--alist-string 'notes-dir entry))
+          (tasks-file (imoogi-project-notes--alist-string 'tasks-file entry)))
+      (or (file-in-directory-p file notes-dir)
+          (string= (file-truename file) (file-truename tasks-file))))))
+
+(defun imoogi-project-notes--cache-overlays (entry)
+  "Return live visiting buffer overlays for ENTRY."
+  (let (overlays)
+    (dolist (buffer (buffer-list) (nreverse overlays))
+      (when (imoogi-project-notes--cache-buffer-overlay-p entry buffer)
+        (with-current-buffer buffer
+          (when buffer-file-name
+            (push `((path . ,(file-truename buffer-file-name))
+                    (text . ,(imoogi-project-notes--buffer-string buffer))
+                    (revision . ,(number-to-string (buffer-modified-tick))))
+                  overlays)))))))
+
+(defun imoogi-project-notes--cache-request (entry operation &optional id)
+  "Return an imoogi-notes cache request for ENTRY OPERATION."
+  `((version . 1)
+    (operation . ,operation)
+    (scope . ,(imoogi-project-notes--cache-scope entry))
+    (overlays . ,(vconcat (imoogi-project-notes--cache-overlays entry)))
+    ,@(when-let* ((cache-dir (imoogi-project-notes--cache-dir entry)))
+        `((cache_dir . ,cache-dir)))
+    ,@(when id `((id . ,id)))))
+
+(defun imoogi-project-notes--read-json-response-current-buffer ()
+  "Read a JSON object from the current buffer as an alist."
+  (goto-char (point-min))
+  (let ((json-object-type 'alist)
+        (json-array-type 'list)
+        (json-key-type 'symbol)
+        (json-false :json-false))
+    (json-read)))
+
+(defun imoogi-project-notes--cache-response-ok-p (response)
+  "Return non-nil when RESPONSE is a successful cache response."
+  (or (eq (alist-get 'ok response) t)
+      (string= (alist-get 'status response) "ok")))
+
+(defun imoogi-project-notes--cache-response-message (response)
+  "Return a human-readable message from cache RESPONSE."
+  (or (alist-get 'message response)
+      (alist-get 'code response)
+      (when-let* ((error (car (alist-get 'errors response))))
+        (or (alist-get 'message error)
+            (alist-get 'code error)))
+      "unknown"))
+
+(defun imoogi-project-notes--cache-call-sync (entry operation &optional id)
+  "Synchronously call the note cache CLI for ENTRY OPERATION."
+  (let* ((command (imoogi-project-notes--cache-command-or-error))
+         (stderr-file (make-temp-file "imoogi-notes-cache-stderr-"))
+         response status)
+    (unwind-protect
+        (with-temp-buffer
+          (insert (json-encode
+                   (imoogi-project-notes--cache-request entry operation id)))
+          (setq status
+                (apply #'call-process-region
+                       (point-min) (point-max) (car command)
+                       t (list t stderr-file) nil (cdr command)))
+          (setq response (imoogi-project-notes--read-json-response-current-buffer))
+          (unless (and (integerp status) (zerop status))
+            (user-error "imoogi-notes cache 실행 실패: %s"
+                        (string-trim
+                         (with-temp-buffer
+                           (insert-file-contents stderr-file)
+                           (buffer-string)))))
+          (unless (imoogi-project-notes--cache-response-ok-p response)
+            (user-error "imoogi-notes cache 오류: %s"
+                        (imoogi-project-notes--cache-response-message response)))
+          response)
+      (when (file-exists-p stderr-file)
+        (delete-file stderr-file)))))
+
+(defun imoogi-project-notes--kill-cache-process ()
+  "Kill the pending note cache process, if any."
+  (let ((process imoogi-project-notes--pending-cache-process))
+    (setq imoogi-project-notes--pending-cache-process nil)
+    (when (process-live-p process)
+      (delete-process process))))
+
+;;;###autoload
+(defun imoogi-project-notes-cancel-cache-operation ()
+  "Cancel the current asynchronous project note cache operation."
+  (interactive)
+  (imoogi-project-notes--kill-cache-process)
+  (message "프로젝트 문서 캐시 요청을 취소했습니다"))
+
+(defun imoogi-project-notes--cache-call-async (entry operation callback &optional id)
+  "Call note cache CLI asynchronously for ENTRY OPERATION, then CALLBACK."
+  (let* ((command (imoogi-project-notes--cache-command-or-error))
+         (stdout-buffer (generate-new-buffer " *imoogi-notes-cache*"))
+         (stderr-buffer (generate-new-buffer " *imoogi-notes-cache-stderr*"))
+         (request (json-encode
+                   (imoogi-project-notes--cache-request entry operation id)))
+         process
+         sentinel)
+    (imoogi-project-notes--kill-cache-process)
+    (setq sentinel
+          (lambda (proc _event)
+            (unless (process-live-p proc)
+              (let ((current
+                     (eq proc imoogi-project-notes--pending-cache-process)))
+                (when current
+                  (setq imoogi-project-notes--pending-cache-process nil))
+                (unwind-protect
+                    (when current
+                      (if (and (eq (process-status proc) 'exit)
+                               (zerop (process-exit-status proc)))
+                          (with-current-buffer stdout-buffer
+                            (let ((response
+                                   (imoogi-project-notes--read-json-response-current-buffer)))
+                              (if (imoogi-project-notes--cache-response-ok-p response)
+                                  (funcall callback response)
+                                (display-warning
+                                 'imoogi
+                                 (format "프로젝트 문서 캐시 오류: %s"
+                                         (imoogi-project-notes--cache-response-message
+                                          response))
+                                 :warning))))
+                        (display-warning
+                         'imoogi
+                         (format "프로젝트 문서 캐시 프로세스가 실패했습니다: %s"
+                                 (process-exit-status proc))
+                         :warning)))
+                  (when (buffer-live-p stdout-buffer)
+                    (kill-buffer stdout-buffer))
+                  (when (buffer-live-p stderr-buffer)
+                    (kill-buffer stderr-buffer)))))))
+    (setq process
+          (make-process
+           :name "imoogi-notes-cache"
+           :buffer stdout-buffer
+           :command command
+           :connection-type 'pipe
+           :stderr stderr-buffer
+           :noquery t))
+    (setq imoogi-project-notes--pending-cache-process process)
+    (set-process-sentinel process sentinel)
+    (if (process-live-p process)
+        (progn
+          (process-send-string process request)
+          (process-send-eof process))
+      (funcall sentinel process "finished\n"))
+    process))
+
+(defun imoogi-project-notes--snapshot-file (file)
+  "Return canonical FILE for snapshot comparison."
+  (and (stringp file) (file-truename file)))
+
+(defun imoogi-project-notes--document-file-eligible-p (entry file)
+  "Return non-nil when FILE is an eligible project document for ENTRY."
+  (let* ((truename (imoogi-project-notes--snapshot-file file))
+         (root (file-truename
+                (imoogi-project-notes--alist-string 'notes-dir entry)))
+         (tasks-file (file-truename
+                      (imoogi-project-notes--alist-string 'tasks-file entry)))
+         (local-tasks (file-truename (expand-file-name "tasks.org" root)))
+         (metadata-root
+          (when truename
+            (locate-dominating-file
+             (file-name-directory truename)
+             imoogi-project-notes--metadata-file-name)))
+         (nested-roots
+          (cl-remove-if
+           (lambda (dir) (string= dir root))
+           (mapcar (lambda (candidate)
+                     (file-truename
+                      (imoogi-project-notes--alist-string 'notes-dir candidate)))
+                   (imoogi-project-notes--all-entries)))))
+    (and truename
+         (imoogi-project-notes--org-file-p truename)
+         (file-in-directory-p truename root)
+         (not (member truename (list tasks-file local-tasks)))
+         (or (null metadata-root)
+             (string= (file-truename metadata-root) root))
+         (not (cl-some (lambda (nested-root)
+                         (file-in-directory-p truename nested-root))
+                       nested-roots))
+         (not (imoogi-project-notes--hidden-path-p truename root))
+         (not (string-match-p
+               "\\`\\(?:assets\\|\\.git\\|\\.cache\\|vendor\\)/"
+               (file-relative-name truename root))))))
+
+(defun imoogi-project-notes--snapshot-buffer-document-p (entry file snapshot-files)
+  "Return non-nil when FILE should be treated as a document in ENTRY."
+  (let ((truename (imoogi-project-notes--snapshot-file file)))
+    (and (imoogi-project-notes--document-file-eligible-p entry truename)
+         (or (member truename snapshot-files)
+             (find-buffer-visiting truename)))))
+
+(defun imoogi-project-notes--buffer-id-occurrence-map ()
+  "Return current buffer Org ID properties grouped by ID."
+  (let (occurrences)
+    (save-excursion
+      (save-restriction
+        (widen)
+        (goto-char (point-min))
+        (while (re-search-forward "^[[:space:]]*:ID:[[:space:]]+\\([^[:space:]\n]+\\)"
+                                  nil t)
+          (let ((id (match-string 1))
+                (id-beg (match-beginning 1)))
+            (when (imoogi-project-notes--node-property-at-position-p
+                   "ID" id-beg)
+              (push id-beg (alist-get id occurrences nil nil #'string=)))))))
+    (mapcar (lambda (entry)
+              (cons (car entry) (nreverse (cdr entry))))
+            (nreverse occurrences))))
+
+(defun imoogi-project-notes--snapshot-live-buffer-record
+    (entry buffer snapshot-files)
+  "Return tick-cached live BUFFER record for ENTRY."
+  (when-let* ((file (buffer-file-name buffer))
+              (truename (imoogi-project-notes--snapshot-file file)))
+    (let* ((key (list (imoogi-project-notes--entry-derived-note-id entry)
+                      (imoogi-project-notes--snapshot-file
+                       (imoogi-project-notes--alist-string 'notes-dir entry))
+                      (imoogi-project-notes--snapshot-file
+                       (imoogi-project-notes--alist-string 'tasks-file entry))
+                      truename
+                      buffer))
+           (tick (buffer-modified-tick buffer))
+           (cached (gethash key imoogi-project-notes--snapshot-live-record-cache)))
+      (if (and cached (= tick (alist-get 'tick cached)))
+          (alist-get 'record cached)
+        (let (record)
+          (with-current-buffer buffer
+            (when (derived-mode-p 'org-mode)
+              (let* ((tasks-file
+                      (file-truename
+                       (imoogi-project-notes--alist-string 'tasks-file entry)))
+                     (document-p
+                      (imoogi-project-notes--snapshot-buffer-document-p
+                       entry truename snapshot-files))
+                     (tasks-p (string= truename tasks-file))
+                     (doc
+                      (and document-p
+                           (condition-case err
+                               (pcase-let ((`(,id ,title ,kind)
+                                            (imoogi-project-notes--document-identity)))
+                                 `((file . ,truename)
+                                   ,@(when id `((id . ,id)))
+                                   ,@(when title `((title . ,title)))
+                                   ,@(when kind `((kind . ,kind)))))
+                             (user-error
+                              `((file . ,truename)
+                                (kind . legacy-root)
+                                (identity_error . ,(error-message-string err))))))))
+                (when (or document-p tasks-p)
+                  (setq record
+                        `((file . ,truename)
+                          (document . ,(or doc
+                                           (and document-p `((file . ,truename)))))
+                          (occurrences . ,(imoogi-project-notes--buffer-id-occurrence-map))))))))
+          (puthash key `((tick . ,tick) (record . ,record))
+                   imoogi-project-notes--snapshot-live-record-cache)
+          record)))))
+
+(defun imoogi-project-notes--snapshot-live-records (entry)
+  "Return current live buffer records layered over the active snapshot."
+  (let ((snapshot-files
+         (mapcar (lambda (doc)
+                   (imoogi-project-notes--snapshot-file (alist-get 'file doc)))
+                 (append (alist-get 'documents
+                                    imoogi-project-notes--document-cache-snapshot)
+                         nil)))
+        records)
+    (dolist (buffer (buffer-list) (nreverse records))
+      (when (imoogi-project-notes--cache-buffer-overlay-p entry buffer)
+        (when-let* ((record
+                     (imoogi-project-notes--snapshot-live-buffer-record
+                      entry buffer snapshot-files)))
+          (push record records))))))
+
+(defun imoogi-project-notes--snapshot-documents (entry)
+  "Return document entries from the active CLI snapshot plus live buffers."
+  (let ((docs (copy-sequence
+               (append (alist-get 'documents
+                                  imoogi-project-notes--document-cache-snapshot)
+                       nil)))
+        (records (imoogi-project-notes--snapshot-live-records entry)))
+    (dolist (record records)
+      (when-let* ((doc (alist-get 'document record)))
+        (let ((file (alist-get 'file record)))
+          (setq docs
+                (cl-remove file docs
+                           :key (lambda (item)
+                                  (imoogi-project-notes--snapshot-file
+                                   (alist-get 'file item)))
+                           :test #'string=))
+          (push doc docs))))
+    (nreverse docs)))
+
+(defun imoogi-project-notes--snapshot-occurrences (entry id)
+  "Return occurrence conses for ID from snapshot plus live buffers."
+  (let* ((records (imoogi-project-notes--snapshot-live-records entry))
+         (live-files (mapcar (lambda (record) (alist-get 'file record))
+                             records))
+         (occurrences
+          (mapcar
+           (lambda (occurrence)
+             (cons (alist-get 'file occurrence)
+                   (alist-get 'position occurrence)))
+           (append (alist-get (intern id)
+                              (alist-get 'occurrences
+                                         imoogi-project-notes--document-cache-snapshot))
+                   nil))))
+    (setq occurrences
+          (cl-remove-if
+           (lambda (occurrence)
+             (member (imoogi-project-notes--snapshot-file (car occurrence))
+                     live-files))
+           occurrences))
+    (dolist (record records)
+      (dolist (pos (alist-get id (alist-get 'occurrences record)
+                              nil nil #'string=))
+        (push (cons (alist-get 'file record) pos) occurrences)))
+    (nreverse occurrences)))
+
 (defun imoogi-project-notes--retarget-buffers
     (buffers old-directory new-directory entry)
   "Retarget BUFFERS from OLD-DIRECTORY to NEW-DIRECTORY and attach ENTRY."
@@ -3415,21 +3837,2258 @@ When CATEGORY is non-nil, apply it as a global category filter."
             number (1+ number)))
     candidate))
 
+(defun imoogi-project-notes--org-file-p (file)
+  "Return non-nil when FILE is an Org file."
+  (and (stringp file) (string-match-p "\\.org\\'" file)))
+
+(defun imoogi-project-notes--hidden-path-p (file root)
+  "Return non-nil when FILE below ROOT has a hidden path component."
+  (cl-some (lambda (part)
+             (and (> (length part) 0)
+                  (eq (aref part 0) ?.)))
+           (split-string (file-relative-name file root) "/" t)))
+
+(defun imoogi-project-notes--project-document-files (entry)
+  "Return project document Org files eligible for document linking."
+  (if imoogi-project-notes--document-cache-snapshot
+      (mapcar (lambda (doc) (alist-get 'file doc))
+              (imoogi-project-notes--snapshot-documents entry))
+    (let ((root (file-truename
+                 (imoogi-project-notes--alist-string 'notes-dir entry))))
+      (cl-remove-if-not
+       (lambda (file)
+         (imoogi-project-notes--document-file-eligible-p entry file))
+       (directory-files-recursively root "\\.org\\'")))))
+
+(defun imoogi-project-notes--buffer-string-hash (&optional buffer)
+  "Return a stable hash for BUFFER's text."
+  (with-current-buffer (or buffer (current-buffer))
+    (secure-hash 'sha1 (buffer-substring-no-properties (point-min) (point-max)))))
+
+(defun imoogi-project-notes--file-string-hash (file)
+  "Return a stable hash for FILE's content."
+  (with-temp-buffer
+    (insert-file-contents file)
+    (secure-hash 'sha1 (buffer-string))))
+
+(defun imoogi-project-notes--file-string (file)
+  "Return FILE's content as a string."
+  (with-temp-buffer
+    (insert-file-contents file)
+    (buffer-string)))
+
+(defun imoogi-project-notes--buffer-string (&optional buffer)
+  "Return BUFFER's text without properties."
+  (with-current-buffer (or buffer (current-buffer))
+    (buffer-substring-no-properties (point-min) (point-max))))
+
+(defun imoogi-project-notes--file-buffer (file)
+  "Return an Org buffer visiting FILE."
+  (let ((buffer (find-file-noselect file)))
+    (with-current-buffer buffer
+      (unless (derived-mode-p 'org-mode)
+        (org-mode)))
+    buffer))
+
+(defun imoogi-project-notes--org-title ()
+  "Return the current Org buffer title or first useful heading."
+  (or (save-excursion
+        (goto-char (point-min))
+        (when (re-search-forward "^#\\+TITLE:[[:space:]]*\\(.+\\)$" nil t)
+          (string-trim (match-string 1))))
+      (save-excursion
+        (goto-char (point-min))
+        (when (re-search-forward org-heading-regexp nil t)
+          (org-get-heading t t t t)))
+      (file-name-base (or buffer-file-name (buffer-name)))))
+
+(defun imoogi-project-notes--preamble-id-position ()
+  "Return point at a file-level ID value in the Org preamble, or nil."
+  (save-excursion
+    (goto-char (point-min))
+    (let ((limit (or (save-excursion
+                       (re-search-forward org-heading-regexp nil t))
+                     (point-max))))
+      (catch 'found
+        (while (re-search-forward "^[[:space:]]*:ID:[[:space:]]+\\([^[:space:]\n]+\\)"
+                                  limit t)
+          (let ((pos (match-beginning 1)))
+            (when (imoogi-project-notes--node-property-at-position-p
+                   "ID" pos)
+              (throw 'found pos))))
+        nil))))
+
+(defun imoogi-project-notes--node-property-at-position-p (key pos)
+  "Return non-nil when POS is inside an Org node property named KEY."
+  (save-match-data
+    (save-excursion
+      (goto-char pos)
+      (let ((context (org-element-context)))
+        (and (eq (org-element-type context) 'node-property)
+             (string= (org-element-property :key context) key))))))
+
+(defun imoogi-project-notes--preamble-id ()
+  "Return the file-level ID in the Org preamble, or nil."
+  (when-let* ((pos (imoogi-project-notes--preamble-id-position)))
+    (save-excursion
+      (goto-char pos)
+      (string-trim
+       (buffer-substring-no-properties
+        pos (line-end-position))))))
+
+(defun imoogi-project-notes--top-level-id-candidates ()
+  "Return recognized top-level legacy artifact ID candidates."
+  (let (candidates)
+    (org-with-wide-buffer
+     (org-map-entries
+      (lambda ()
+        (when (and (= (org-outline-level) 1)
+                   (not (string= (org-get-heading t t t t) "Link"))
+                   (org-entry-get (point) "TYPE"))
+          (when-let* ((id (org-entry-get (point) "ID")))
+            (push (list id (org-get-heading t t t t) (point)) candidates))))
+      nil 'file))
+    (nreverse candidates)))
+
+(defun imoogi-project-notes--document-identity (&optional create)
+  "Return (ID TITLE KIND) for the current document.
+When CREATE is non-nil, add a file-level ID if no unambiguous identity exists."
+  (or (when-let* ((id (imoogi-project-notes--preamble-id)))
+        (list id (imoogi-project-notes--org-title) 'file))
+      (let ((candidates (imoogi-project-notes--top-level-id-candidates)))
+        (cond
+         ((= (length candidates) 1)
+          (list (caar candidates) (cadar candidates) 'legacy-root))
+         ((> (length candidates) 1)
+          (user-error "문서 ID 후보가 여러 개라 선택할 수 없습니다: %s"
+                      (or buffer-file-name (buffer-name))))
+         (create
+          (let ((id (imoogi-project-notes--new-note-id)))
+            (save-excursion
+              (goto-char (point-min))
+              (insert ":PROPERTIES:\n:ID:       " id "\n:END:\n\n"))
+            (list id (imoogi-project-notes--org-title) 'file)))))))
+
+(defun imoogi-project-notes--document-info (file &optional create)
+  "Return document info for FILE, creating a document ID when CREATE is non-nil."
+  (with-current-buffer (imoogi-project-notes--file-buffer file)
+    (pcase-let ((`(,id ,title ,kind)
+                 (imoogi-project-notes--document-identity create)))
+      `((file . ,(expand-file-name file))
+        (id . ,id)
+        (title . ,title)
+        (kind . ,kind)))))
+
+(defun imoogi-project-notes--document-catalog (entry &optional create)
+  "Return current project document catalog for ENTRY.
+When CREATE is non-nil, cataloging may assign IDs to opened candidates."
+  (if (and imoogi-project-notes--document-cache-snapshot (not create))
+      (imoogi-project-notes--snapshot-documents entry)
+    (mapcar (lambda (file)
+              (imoogi-project-notes--document-info file create))
+            (imoogi-project-notes--project-document-files entry))))
+
+(defun imoogi-project-notes--validate-document-target-file (entry file operation)
+  "Return canonical FILE when it is a valid document target for ENTRY."
+  (unless file
+    (user-error "%s 대상 문서가 없습니다" operation))
+  (let* ((expanded (expand-file-name file))
+         (truename (file-truename expanded))
+         (task-file (and buffer-file-name (file-truename buffer-file-name)))
+         (snapshot imoogi-project-notes--document-cache-snapshot)
+         (eligible (and (not snapshot)
+                        (mapcar #'file-truename
+                                (imoogi-project-notes--project-document-files
+                                 entry)))))
+    (when (and task-file (string= truename task-file))
+      (user-error "%s 대상이 현재 작업 파일과 같습니다: %s" operation file))
+    (unless (if snapshot
+                (and (file-exists-p expanded)
+                     (imoogi-project-notes--document-file-eligible-p
+                      entry expanded))
+              (member truename eligible))
+      (user-error "%s 대상은 현재 프로젝트 문서여야 합니다: %s" operation file))
+    truename))
+
+(defun imoogi-project-notes--buffer-id-occurrences (id)
+  "Return positions in the current Org buffer with Org ID property ID."
+  (let (positions)
+    (save-excursion
+      (save-restriction
+        (widen)
+        (goto-char (point-min))
+        (while (re-search-forward "^[[:space:]]*:ID:[[:space:]]+\\([^[:space:]\n]+\\)"
+                                  nil t)
+          (let ((id-beg (match-beginning 1)))
+            (when (and (string= (match-string 1) id)
+                       (imoogi-project-notes--node-property-at-position-p
+                        "ID" id-beg))
+              (push id-beg positions))))))
+    (nreverse positions)))
+
+(defun imoogi-project-notes--file-id-occurrences (file id)
+  "Return positions where FILE contains Org ID property ID.
+Use a live visiting buffer when available so unsaved project buffers are not
+classified from stale disk content."
+  (when (and file (file-exists-p file))
+    (if-let* ((buffer (find-buffer-visiting file)))
+        (with-current-buffer buffer
+          (imoogi-project-notes--buffer-id-occurrences id))
+      (with-temp-buffer
+        (insert-file-contents file)
+        (org-mode)
+        (imoogi-project-notes--buffer-id-occurrences id)))))
+
+(defun imoogi-project-notes--project-id-occurrences (entry id)
+  "Return project-owned FILE/POS occurrences for ID."
+  (if imoogi-project-notes--document-cache-snapshot
+      (imoogi-project-notes--snapshot-occurrences entry id)
+    (let ((files (delete-dups
+                  (delq nil
+                        (cons (imoogi-project-notes--alist-string 'tasks-file entry)
+                              (imoogi-project-notes--project-document-files entry)))))
+          occurrences)
+      (dolist (file files)
+        (dolist (pos (imoogi-project-notes--file-id-occurrences file id))
+          (push (cons file pos) occurrences)))
+      (nreverse occurrences))))
+
+(defun imoogi-project-notes--document-by-id (entry id)
+  "Find exactly one current-project document with ID."
+  (let* ((occurrences (imoogi-project-notes--project-id-occurrences entry id))
+         (matches
+          (cl-remove-if-not
+           (lambda (doc) (string= id (alist-get 'id doc)))
+           (imoogi-project-notes--document-catalog entry))))
+    (cond
+     ((> (length occurrences) 1)
+      (user-error "프로젝트 안에서 ID가 중복됩니다: %s" id))
+     ((= (length matches) 1) (car matches))
+     ((> (length matches) 1)
+      (user-error "프로젝트 문서 ID가 중복됩니다: %s" id))
+     ((= (length occurrences) 1)
+      (user-error "ID가 문서가 아닌 프로젝트 항목을 가리킵니다: %s" id))
+     (t nil))))
+
+(defun imoogi-project-notes--select-document (entry prompt &optional _require-id)
+  "Read a project document from ENTRY using PROMPT."
+  (let* ((root (imoogi-project-notes--alist-string 'notes-dir entry))
+         (docs (imoogi-project-notes--document-catalog entry))
+         (choices
+          (mapcar (lambda (doc)
+                    (cons (format "%s — %s"
+                                  (or (alist-get 'title doc)
+                                      (file-name-base (alist-get 'file doc)))
+                                  (file-relative-name (alist-get 'file doc) root))
+                          doc))
+                  docs))
+         (choice (completing-read prompt choices nil t)))
+    (cdr (assoc choice choices))))
+
+(defun imoogi-project-notes--org-id-link-regexp (id)
+  "Return a regexp matching an Org ID link to ID."
+  (concat "\\[\\[id:" (regexp-quote id) "\\]\\[[^]\n]+\\]\\]"))
+
+(defun imoogi-project-notes--current-heading-direct-end ()
+  "Return end of the current heading's direct body before child headings."
+  (save-excursion
+    (org-back-to-heading t)
+    (or (save-excursion
+          (forward-line 1)
+          (when (re-search-forward org-heading-regexp nil t)
+            (match-beginning 0)))
+        (point-max))))
+
+(defun imoogi-project-notes--task-artifact-heading-line-p ()
+  "Return non-nil when point is a direct task artifact section marker."
+  (save-excursion
+    (beginning-of-line)
+    (and (looking-at-p "^산출물:[[:space:]]*$")
+         (let* ((heading (save-excursion
+                           (org-back-to-heading t)
+                           (point)))
+                (datum (org-element-context))
+                (accepted nil)
+                (blocked nil))
+           (while datum
+             (let ((type (org-element-type datum)))
+               (cond
+                ((memq type '(src-block example-block comment comment-block
+                                        keyword quote-block special-block
+                                        center-block verse-block drawer
+                                        property-drawer plain-list item table))
+                 (setq blocked t
+                       datum nil))
+                ((eq type 'section)
+                 (let ((parent (org-element-property :parent datum)))
+                   (setq accepted
+                         (and (eq (org-element-type parent) 'headline)
+                              (= (org-element-property :begin parent) heading))
+                         datum nil)))
+                (t
+                 (setq datum (org-element-property :parent datum))))))
+           (and accepted (not blocked))))))
+
+(defun imoogi-project-notes--task-artifact-section-bounds (subtree-end)
+  "Return (BEG END) for the current task's artifact list, or nil."
+  (save-excursion
+    (org-back-to-heading t)
+    (forward-line 1)
+    (catch 'bounds
+      (while (re-search-forward "^산출물:[[:space:]]*$" subtree-end t)
+        (beginning-of-line)
+        (when (imoogi-project-notes--task-artifact-heading-line-p)
+          (forward-line 1)
+          (let ((beg (point)))
+            (while (and (< (point) subtree-end)
+                        (looking-at "[[:space:]]*- "))
+              (forward-line 1))
+            (throw 'bounds (list beg (point)))))
+        (forward-line 1))
+      nil)))
+
+(defun imoogi-project-notes--task-artifact-link-present-p (doc-id subtree-end)
+  "Return non-nil when current task subtree already links DOC-ID."
+  (when-let* ((bounds (imoogi-project-notes--task-artifact-section-bounds
+                       subtree-end)))
+    (pcase-let ((`(,beg ,end) bounds))
+      (save-excursion
+        (goto-char beg)
+        (re-search-forward (imoogi-project-notes--org-id-link-regexp doc-id)
+                           end t)))))
+
+(defun imoogi-project-notes--ensure-task-artifact-link (doc-id title)
+  "Ensure current task has one artifact link to DOC-ID named TITLE."
+  (let ((link (format "- [[id:%s][%s]]" doc-id title))
+        (subtree-end (imoogi-project-notes--current-heading-direct-end)))
+    (unless (imoogi-project-notes--task-artifact-link-present-p
+             doc-id subtree-end)
+      (save-excursion
+        (if-let* ((bounds (imoogi-project-notes--task-artifact-section-bounds
+                           subtree-end)))
+            (goto-char (cadr bounds))
+          (goto-char subtree-end)
+          (unless (bolp) (insert "
+"))
+          (insert "
+산출물:
+"))
+        (insert link "
+")))))
+
+(defun imoogi-project-notes--remove-id-link-lines-in-region (id beg end)
+  "Remove relation lines linking to ID between BEG and END.
+Relation sections historically allowed either list items or a bare ID link line."
+  (save-excursion
+    (goto-char beg)
+    (while (re-search-forward (imoogi-project-notes--org-id-link-regexp id)
+                              end t)
+      (let* ((match-beg (match-beginning 0))
+             (match-end (match-end 0))
+             (line-beg (line-beginning-position))
+             (line-end (line-end-position))
+             (line-limit (min (1+ line-end) (point-max)))
+             (relation-line
+              (save-excursion
+                (goto-char line-beg)
+                (imoogi-project-notes--managed-id-link-line-p)))
+             (remaining
+              (string-trim
+               (concat
+                (buffer-substring-no-properties line-beg match-beg)
+                (buffer-substring-no-properties match-end line-end)))))
+        (when relation-line
+          (if (or (string-empty-p remaining)
+                  (string= remaining "-"))
+              (progn
+                (delete-region line-beg line-limit)
+                (setq end (- end (- line-limit line-beg))))
+            (delete-region match-beg match-end)
+            (setq end (- end (- match-end match-beg)))))))))
+
+(defun imoogi-project-notes--remove-task-artifact-link (doc-id)
+  "Remove current task artifact link to DOC-ID."
+  (let ((subtree-end (imoogi-project-notes--current-heading-direct-end)))
+    (when-let* ((bounds (imoogi-project-notes--task-artifact-section-bounds
+                         subtree-end)))
+      (pcase-let ((`(,beg ,end) bounds))
+        (imoogi-project-notes--remove-id-link-lines-in-region doc-id beg end)))))
+
+(defun imoogi-project-notes--link-heading-bounds (&optional create)
+  "Return (BEG END) for the top-level Link heading in current buffer.
+When CREATE is non-nil, append the heading when absent."
+  (let (bounds)
+    (org-with-wide-buffer
+     (goto-char (point-min))
+     (while (re-search-forward "^\\* Link[[:space:]]*$" nil t)
+       (push (copy-marker (match-beginning 0)) bounds)))
+    (cond
+     ((> (length bounds) 1)
+      (user-error "Link heading이 여러 개라 자동 수정할 수 없습니다: %s"
+                  (or buffer-file-name (buffer-name))))
+     ((= (length bounds) 1)
+      (save-excursion
+        (goto-char (car bounds))
+        (list (point) (imoogi-project-notes--current-heading-direct-end))))
+     (create
+      (goto-char (point-max))
+      (unless (bolp) (insert "\n"))
+      (insert "\n* Link\n")
+      (forward-line -1)
+      (list (point) (point-max))))))
+
+(defun imoogi-project-notes--legacy-related-bounds ()
+  "Return bounds for all legacy related-task headings in current document."
+  (let (bounds)
+    (org-with-wide-buffer
+     (goto-char (point-min))
+     (while (re-search-forward "^\\*\\{2,\\} 관련 작업[[:space:]]*$" nil t)
+       (push (save-excursion
+               (goto-char (match-beginning 0))
+               (list (point) (imoogi-project-notes--current-heading-direct-end)))
+             bounds)))
+    bounds))
+
+(defun imoogi-project-notes--managed-id-link-present-in-region-p (id beg end)
+  "Return non-nil when managed relation lines in BEG END link to ID."
+  (save-excursion
+    (goto-char beg)
+    (catch 'found
+      (while (< (point) end)
+        (let ((line-end (line-end-position)))
+          (when (and (imoogi-project-notes--managed-id-link-line-p)
+                     (re-search-forward
+                      (imoogi-project-notes--org-id-link-regexp id)
+                      line-end t))
+            (throw 'found t)))
+        (forward-line 1))
+      nil)))
+
+(defun imoogi-project-notes--document-task-link-present-p (task-id)
+  "Return non-nil when current document already links TASK-ID as a relation."
+  (or (pcase-let ((`(,beg ,end) (imoogi-project-notes--link-heading-bounds)))
+        (and beg
+             (imoogi-project-notes--managed-id-link-present-in-region-p
+              task-id beg end)))
+      (cl-some
+       (lambda (bounds)
+         (pcase-let ((`(,beg ,end) bounds))
+           (imoogi-project-notes--managed-id-link-present-in-region-p
+            task-id beg end)))
+       (imoogi-project-notes--legacy-related-bounds))))
+
+(defun imoogi-project-notes--preflight-document-relation-target ()
+  "Validate current document relation sections before any mutation."
+  (imoogi-project-notes--link-heading-bounds))
+
+(defun imoogi-project-notes--ensure-existing-task-id-valid (entry)
+  "Reject an existing current task ID that is not unique in ENTRY scope."
+  (when-let* ((task-id (org-entry-get (point) "ID")))
+    (let ((occurrences
+           (imoogi-project-notes--project-id-occurrences entry task-id)))
+      (when (> (length occurrences) 1)
+        (user-error "프로젝트 안에서 작업 ID가 중복됩니다: %s" task-id)))))
+
+(defun imoogi-project-notes--validate-document-id-file (entry doc-id doc-file)
+  "Return canonical DOC-FILE after checking it is DOC-ID's project document.
+Missing files are allowed so unlink can offer a source-only removal.  Existing
+files must be eligible documents in ENTRY and must carry DOC-ID as their
+document identity."
+  (unless (and (stringp doc-id) (> (length doc-id) 0))
+    (user-error "연결 해제할 문서 ID가 없습니다"))
+  (when doc-file
+    (setq doc-file (expand-file-name doc-file))
+    (when (file-exists-p doc-file)
+      (setq doc-file
+            (imoogi-project-notes--validate-document-target-file
+             entry doc-file "산출물 연결 해제"))
+      (let* ((canonical (file-truename doc-file))
+             (known (imoogi-project-notes--document-by-id entry doc-id)))
+        (when (and known
+                   (not (string= canonical
+                                 (file-truename (alist-get 'file known)))))
+          (user-error "문서 ID와 파일이 서로 다른 문서를 가리킵니다: %s" doc-id)))
+      (with-current-buffer (imoogi-project-notes--file-buffer doc-file)
+        (pcase-let ((`(,actual-id ,_title ,_kind)
+                     (or (imoogi-project-notes--document-identity)
+                         (list nil nil nil))))
+          (unless actual-id
+            (user-error "문서 파일에 ID가 없어 연결 해제 대상으로 사용할 수 없습니다: %s"
+                        doc-file))
+          (unless (string= actual-id doc-id)
+            (user-error "문서 파일의 ID가 요청한 ID와 다릅니다: %s" doc-id))))
+    doc-file)))
+
+(defun imoogi-project-notes--ensure-document-task-link (task-id task-title)
+  "Ensure current document has a top-level Link relation to TASK-ID."
+  (unless (imoogi-project-notes--document-task-link-present-p task-id)
+    (pcase-let ((`(,beg ,end) (imoogi-project-notes--link-heading-bounds 'create)))
+      (goto-char end)
+      (unless (bolp) (insert "\n"))
+      (insert (format "- [[id:%s][%s]]\n" task-id task-title)))))
+
+(defun imoogi-project-notes--remove-document-task-link (task-id)
+  "Remove relation links to TASK-ID from current document Link/legacy sections."
+  (when-let* ((bounds (imoogi-project-notes--link-heading-bounds)))
+    (pcase-let ((`(,beg ,end) bounds))
+      (imoogi-project-notes--remove-id-link-lines-in-region task-id beg end)))
+  (dolist (bounds (imoogi-project-notes--legacy-related-bounds))
+    (pcase-let ((`(,beg ,end) bounds))
+      (imoogi-project-notes--remove-id-link-lines-in-region task-id beg end))))
+
+(defun imoogi-project-notes--confirm-source-only-unlink (doc-id)
+  "Confirm unlinking only the task-side relation for missing DOC-ID."
+  (let ((choice
+         (if (and noninteractive
+                  (subrp (symbol-function 'completing-read)))
+             "remove"
+           (completing-read
+            (format "대상 문서 %s를 찾지 못했습니다. 작업 쪽 링크만 제거할까요? "
+                    doc-id)
+            '("remove" "cancel") nil t nil nil "cancel"))))
+    (unless (string= choice "remove")
+      (user-error "대상 문서를 찾지 못해 링크 해제를 취소했습니다: %s" doc-id))))
+
+(defun imoogi-project-notes--classify-save-buffer (buffer before-hash)
+  "Save BUFFER and return a status symbol after checking disk content."
+  (with-current-buffer buffer
+    (let ((file buffer-file-name)
+          (post-hash (imoogi-project-notes--buffer-string-hash buffer)))
+      (condition-case err
+          (progn
+            (save-buffer)
+            (if (and file (file-exists-p file)
+                     (string= (imoogi-project-notes--file-string-hash file)
+                              post-hash))
+                'saved
+              (signal 'file-error (list "Save returned but disk differed" file))))
+        (error
+         (cond
+          ((and file (file-exists-p file)
+                (string= (imoogi-project-notes--file-string-hash file)
+                         post-hash))
+           (display-warning 'imoogi
+                            (format "저장 후 hook 오류가 있었지만 파일은 기록됨: %s (%s)"
+                                    file (error-message-string err))
+                            :warning)
+           'saved-after-hook-error)
+          ((and file (file-exists-p file)
+                (string= (imoogi-project-notes--file-string-hash file)
+                         before-hash))
+           (signal (car err) (cdr err)))
+          (t
+           (signal (car err) (cdr err)))))))))
+
+(defun imoogi-project-notes--ensure-peer-buffer-clean (buffer operation)
+  "Abort OPERATION when BUFFER has unrelated unsaved edits."
+  (when (buffer-modified-p buffer)
+    (let* ((file (buffer-file-name buffer))
+           (pending-files
+            (and imoogi-project-notes--pending-link-operation
+                 (delq nil
+                       (list (alist-get 'doc-file
+                                        imoogi-project-notes--pending-link-operation)
+                             (alist-get 'old-doc-file
+                                        imoogi-project-notes--pending-link-operation)
+                             (alist-get 'new-doc-file
+                                        imoogi-project-notes--pending-link-operation))))))
+      (unless (and file (member file pending-files))
+        (user-error "%s 전에 먼저 저장하거나 버퍼를 정리하세요: %s"
+                    operation (or file (buffer-name)))))))
+
+(defun imoogi-project-notes--endpoint-preimage (role buffer operation)
+  "Return clean preimage metadata for ROLE BUFFER before OPERATION mutates it."
+  (when (buffer-modified-p buffer)
+    (user-error "%s 전에 먼저 저장하거나 버퍼를 정리하세요: %s"
+                operation (or (buffer-file-name buffer) (buffer-name buffer))))
+  (let ((file (buffer-file-name buffer)))
+    (unless (and file (file-exists-p file))
+      (user-error "%s 대상 파일을 찾지 못했습니다: %s"
+                  operation (or file (buffer-name buffer))))
+    (let ((file-hash (imoogi-project-notes--file-string-hash file))
+          (buffer-hash (imoogi-project-notes--buffer-string-hash buffer)))
+      (unless (string= file-hash buffer-hash)
+        (user-error "%s 전에 파일을 다시 방문하거나 되돌리세요: %s"
+                    operation file))
+      (imoogi-project-notes--ensure-endpoint-writable
+       `((role . ,role) (file . ,file)) operation)
+      `((role . ,role)
+        (file . ,file)
+        (pre-file-hash . ,file-hash)
+        (pre-buffer-hash . ,buffer-hash)
+        (pre-text . ,(imoogi-project-notes--buffer-string buffer))))))
+
+(defun imoogi-project-notes--endpoint-buffer (endpoint)
+  "Return a live buffer for ENDPOINT's file."
+  (imoogi-project-notes--file-buffer (alist-get 'file endpoint)))
+
+(defun imoogi-project-notes--ensure-endpoint-writable (endpoint operation)
+  "Signal unless ENDPOINT can be mutated for OPERATION."
+  (let* ((file (alist-get 'file endpoint))
+         (buffer (and file (find-buffer-visiting file))))
+    (unless (and file (file-exists-p file))
+      (user-error "%s 대상 파일을 찾지 못했습니다: %s" operation file))
+    (unless (file-writable-p file)
+      (user-error "%s 대상 파일을 쓸 수 없습니다: %s" operation file))
+    (when (and buffer (buffer-local-value 'buffer-read-only buffer))
+      (user-error "%s 대상 버퍼가 읽기 전용입니다: %s" operation file))))
+
+(defun imoogi-project-notes--restore-endpoint-preimage-for-preparation
+    (endpoint)
+  "Restore ENDPOINT after a preparation failure when disk is unchanged."
+  (when (and (eq (imoogi-project-notes--endpoint-disk-state endpoint) 'pre)
+             (memq (imoogi-project-notes--endpoint-buffer-state endpoint)
+                   '(post changed)))
+    (let ((buffer (imoogi-project-notes--endpoint-buffer endpoint)))
+      (imoogi-project-notes--ensure-endpoint-writable
+       endpoint "산출물 링크 준비 복구")
+      (with-current-buffer buffer
+        (erase-buffer)
+        (insert (alist-get 'pre-text endpoint))
+        (set-buffer-modified-p nil)))))
+
+(defmacro imoogi-project-notes--with-link-operation-preparation
+    (endpoints &rest body)
+  "Run BODY, restoring ENDPOINTS when preparation fails before commit.
+ENDPOINTS must be preimage alists captured before any mutation.  This wrapper
+does not create pending retry metadata; pending state is owned by
+`imoogi-project-notes--run-link-operation' after BODY completes."
+  (declare (indent 1) (debug t))
+  `(let ((imoogi-project-notes--preparation-endpoints ,endpoints))
+     (condition-case err
+         (progn ,@body)
+       (error
+        (dolist (endpoint imoogi-project-notes--preparation-endpoints)
+          (imoogi-project-notes--restore-endpoint-preimage-for-preparation
+           endpoint))
+        (setq imoogi-project-notes--pending-link-operation nil)
+        (signal (car err) (cdr err))))))
+
+(defun imoogi-project-notes--endpoint-disk-state (endpoint)
+  "Return ENDPOINT disk state compared with pre/post hashes."
+  (let ((file (alist-get 'file endpoint)))
+    (cond
+     ((not (and file (file-exists-p file))) 'missing)
+     ((string= (imoogi-project-notes--file-string-hash file)
+               (alist-get 'post-buffer-hash endpoint))
+      'post)
+     ((string= (imoogi-project-notes--file-string-hash file)
+               (alist-get 'pre-file-hash endpoint))
+      'pre)
+     (t 'changed))))
+
+(defun imoogi-project-notes--endpoint-buffer-state (endpoint)
+  "Return ENDPOINT buffer state compared with pre/post hashes."
+  (let* ((file (alist-get 'file endpoint))
+         (buffer (and file (find-buffer-visiting file)))
+         (hash (and buffer
+                    (imoogi-project-notes--buffer-string-hash buffer))))
+    (cond
+     ((not buffer) 'absent)
+     ((string= hash (alist-get 'post-buffer-hash endpoint)) 'post)
+     ((string= hash (alist-get 'pre-buffer-hash endpoint)) 'pre)
+     (t 'changed))))
+
+(defun imoogi-project-notes--endpoint-with-postimage (endpoint)
+  "Return ENDPOINT extended with its planned post-edit buffer state."
+  (let* ((buffer (imoogi-project-notes--endpoint-buffer endpoint))
+         (post-text (imoogi-project-notes--buffer-string buffer))
+         (post-hash (secure-hash 'sha1 post-text)))
+    (append `((post-buffer-hash . ,post-hash)
+              (post-text . ,post-text))
+            endpoint)))
+
+(defun imoogi-project-notes--restore-endpoint-preimage-if-unsaved (endpoint)
+  "Restore ENDPOINT buffer when its planned edit did not reach disk."
+  (when (and (eq (imoogi-project-notes--endpoint-disk-state endpoint) 'pre)
+             (eq (imoogi-project-notes--endpoint-buffer-state endpoint) 'post))
+    (let ((buffer (imoogi-project-notes--endpoint-buffer endpoint))
+          (pre-text (alist-get 'pre-text endpoint)))
+      (imoogi-project-notes--ensure-endpoint-writable
+       endpoint "산출물 링크 저장 복구")
+      (with-current-buffer buffer
+        (erase-buffer)
+        (insert pre-text)
+        (set-buffer-modified-p nil)))))
+
+(defun imoogi-project-notes--endpoint-retry-ready-p (endpoint)
+  "Return non-nil when ENDPOINT is in an accepted retry state."
+  (let ((disk-state (imoogi-project-notes--endpoint-disk-state endpoint))
+        (buffer-state (imoogi-project-notes--endpoint-buffer-state endpoint)))
+    (pcase disk-state
+      ('pre (memq buffer-state '(absent pre post)))
+      ('post (memq buffer-state '(absent post)))
+      (_ nil))))
+
+(defun imoogi-project-notes--prepare-endpoint-for-retry (endpoint)
+  "Restore ENDPOINT's exact planned postimage when retry still needs saving."
+  (unless (imoogi-project-notes--endpoint-retry-ready-p endpoint)
+    (user-error "링크 재시도 대상이 변경되어 자동 재시도할 수 없습니다: %s"
+                (alist-get 'file endpoint)))
+  (when (eq (imoogi-project-notes--endpoint-disk-state endpoint) 'pre)
+    (let ((buffer (imoogi-project-notes--endpoint-buffer endpoint)))
+      (imoogi-project-notes--ensure-endpoint-writable
+       endpoint "산출물 링크 재시도")
+      (with-current-buffer buffer
+        (erase-buffer)
+        (insert (alist-get 'post-text endpoint))
+        (set-buffer-modified-p t)))))
+
+(defun imoogi-project-notes--retry-operation-entry (operation)
+  "Return the current registry entry for retry OPERATION."
+  (let* ((entry-instance-id (alist-get 'entry-instance-id operation))
+         (entry-note-id (alist-get 'entry-note-id operation))
+         (entries (imoogi-project-notes--all-entries))
+         (entry
+          (cond
+           (entry-instance-id
+            (cl-find-if
+             (lambda (candidate)
+               (string= entry-instance-id
+                        (alist-get 'instance-id candidate)))
+             entries))
+           (entry-note-id
+            (cl-find-if
+             (lambda (candidate)
+               (string= entry-note-id
+                        (imoogi-project-notes--entry-derived-note-id
+                         candidate)))
+             entries)))))
+    (unless entry
+      (user-error "재시도할 프로젝트 항목을 찾지 못했습니다"))
+    entry))
+
+(defun imoogi-project-notes--retry-task-file-entry-count (file)
+  "Return distinct logical project count using task FILE."
+  (let ((truename (file-truename file))
+        note-ids)
+    (dolist (candidate (imoogi-project-notes--all-entries))
+      (when (string= truename
+                     (file-truename
+                      (imoogi-project-notes--alist-string
+                       'tasks-file candidate)))
+        (cl-pushnew (imoogi-project-notes--entry-derived-note-id candidate)
+                    note-ids
+                    :test #'string=)))
+    (length note-ids)))
+
+(defun imoogi-project-notes--retry-task-endpoint-owned-p
+    (entry endpoint operation)
+  "Return non-nil when task ENDPOINT still belongs to ENTRY/OPERATION."
+  (let* ((file (alist-get 'file endpoint))
+         (expected-file (imoogi-project-notes--alist-string 'tasks-file entry))
+         (task-id (alist-get 'task-id operation))
+         (expected-owner (imoogi-project-notes--entry-derived-note-id entry))
+         (entry-count (and file
+                           (imoogi-project-notes--retry-task-file-entry-count
+                            file)))
+         (pre-state (and (eq (imoogi-project-notes--endpoint-disk-state endpoint)
+                             'pre)
+                         (memq (imoogi-project-notes--endpoint-buffer-state
+                                endpoint)
+                               '(absent pre)))))
+    (and file
+         expected-file
+         (string= (file-truename file) (file-truename expected-file))
+         (or (not task-id)
+             (and pre-state (= entry-count 1))
+             (condition-case nil
+                 (with-current-buffer (imoogi-project-notes--file-buffer file)
+                   (save-excursion
+                     (imoogi-project-notes--goto-heading-id task-id)
+                     (let ((owner (org-entry-get (point)
+                                                 "IMOOGI_PROJECT_ID")))
+                       (and (org-entry-is-todo-p)
+                            (or (string= owner expected-owner)
+                                (and (not owner) (= entry-count 1)))))))
+               (error nil))))))
+
+(defun imoogi-project-notes--retry-document-endpoint-owned-p (entry endpoint)
+  "Return non-nil when document ENDPOINT is still eligible for ENTRY."
+  (let ((file (alist-get 'file endpoint)))
+    (and file
+         (ignore-errors
+           (string= (file-truename file)
+                    (imoogi-project-notes--validate-document-target-file
+                     entry file "산출물 링크 재시도"))))))
+
+(defun imoogi-project-notes--retry-endpoint-owned-p
+    (entry endpoint operation)
+  "Return non-nil when ENDPOINT still belongs to ENTRY/OPERATION."
+  (pcase (alist-get 'role endpoint)
+    ('task
+     (imoogi-project-notes--retry-task-endpoint-owned-p
+      entry endpoint operation))
+    ((or 'doc 'old-doc 'new-doc)
+     (imoogi-project-notes--retry-document-endpoint-owned-p entry endpoint))
+    (_ nil)))
+
+(defun imoogi-project-notes--validate-retry-operation (operation endpoints)
+  "Validate OPERATION and ENDPOINTS against current project state."
+  (let ((entry (imoogi-project-notes--retry-operation-entry operation)))
+    (imoogi-project-notes--ensure-entry-mutable entry "산출물 링크 재시도")
+    (dolist (endpoint endpoints)
+      (unless (imoogi-project-notes--retry-endpoint-owned-p
+               entry endpoint operation)
+        (user-error "링크 재시도 대상이 현재 프로젝트에 속하지 않습니다: %s"
+                    (alist-get 'file endpoint)))
+      (imoogi-project-notes--ensure-endpoint-writable
+       endpoint "산출물 링크 재시도"))
+    entry))
+
+(defun imoogi-project-notes--retry-link-operation-save (operation)
+  "Retry OPERATION by saving its recorded endpoint postimages."
+  (let ((endpoints (alist-get 'endpoints operation)))
+    (unless endpoints
+      (user-error "이전 형식의 링크 재시도 작업은 자동 재시도할 수 없습니다"))
+    (imoogi-project-notes--validate-retry-operation operation endpoints)
+    (dolist (endpoint endpoints)
+      (imoogi-project-notes--prepare-endpoint-for-retry endpoint))
+    (condition-case err
+        (progn
+          (dolist (endpoint endpoints)
+            (when (eq (imoogi-project-notes--endpoint-disk-state endpoint) 'pre)
+              (imoogi-project-notes--classify-save-buffer
+               (imoogi-project-notes--endpoint-buffer endpoint)
+               (alist-get 'pre-file-hash endpoint))))
+          (when-let* ((doc-id (alist-get 'doc-id operation))
+                      (doc-file (alist-get 'doc-file operation)))
+            (org-id-add-location doc-id doc-file))
+          (when-let* ((new-doc-id (alist-get 'new-doc-id operation))
+                      (new-doc-file (alist-get 'new-doc-file operation)))
+            (org-id-add-location new-doc-id new-doc-file))
+          (when-let* ((task-id (alist-get 'task-id operation))
+                      (task-file (alist-get 'task-file operation)))
+            (org-id-add-location task-id task-file))
+          (setq imoogi-project-notes--pending-link-operation nil)
+          t)
+      (error
+       (dolist (endpoint endpoints)
+         (imoogi-project-notes--restore-endpoint-preimage-if-unsaved endpoint))
+       (display-warning
+        'imoogi
+        (format "프로젝트 문서 관계 재시도가 일부 실패했습니다: %s"
+                (error-message-string err))
+        :warning)
+       (signal (car err) (cdr err))))))
+
+(defun imoogi-project-notes--link-operation-base
+    (operation entry task-file task-id task-title &rest pairs)
+  "Return common retry metadata for OPERATION."
+  (append
+   `((operation . ,operation)
+     (entry-note-id . ,(imoogi-project-notes--entry-derived-note-id entry))
+     (entry-instance-id . ,(alist-get 'instance-id entry))
+     (task-file . ,task-file)
+     (task-id . ,task-id)
+     (task-title . ,task-title))
+   pairs))
+
+(defun imoogi-project-notes--run-link-operation (operation metadata endpoints)
+  "Save OPERATION METADATA ENDPOINTS transactionally."
+  (let ((prepared (mapcar #'imoogi-project-notes--endpoint-with-postimage
+                          endpoints)))
+    (setq imoogi-project-notes--pending-link-operation
+          (append metadata `((endpoints . ,prepared))))
+    (condition-case err
+        (progn
+          (dolist (endpoint prepared)
+            (unless (eq (imoogi-project-notes--endpoint-disk-state endpoint)
+                        'pre)
+              (user-error "링크 저장 전 대상 파일이 변경되었습니다: %s"
+                          (alist-get 'file endpoint)))
+            (imoogi-project-notes--classify-save-buffer
+             (imoogi-project-notes--endpoint-buffer endpoint)
+             (alist-get 'pre-file-hash endpoint)))
+          (setq imoogi-project-notes--pending-link-operation nil)
+          t)
+      (error
+       (dolist (endpoint prepared)
+         (imoogi-project-notes--restore-endpoint-preimage-if-unsaved endpoint))
+       (setq imoogi-project-notes--pending-link-operation
+             (append metadata `((endpoints . ,prepared))))
+       (display-warning
+        'imoogi
+        (format "프로젝트 문서 관계 저장이 일부 실패했습니다. `imoogi-project-notes-retry-link-operation'로 재시도하세요: %s"
+                (error-message-string err))
+        :warning)
+       (signal (car err) (cdr err))))))
+
+(defun imoogi-project-notes--endpoint-changed-p (endpoint)
+  "Return non-nil when ENDPOINT's buffer differs from its disk file."
+  (let ((file (alist-get 'file endpoint))
+        (buffer (imoogi-project-notes--endpoint-buffer endpoint)))
+    (not (and file
+              (file-exists-p file)
+              (string= (imoogi-project-notes--file-string-hash file)
+                       (imoogi-project-notes--buffer-string-hash buffer))))))
+
+(defun imoogi-project-notes--changed-endpoints (&rest endpoints)
+  "Return ENDPOINTS whose buffers need saving."
+  (cl-remove-if-not #'imoogi-project-notes--endpoint-changed-p
+                    (delq nil endpoints)))
+
+(defun imoogi-project-notes--save-prepared-relation
+    (operation entry task-buffer doc-buffer task-id doc-id task-title doc-title
+               task-preimage doc-preimage)
+  "Save prepared task/document relation buffers with retry metadata."
+  (imoogi-project-notes--run-link-operation
+   operation
+   (imoogi-project-notes--link-operation-base
+    operation entry (buffer-file-name task-buffer) task-id task-title
+    `(doc-file . ,(buffer-file-name doc-buffer))
+    `(doc-id . ,doc-id)
+    `(doc-title . ,doc-title))
+   (imoogi-project-notes--changed-endpoints doc-preimage task-preimage))
+  (when doc-id
+    (org-id-add-location doc-id (buffer-file-name doc-buffer)))
+  (when task-id
+    (org-id-add-location task-id (buffer-file-name task-buffer)))
+  t)
+
+(defun imoogi-project-notes--save-prepared-retarget
+    (entry task-buffer old-doc-buffer new-doc-buffer
+           task-id old-doc-id new-doc-id task-title new-doc-title
+           task-preimage old-doc-preimage new-doc-preimage)
+  "Save prepared retarget buffers with concrete retry metadata."
+  (let ((task-file (buffer-file-name task-buffer))
+        (old-doc-file (and old-doc-buffer (buffer-file-name old-doc-buffer)))
+        (new-doc-file (buffer-file-name new-doc-buffer)))
+    (imoogi-project-notes--run-link-operation
+     'retarget
+     (imoogi-project-notes--link-operation-base
+      'retarget entry task-file task-id task-title
+      `(old-doc-file . ,old-doc-file)
+      `(old-doc-id . ,old-doc-id)
+      `(new-doc-file . ,new-doc-file)
+      `(new-doc-id . ,new-doc-id)
+      `(new-doc-title . ,new-doc-title))
+     (imoogi-project-notes--changed-endpoints
+      old-doc-preimage new-doc-preimage task-preimage))
+    (org-id-add-location new-doc-id new-doc-file)
+    (org-id-add-location task-id task-file)
+    t))
+
+(defun imoogi-project-notes--same-entry-p (a b)
+  "Return non-nil when registry entries A and B identify the same project."
+  (and a b
+       (or (eq a b)
+           (string= (imoogi-project-notes--entry-derived-note-id a)
+                    (imoogi-project-notes--entry-derived-note-id b)))))
+
+(defun imoogi-project-notes--select-task-entry-candidate (candidates prompt)
+  "Read a project entry from CANDIDATES using PROMPT."
+  (when (and noninteractive
+             (subrp (symbol-function 'completing-read)))
+    (user-error "작업 프로젝트를 자동으로 판별할 수 없습니다"))
+  (let* ((choices (mapcar (lambda (entry)
+                            (cons (imoogi-project-notes--entry-label entry)
+                                  entry))
+                          candidates))
+         (choice (completing-read prompt choices nil t)))
+    (cdr (assoc choice choices))))
+
+(defun imoogi-project-notes--task-entry (&optional entry)
+  "Return the current task's owning project entry.
+When ENTRY is provided, validate it against the actual task file and stable
+heading ownership metadata instead of trusting the caller's ambient choice."
+  (unless buffer-file-name
+    (user-error "작업 파일을 찾을 수 없습니다"))
+  (let* ((candidates (imoogi-project-notes--entries-for-tasks-file
+                      buffer-file-name))
+         (project-id (and (derived-mode-p 'org-mode)
+                          (org-entry-get (point) "IMOOGI_PROJECT_ID")))
+         (category (and (derived-mode-p 'org-mode) (org-get-category)))
+         (by-project-id
+          (and project-id
+               (list (imoogi-project-notes--entry-from-project-id
+                      project-id candidates "작업"))))
+         (by-category
+          (and (not project-id)
+               (imoogi-project-notes--unique-entries
+                (cl-remove-if-not
+                 (lambda (candidate)
+                   (string= category
+                            (imoogi-project-notes--entry-name candidate)))
+                 candidates))))
+         selected)
+    (unless candidates
+      (user-error "현재 파일은 등록된 프로젝트 tasks.org가 아닙니다: %s"
+                  buffer-file-name))
+    (setq selected
+          (cond
+           (entry
+            (unless (cl-some (lambda (candidate)
+                               (imoogi-project-notes--same-entry-p
+                                candidate entry))
+                             candidates)
+              (user-error "선택한 프로젝트가 현재 작업 파일을 소유하지 않습니다: %s"
+                          buffer-file-name))
+            entry)
+           ((= (length by-project-id) 1) (car by-project-id))
+           ((= (length candidates) 1) (car candidates))
+           ((= (length by-category) 1) (car by-category))
+           ((> (length by-category) 1)
+            (user-error "작업 CATEGORY가 중복 프로젝트를 가리킵니다: %s"
+                        category))
+           (t
+            (imoogi-project-notes--select-task-entry-candidate
+             candidates "작업 프로젝트: "))))
+    (when project-id
+      (let ((expected (imoogi-project-notes--entry-derived-note-id selected)))
+        (unless (string= project-id expected)
+          (user-error "작업의 IMOOGI_PROJECT_ID가 선택한 프로젝트와 다릅니다: %s"
+                      project-id))))
+    selected))
+
+(defun imoogi-project-notes--ensure-task-project-owner (entry)
+  "Record central-task ownership for ENTRY on the current task when needed."
+  (let* ((task-file (and buffer-file-name (file-truename buffer-file-name)))
+         (matches
+          (and task-file
+               (cl-remove-if-not
+                (lambda (candidate)
+                  (string= task-file
+                           (file-truename
+                            (imoogi-project-notes--alist-string
+                             'tasks-file candidate))))
+                (imoogi-project-notes--all-entries)))))
+    (when (> (length matches) 1)
+      (let ((expected (imoogi-project-notes--entry-derived-note-id entry))
+            (actual (org-entry-get (point) "IMOOGI_PROJECT_ID")))
+        (when (and actual (not (string= actual expected)))
+          (user-error "작업의 IMOOGI_PROJECT_ID가 선택한 프로젝트와 다릅니다: %s"
+                      actual))
+        (unless actual
+          (org-entry-put (point) "IMOOGI_PROJECT_ID" expected))))))
+
+(defun imoogi-project-notes--link-current-task-to-document (doc-file &optional entry)
+  "Link current task to DOC-FILE and return its document info."
+  (unless (derived-mode-p 'org-mode)
+    (user-error "Org TODO heading에서 실행하세요"))
+  (org-back-to-heading t)
+  (unless (org-entry-is-todo-p)
+    (user-error "Org TODO heading에서 실행하세요"))
+  (let* ((entry (imoogi-project-notes--task-entry entry))
+         (task-buffer (current-buffer))
+         (notes-dir (imoogi-project-notes--alist-string 'notes-dir entry))
+         (doc-file (and doc-file (expand-file-name doc-file)))
+         task-id task-title
+         doc-buffer
+         doc-id doc-title
+         task-preimage doc-preimage)
+    (imoogi-project-notes--ensure-entry-mutable entry "산출물 연결")
+    (setq doc-file
+          (imoogi-project-notes--validate-document-target-file
+           entry doc-file "산출물 연결"))
+    (imoogi-project-notes--ensure-existing-task-id-valid entry)
+    (setq task-title (org-get-heading t t t t)
+          doc-buffer (imoogi-project-notes--file-buffer doc-file))
+    (with-current-buffer doc-buffer
+      (imoogi-project-notes--preflight-document-relation-target)
+      (when-let* ((existing (imoogi-project-notes--document-identity)))
+        (imoogi-project-notes--document-by-id entry (car existing))))
+    (setq task-preimage
+          (imoogi-project-notes--endpoint-preimage
+           'task task-buffer "산출물 연결")
+          doc-preimage
+          (imoogi-project-notes--endpoint-preimage
+           'doc doc-buffer "산출물 연결"))
+    (imoogi-project-notes--with-link-operation-preparation
+        (list task-preimage doc-preimage)
+      (with-current-buffer doc-buffer
+        (pcase-let ((`(,id ,title ,_kind)
+                     (imoogi-project-notes--document-identity 'create)))
+          (setq doc-id id
+                doc-title title)
+          (imoogi-project-notes--document-by-id entry doc-id)))
+      (setq task-id (org-id-get-create))
+      (imoogi-project-notes--ensure-task-project-owner entry)
+      (with-current-buffer doc-buffer
+        (imoogi-project-notes--ensure-document-task-link task-id task-title))
+      (with-current-buffer task-buffer
+        (imoogi-project-notes--ensure-task-artifact-link doc-id doc-title)))
+    (imoogi-project-notes--save-prepared-relation
+     'link entry task-buffer doc-buffer task-id doc-id task-title doc-title
+     task-preimage doc-preimage)
+    `((file . ,(buffer-file-name doc-buffer))
+      (id . ,doc-id)
+      (title . ,doc-title))))
+
+(defun imoogi-project-notes--unlink-current-task-from-document
+    (doc-id doc-file &optional entry)
+  "Unlink current task from DOC-ID and DOC-FILE where available."
+  (unless (derived-mode-p 'org-mode)
+    (user-error "Org TODO heading에서 실행하세요"))
+  (org-back-to-heading t)
+  (let* ((entry (imoogi-project-notes--task-entry entry))
+         (task-buffer (current-buffer))
+         task-id
+         (task-title (org-get-heading t t t t))
+         doc-buffer
+         (doc-title doc-id)
+         task-preimage doc-preimage)
+    (imoogi-project-notes--ensure-entry-mutable entry "산출물 연결 해제")
+    (imoogi-project-notes--ensure-existing-task-id-valid entry)
+    (setq doc-file
+          (imoogi-project-notes--validate-document-id-file entry doc-id doc-file)
+          doc-buffer (and doc-file
+                          (file-exists-p doc-file)
+                          (imoogi-project-notes--file-buffer doc-file)))
+    (setq task-preimage
+          (imoogi-project-notes--endpoint-preimage
+           'task task-buffer "산출물 연결 해제"))
+    (when doc-buffer
+      (setq doc-preimage
+            (imoogi-project-notes--endpoint-preimage
+             'doc doc-buffer "산출물 연결 해제")))
+    (with-current-buffer task-buffer
+      (setq task-id (org-entry-get (point) "ID")))
+    (if (and doc-buffer task-id)
+        (with-current-buffer doc-buffer
+          (unless (imoogi-project-notes--document-task-link-present-p task-id)
+            (user-error "대상 문서에 작업 링크가 없어 repair-link로 재연결해야 합니다: %s"
+                        doc-id)))
+      (imoogi-project-notes--confirm-source-only-unlink doc-id))
+    (imoogi-project-notes--with-link-operation-preparation
+        (delq nil (list task-preimage doc-preimage))
+      (with-current-buffer task-buffer
+        (imoogi-project-notes--remove-task-artifact-link doc-id))
+      (when (and doc-buffer task-id)
+        (with-current-buffer doc-buffer
+          (setq doc-title (imoogi-project-notes--org-title))
+          (imoogi-project-notes--remove-document-task-link task-id))))
+    (if (and doc-buffer task-id)
+        (imoogi-project-notes--save-prepared-relation
+         'unlink entry task-buffer doc-buffer task-id doc-id task-title doc-title
+         task-preimage doc-preimage)
+      (progn
+        (imoogi-project-notes--run-link-operation
+         'unlink
+         (imoogi-project-notes--link-operation-base
+          'unlink entry (buffer-file-name task-buffer) task-id task-title
+          `(doc-file . ,(and doc-buffer (buffer-file-name doc-buffer)))
+          `(doc-id . ,doc-id)
+          `(doc-title . ,doc-title))
+         (imoogi-project-notes--changed-endpoints task-preimage))
+        (display-warning
+         'imoogi
+         (format "대상 문서를 찾지 못해 작업 쪽 링크만 제거했습니다: %s" doc-id)
+         :warning)))))
+
+(defun imoogi-project-notes--retarget-current-task-document
+    (old-doc-id new-doc-file &optional entry)
+  "Retarget the current task relation from OLD-DOC-ID to NEW-DOC-FILE."
+  (unless (derived-mode-p 'org-mode)
+    (user-error "Org TODO heading에서 실행하세요"))
+  (org-back-to-heading t)
+  (unless (org-entry-is-todo-p)
+    (user-error "Org TODO heading에서 실행하세요"))
+  (let* ((entry (imoogi-project-notes--task-entry entry))
+         (task-buffer (current-buffer))
+         (notes-dir (imoogi-project-notes--alist-string 'notes-dir entry))
+         (new-doc-file (and new-doc-file (expand-file-name new-doc-file)))
+         task-id task-title
+         old-doc
+         old-doc-buffer
+         new-doc-buffer
+         new-doc-id new-doc-title
+         task-preimage old-doc-preimage new-doc-preimage)
+    (imoogi-project-notes--ensure-entry-mutable entry "산출물 링크 교체")
+    (setq new-doc-file
+          (imoogi-project-notes--validate-document-target-file
+           entry new-doc-file "산출물 링크 교체"))
+    (imoogi-project-notes--ensure-existing-task-id-valid entry)
+    (setq task-title (org-get-heading t t t t))
+    (setq old-doc (imoogi-project-notes--document-by-id entry old-doc-id))
+    (when-let* ((file (alist-get 'file old-doc)))
+      (setq old-doc-buffer (and (file-exists-p file)
+                                (imoogi-project-notes--file-buffer file)))
+      (when old-doc-buffer
+        (setq old-doc-preimage
+              (imoogi-project-notes--endpoint-preimage
+               'old-doc old-doc-buffer "산출물 링크 교체"))))
+    (unless old-doc-buffer
+      (display-warning
+       'imoogi
+       (format "기존 문서를 찾지 못해 작업 쪽 링크만 교체합니다: %s" old-doc-id)
+       :warning))
+    (setq new-doc-buffer (imoogi-project-notes--file-buffer new-doc-file))
+    (with-current-buffer new-doc-buffer
+      (imoogi-project-notes--preflight-document-relation-target)
+      (when-let* ((existing (imoogi-project-notes--document-identity)))
+        (imoogi-project-notes--document-by-id entry (car existing))))
+    (setq task-preimage
+          (imoogi-project-notes--endpoint-preimage
+           'task task-buffer "산출물 링크 교체")
+          new-doc-preimage
+          (imoogi-project-notes--endpoint-preimage
+           'new-doc new-doc-buffer "산출물 링크 교체"))
+    (imoogi-project-notes--with-link-operation-preparation
+        (delq nil (list task-preimage old-doc-preimage new-doc-preimage))
+      (setq task-id (org-id-get-create))
+      (imoogi-project-notes--ensure-task-project-owner entry)
+      (when old-doc-buffer
+        (with-current-buffer old-doc-buffer
+          (imoogi-project-notes--remove-document-task-link task-id)))
+      (with-current-buffer new-doc-buffer
+        (pcase-let ((`(,id ,title ,_kind)
+                     (imoogi-project-notes--document-identity 'create)))
+          (setq new-doc-id id
+                new-doc-title title)
+          (imoogi-project-notes--document-by-id entry new-doc-id)
+          (imoogi-project-notes--ensure-document-task-link task-id task-title)))
+      (with-current-buffer task-buffer
+        (imoogi-project-notes--remove-task-artifact-link old-doc-id)
+        (imoogi-project-notes--ensure-task-artifact-link
+         new-doc-id new-doc-title)))
+    (imoogi-project-notes--save-prepared-retarget
+     entry task-buffer old-doc-buffer new-doc-buffer
+     task-id old-doc-id new-doc-id task-title new-doc-title
+     task-preimage old-doc-preimage new-doc-preimage)
+    `((old-id . ,old-doc-id)
+      (file . ,new-doc-file)
+      (id . ,new-doc-id)
+      (title . ,new-doc-title))))
+
+(defun imoogi-project-notes--task-linked-doc-ids ()
+  "Return document IDs from the current task's managed artifact list."
+  (let (ids)
+    (save-excursion
+      (org-back-to-heading t)
+      (when-let* ((bounds (imoogi-project-notes--task-artifact-section-bounds
+                           (imoogi-project-notes--current-heading-direct-end))))
+        (pcase-let ((`(,beg ,end) bounds))
+          (goto-char beg)
+          (while (re-search-forward "\\[\\[id:\\([^]]+\\)\\]\\[[^]\n]+\\]\\]"
+                                    end t)
+            (push (match-string 1) ids)))))
+    (delete-dups (nreverse ids))))
+
+(defun imoogi-project-notes--select-linked-document (entry)
+  "Select an already linked document for current task."
+  (let* ((ids (imoogi-project-notes--task-linked-doc-ids))
+         (docs (mapcar (lambda (id)
+                         (or (imoogi-project-notes--document-by-id entry id)
+                             `((id . ,id) (title . ,id) (file . nil))))
+                       ids))
+         (choices (mapcar (lambda (doc)
+                            (cons (format "%s — %s"
+                                          (alist-get 'title doc)
+                                          (or (alist-get 'file doc) "missing"))
+                                  doc))
+                          docs))
+         (choice (completing-read "연결 해제할 문서: " choices nil t)))
+    (cdr (assoc choice choices))))
+
+(defun imoogi-project-notes--goto-heading-id (id)
+  "Move point to the heading whose ID property is ID."
+  (let (found)
+    (org-with-wide-buffer
+     (goto-char (point-min))
+     (org-map-entries
+      (lambda ()
+        (when (string= (org-entry-get (point) "ID") id)
+          (setq found (point))))
+      nil 'file))
+    (unless found
+      (user-error "ID에 해당하는 heading을 찾지 못했습니다: %s" id))
+    (goto-char found)))
+
+(defun imoogi-project-notes--entry-by-note-id (note-id &optional entries)
+  "Return registered entry with NOTE-ID."
+  (cl-find-if
+   (lambda (entry)
+     (string= note-id (imoogi-project-notes--entry-derived-note-id entry)))
+   (or entries (imoogi-project-notes--all-entries))))
+
+(defun imoogi-project-notes--entry-equal-p (a b)
+  "Return non-nil when entries A and B refer to the same project note."
+  (and a b
+       (string= (file-truename (imoogi-project-notes--alist-string
+                                'notes-dir a))
+                (file-truename (imoogi-project-notes--alist-string
+                                'notes-dir b)))))
+
+(defun imoogi-project-notes--entry-same-scope-p (a b)
+  "Return non-nil when entries A and B have the same cache-relevant scope."
+  (and a b
+       (string= (imoogi-project-notes--entry-derived-note-id a)
+                (imoogi-project-notes--entry-derived-note-id b))
+       (string= (file-truename (imoogi-project-notes--alist-string
+                                'notes-dir a))
+                (file-truename (imoogi-project-notes--alist-string
+                                'notes-dir b)))
+       (string= (file-truename (imoogi-project-notes--alist-string
+                                'tasks-file a))
+                (file-truename (imoogi-project-notes--alist-string
+                                'tasks-file b)))))
+
+(defun imoogi-project-notes--unique-entries (entries)
+  "Return ENTRIES without duplicate project-note roots."
+  (let (unique)
+    (dolist (entry entries (nreverse unique))
+      (unless (cl-some (lambda (seen)
+                         (imoogi-project-notes--entry-equal-p
+                          seen entry))
+                       unique)
+        (push entry unique)))))
+
+(defun imoogi-project-notes--org-id-link-at-point-p ()
+  "Return non-nil when point is on an Org id link element."
+  (save-match-data
+    (let ((context (org-element-context)))
+      (and (eq (org-element-type context) 'link)
+           (string= (org-element-property :type context) "id")))))
+
+(defun imoogi-project-notes--managed-id-link-line-p ()
+  "Return non-nil when the current line is a managed relation ID link."
+  (save-excursion
+    (beginning-of-line)
+    (unless (or (org-in-src-block-p t)
+                (looking-at-p "[[:space:]]*#"))
+      (let ((line-end (line-end-position))
+            (bare-line
+             (save-excursion
+               (looking-at
+                "[[:space:]]*\\[\\[id:[^]\n]+\\]\\[[^]\n]+\\]\\][[:space:]]*$"))))
+        (when (or bare-line (looking-at "[[:space:]]*- "))
+          (re-search-forward "\\[\\[id:[^]\n]+\\]\\[[^]\n]+\\]\\]"
+                             line-end t)
+          (and (match-beginning 0)
+               (goto-char (match-beginning 0))
+               (imoogi-project-notes--org-id-link-at-point-p)))))))
+
+(defun imoogi-project-notes--section-has-managed-id-links-p (bounds)
+  "Return non-nil when BOUNDS contain managed ID list links."
+  (pcase-let ((`(,beg ,end) bounds))
+    (save-excursion
+      (goto-char beg)
+      (catch 'found
+        (while (< (point) end)
+          (when (imoogi-project-notes--managed-id-link-line-p)
+            (throw 'found t))
+          (forward-line 1))
+        nil))))
+
+(defun imoogi-project-notes--current-task-managed-p ()
+  "Return non-nil when the current task has managed artifact relations."
+  (and (derived-mode-p 'org-mode)
+       (save-excursion
+         (org-back-to-heading t)
+         (when-let* ((bounds (imoogi-project-notes--task-artifact-section-bounds
+                              (imoogi-project-notes--current-heading-direct-end))))
+           (imoogi-project-notes--section-has-managed-id-links-p bounds)))))
+
+(defun imoogi-project-notes--file-has-document-task-link-p (file task-id)
+  "Return non-nil when FILE has a managed document relation to TASK-ID."
+  (if-let* ((buffer (find-buffer-visiting file)))
+      (with-current-buffer buffer
+        (save-excursion
+          (imoogi-project-notes--document-task-link-present-p task-id)))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (org-mode)
+      (imoogi-project-notes--document-task-link-present-p task-id))))
+
+(defun imoogi-project-notes--current-task-inbound-managed-p ()
+  "Return non-nil when a project document links to the current task."
+  (and (derived-mode-p 'org-mode)
+       (save-excursion
+         (org-back-to-heading t)
+         (when-let* ((task-id (org-entry-get (point) "ID"))
+                     (entry (condition-case nil
+                                (imoogi-project-notes--task-entry)
+                              (user-error nil))))
+           (cl-some
+            (lambda (file)
+              (imoogi-project-notes--file-has-document-task-link-p file task-id))
+            (imoogi-project-notes--project-document-files entry))))))
+
+(defun imoogi-project-notes--buffer-tasks-file-links-document-p (doc-id)
+  "Return non-nil when the current Org buffer links a task to DOC-ID."
+  (let (found)
+    (save-excursion
+      (save-restriction
+        (widen)
+        (org-map-entries
+         (lambda ()
+           (when-let* ((bounds (imoogi-project-notes--task-artifact-section-bounds
+                                (imoogi-project-notes--current-heading-direct-end))))
+             (pcase-let ((`(,beg ,end) bounds))
+               (when (imoogi-project-notes--managed-id-link-present-in-region-p
+                      doc-id beg end)
+                 (setq found t)))))
+         nil 'file)))
+    found))
+
+(defun imoogi-project-notes--tasks-file-links-document-p (tasks-file doc-id)
+  "Return non-nil when TASKS-FILE has a managed artifact link to DOC-ID."
+  (when (and tasks-file (file-exists-p tasks-file))
+    (if-let* ((buffer (find-buffer-visiting tasks-file)))
+        (with-current-buffer buffer
+          (imoogi-project-notes--buffer-tasks-file-links-document-p doc-id))
+      (with-temp-buffer
+        (insert-file-contents tasks-file)
+        (org-mode)
+        (imoogi-project-notes--buffer-tasks-file-links-document-p doc-id)))))
+
+(defun imoogi-project-notes--current-document-inbound-managed-p ()
+  "Return non-nil when a project task links to the current document."
+  (when-let* ((identity (imoogi-project-notes--document-identity))
+              (doc-id (car identity))
+              (file buffer-file-name)
+              (entry (imoogi-project-notes--find-entry-by-notes-file file)))
+    (imoogi-project-notes--tasks-file-links-document-p
+     (imoogi-project-notes--alist-string 'tasks-file entry) doc-id)))
+
+(defun imoogi-project-notes--current-file-has-managed-task-relations-p ()
+  "Return non-nil when any heading in current file owns managed artifacts."
+  (when (derived-mode-p 'org-mode)
+    (save-excursion
+      (save-restriction
+        (widen)
+        (let (found)
+          (org-map-entries
+           (lambda ()
+             (when (imoogi-project-notes--current-task-managed-p)
+               (setq found t)))
+           nil 'file)
+          found)))))
+
+(defun imoogi-project-notes--document-managed-p ()
+  "Return non-nil when the current document has managed relation links."
+  (or (when-let* ((bounds (imoogi-project-notes--link-heading-bounds)))
+        (imoogi-project-notes--section-has-managed-id-links-p bounds))
+      (cl-some #'imoogi-project-notes--section-has-managed-id-links-p
+               (imoogi-project-notes--legacy-related-bounds))))
+
+(defun imoogi-project-notes--copy-source-kind ()
+  "Return the safe copy source kind at point.
+The result is one of `file' or `subtree'.  Partial active regions are rejected."
+  (unless (derived-mode-p 'org-mode)
+    (user-error "Org 버퍼에서 실행하세요"))
+  (cond
+   ((org-region-active-p)
+    (or (imoogi-project-notes--complete-active-region-kind)
+        (user-error "부분 region은 프로젝트 문서 copy 대상으로 사용할 수 없습니다")))
+   ((org-before-first-heading-p) 'file)
+   ((and (save-excursion
+           (org-back-to-heading t)
+           (= (org-outline-level) 1))
+         (save-excursion
+           (org-back-to-heading t)
+           (or (org-entry-get (point) "TYPE")
+               (imoogi-project-notes--document-managed-p))))
+    'file)
+   ((org-at-heading-p) 'subtree)
+   (t (user-error "복사할 Org heading 또는 파일 위치에서 실행하세요"))))
+
+(defun imoogi-project-notes--copy-source-protected-p (&optional kind)
+  "Return non-nil when current source KIND has managed project relations."
+  (let ((kind (or kind (imoogi-project-notes--copy-source-kind))))
+    (pcase kind
+      ('file (or (imoogi-project-notes--document-managed-p)
+                 (imoogi-project-notes--current-document-inbound-managed-p)
+                 (imoogi-project-notes--current-file-has-managed-task-relations-p)))
+      ('subtree (save-excursion
+                  (goto-char (imoogi-project-notes--copy-source-point kind))
+                  (org-back-to-heading t)
+                  (or (imoogi-project-notes--current-task-managed-p)
+                      (imoogi-project-notes--current-task-inbound-managed-p)
+                      (and (= (org-outline-level) 1)
+                           (org-entry-get (point) "TYPE")
+                           (imoogi-project-notes--document-managed-p)))))
+      (_ nil))))
+
+(defun imoogi-project-notes--managed-refile-source-context-p ()
+  "Return non-nil when current Org buffer/region is a managed source."
+  (and (derived-mode-p 'org-mode)
+       (or (imoogi-project-notes--document-managed-p)
+           (imoogi-project-notes--current-document-inbound-managed-p)
+           (imoogi-project-notes--current-file-has-managed-task-relations-p)
+           (save-excursion
+             (when (org-region-active-p)
+               (goto-char (region-beginning)))
+             (condition-case nil
+                 (progn
+                   (org-back-to-heading t)
+                   (or (imoogi-project-notes--current-task-managed-p)
+                       (imoogi-project-notes--current-task-inbound-managed-p)))
+               (user-error nil)
+               (error nil))))))
+
+(defun imoogi-project-notes--complete-active-region-kind ()
+  "Return `file' or `subtree' when the active region is a complete copy unit."
+  (when (org-region-active-p)
+    (let ((beg (region-beginning))
+          (end (region-end)))
+      (cond
+       ((and (= beg (point-min)) (= end (point-max))) 'file)
+       ((save-excursion
+          (goto-char beg)
+          (and (org-at-heading-p)
+               (= end (save-excursion (org-end-of-subtree t t)))))
+        (if (imoogi-project-notes--active-region-legacy-root-with-links-p
+             beg end)
+            'file
+          'subtree))))))
+
+(defun imoogi-project-notes--active-region-legacy-root-with-links-p (beg end)
+  "Return non-nil when BEG..END selects a legacy root but omits its Link sibling."
+  (save-excursion
+    (goto-char beg)
+    (and (org-at-heading-p)
+         (= (org-outline-level) 1)
+         (= end (save-excursion (org-end-of-subtree t t)))
+         (org-entry-get (point) "TYPE")
+         (or (imoogi-project-notes--link-heading-bounds)
+             (imoogi-project-notes--legacy-related-bounds)))))
+
+(defun imoogi-project-notes--refile-source-kind ()
+  "Return copy source kind for managed refile guards, or nil for unrelated sources.
+Reject ambiguous partial regions when the surrounding source is managed."
+  (when (derived-mode-p 'org-mode)
+    (if (org-region-active-p)
+        (or (imoogi-project-notes--complete-active-region-kind)
+            (progn
+              (when (imoogi-project-notes--managed-refile-source-context-p)
+                (user-error "부분 region은 프로젝트 문서 copy 대상으로 사용할 수 없습니다"))
+              nil))
+      (condition-case err
+          (imoogi-project-notes--copy-source-kind)
+        (user-error
+         (when (imoogi-project-notes--managed-refile-source-context-p)
+           (user-error "%s" (error-message-string err)))
+         nil)))))
+
+(defun imoogi-project-notes--select-copy-destination-entry (&optional source-entry)
+  "Read a writable project entry as copy destination."
+  (let* ((entries (cl-remove-if
+                   #'imoogi-project-notes--inactive-mounted-entry-p
+                   (imoogi-project-notes--all-entries)))
+         (choices
+          (mapcar (lambda (entry)
+                    (cons (format "%s — %s"
+                                  (imoogi-project-notes--entry-name entry)
+                                  (imoogi-project-notes--alist-string
+                                   'notes-dir entry))
+                          entry))
+                  entries))
+         (choice (completing-read
+                  (if source-entry "복사할 프로젝트: " "프로젝트: ")
+                  choices nil t)))
+    (cdr (assoc choice choices))))
+
+(defun imoogi-project-notes--copy-source-point (kind)
+  "Return the point anchoring current copy source KIND."
+  (if (and (eq kind 'subtree) (org-region-active-p))
+      (region-beginning)
+    (point)))
+
+(defun imoogi-project-notes--copy-source-title (kind)
+  "Return a title for current copy source KIND."
+  (pcase kind
+    ('file (imoogi-project-notes--org-title))
+    ('subtree (save-excursion
+                (goto-char (imoogi-project-notes--copy-source-point kind))
+                (org-back-to-heading t)
+                (org-get-heading t t t t)))))
+
+(defun imoogi-project-notes--copy-source-text (kind destination-entry)
+  "Return Org text for current copy source KIND for DESTINATION-ENTRY."
+  (pcase kind
+    ('file
+     (buffer-substring-no-properties (point-min) (point-max)))
+    ('subtree
+     (save-excursion
+       (goto-char (imoogi-project-notes--copy-source-point kind))
+       (org-back-to-heading t)
+       (let ((title (org-get-heading t t t t))
+             (beg (point))
+             (end (save-excursion (org-end-of-subtree t t))))
+         (concat "#+TITLE: " title "\n"
+                 "#+CATEGORY: "
+                 (imoogi-project-notes--entry-name destination-entry)
+                 "\n\n"
+                 (buffer-substring-no-properties beg end)))))))
+
+(defun imoogi-project-notes--copy-destination-file
+    (destination-entry source-file title)
+  "Return a unique destination file for SOURCE-FILE named TITLE."
+  (let* ((notes-dir (imoogi-project-notes--alist-string
+                     'notes-dir destination-entry))
+         (artifact-dir (expand-file-name "artifacts/" notes-dir))
+         (base-title (or title (file-name-base source-file))))
+    (imoogi-project-notes--unique-artifact-file
+     artifact-dir "copy" base-title)))
+
+(defun imoogi-project-notes--strip-managed-link-lines-in-region (beg end)
+  "Strip managed ID links between BEG and END, preserving surrounding prose."
+  (save-excursion
+    (goto-char beg)
+    (while (< (point) end)
+      (let* ((line-beg (line-beginning-position))
+             (line-end (line-end-position))
+             (line-limit (min (1+ line-end) (point-max))))
+        (if (not (imoogi-project-notes--managed-id-link-line-p))
+            (forward-line 1)
+          (goto-char line-beg)
+          (when (re-search-forward "\\[\\[id:[^]\n]+\\]\\[[^]\n]+\\]\\]"
+                                   line-end t)
+            (let ((match-beg (match-beginning 0))
+                  (match-end (match-end 0)))
+              (when (save-excursion
+                      (goto-char match-beg)
+                      (imoogi-project-notes--org-id-link-at-point-p))
+                (let ((remaining (string-trim
+                                  (concat
+                                   (buffer-substring-no-properties
+                                    line-beg match-beg)
+                                   (buffer-substring-no-properties
+                                    match-end line-end)))))
+                  (if (or (string-empty-p remaining) (string= remaining "-"))
+                      (progn
+                        (delete-region line-beg line-limit)
+                        (setq end (- end (- line-limit line-beg)))
+                        (goto-char line-beg))
+                    (delete-region match-beg match-end)
+                    (setq end (- end (- match-end match-beg)))
+                    (forward-line 1)))))))))))
+
+(defun imoogi-project-notes--remove-copied-source-owner-properties ()
+  "Remove source-only ownership properties from a copied Org buffer."
+  (goto-char (point-min))
+  (while (re-search-forward
+          "^[[:space:]]*:\\(IMOOGI_PROJECT_ID\\|CATEGORY\\):[[:space:]]*\\([^\n]*\\)\n"
+          nil t)
+    (let ((beg (match-beginning 0))
+          (name (match-string 1))
+          (value-beg (match-beginning 2)))
+      (when (imoogi-project-notes--node-property-at-position-p name value-beg)
+        (delete-region beg (match-end 0))
+        (goto-char beg)))))
+
+(defun imoogi-project-notes--strip-current-task-artifact-relations ()
+  "Strip managed artifact relation links from the current task only."
+  (when-let* ((bounds (imoogi-project-notes--task-artifact-section-bounds
+                       (imoogi-project-notes--current-heading-direct-end))))
+    (pcase-let ((`(,beg ,end) bounds))
+      (imoogi-project-notes--strip-managed-link-lines-in-region beg end))))
+
+(defun imoogi-project-notes--strip-managed-copy-relations ()
+  "Remove managed relationship entries from the current copied Org buffer."
+  (org-with-wide-buffer
+   (when-let* ((bounds (imoogi-project-notes--link-heading-bounds)))
+     (pcase-let ((`(,beg ,end) bounds))
+       (imoogi-project-notes--strip-managed-link-lines-in-region beg end)))
+   (dolist (bounds (imoogi-project-notes--legacy-related-bounds))
+     (pcase-let ((`(,beg ,end) bounds))
+       (imoogi-project-notes--strip-managed-link-lines-in-region beg end)))
+   (goto-char (point-min))
+   (while (re-search-forward org-heading-regexp nil t)
+     (goto-char (match-beginning 0))
+     (imoogi-project-notes--strip-current-task-artifact-relations)
+     (forward-line 1))
+   (imoogi-project-notes--remove-copied-source-owner-properties)))
+
+(defun imoogi-project-notes--freshen-copy-ids ()
+  "Assign fresh IDs in current buffer and rewrite copied internal ID links."
+  (let ((old-to-new nil)
+        (seen nil))
+    (org-with-wide-buffer
+     (goto-char (point-min))
+     (while (re-search-forward "^\\([[:space:]]*:ID:[[:space:]]+\\)\\([^[:space:]\n]+\\)"
+                               nil t)
+       (let ((prefix (match-string 1))
+             (old (match-string 2))
+             (beg (match-beginning 0))
+             (end (match-end 0)))
+         (when (eq (org-element-type
+                    (save-excursion
+                      (goto-char beg)
+                      (org-element-context)))
+                   'node-property)
+           (when (member old seen)
+             (user-error "복사 원본에 중복 ID가 있어 안전하게 복사할 수 없습니다: %s"
+                         old))
+           (push old seen)
+           (let ((new (imoogi-project-notes--new-note-id)))
+             (push (cons old new) old-to-new)
+             (delete-region beg end)
+             (insert prefix new)))))
+     (dolist (mapping old-to-new)
+       (goto-char (point-min))
+       (while (re-search-forward
+               (concat "\\[\\[id:" (regexp-quote (car mapping)) "\\]")
+               nil t)
+         (when (save-excursion
+                 (goto-char (match-beginning 0))
+                 (imoogi-project-notes--org-id-link-at-point-p))
+           (replace-match (concat "[[id:" (cdr mapping) "]") t t)))))
+    (nreverse old-to-new)))
+
+(defun imoogi-project-notes--copy-transform (text)
+  "Return (TEXT ID-MAP) for copied Org TEXT."
+  (with-temp-buffer
+    (insert text)
+    (org-mode)
+    (imoogi-project-notes--strip-managed-copy-relations)
+    (let ((id-map (imoogi-project-notes--freshen-copy-ids)))
+      (list (buffer-string) id-map))))
+
+(defun imoogi-project-notes--publish-copy-ids (id-map file)
+  "Publish copied ID-MAP locations to FILE."
+  (dolist (mapping id-map)
+    (org-id-add-location (cdr mapping) file)))
+
+(defun imoogi-project-notes--warn-external-id-citations (content id-map)
+  "Warn when copied CONTENT still contains ID links outside copied ID-MAP."
+  (let ((fresh-ids (mapcar #'cdr id-map))
+        external)
+    (with-temp-buffer
+      (insert content)
+      (org-mode)
+      (org-with-wide-buffer
+       (goto-char (point-min))
+       (while (re-search-forward "\\[\\[id:\\([^]\n]+\\)\\]" nil t)
+         (let ((id (match-string 1)))
+           (when (and (save-excursion
+                        (goto-char (match-beginning 0))
+                        (imoogi-project-notes--org-id-link-at-point-p))
+                      (not (member id fresh-ids)))
+             (push id external))))))
+    (when external
+      (display-warning
+       'imoogi
+       (format "복사본에 외부 ID 링크가 남아 있습니다: %s"
+               (string-join (delete-dups (nreverse external)) ", "))
+       :warning))))
+
+(defun imoogi-project-notes--copy-current-source-to-entry
+    (destination-entry &optional kind)
+  "Copy current Org file/subtree to DESTINATION-ENTRY with fresh IDs."
+  (let* ((kind (or kind (imoogi-project-notes--copy-source-kind)))
+         (source-file buffer-file-name)
+         (title (imoogi-project-notes--copy-source-title kind))
+         (destination-file
+          (imoogi-project-notes--copy-destination-file
+           destination-entry source-file title)))
+    (imoogi-project-notes--ensure-entry-mutable
+     destination-entry "프로젝트 문서 복사")
+    (unless (file-in-directory-p
+             (file-truename destination-file)
+             (file-truename
+              (imoogi-project-notes--alist-string 'notes-dir destination-entry)))
+      (user-error "복사 대상이 프로젝트 문서 폴더 밖입니다: %s" destination-file))
+    (when (file-exists-p destination-file)
+      (user-error "복사 대상 파일이 이미 있어 덮어쓰지 않습니다: %s"
+                  destination-file))
+    (pcase-let ((`(,content ,id-map)
+                 (imoogi-project-notes--copy-transform
+                  (imoogi-project-notes--copy-source-text
+                   kind destination-entry))))
+      (imoogi-project-notes--warn-external-id-citations content id-map)
+      (imoogi-project-notes--exclusive-create-file destination-file content)
+      (imoogi-project-notes--publish-copy-ids id-map destination-file)
+      (message "프로젝트 문서를 복사했습니다: %s" destination-file)
+      `((file . ,destination-file)
+        (id-map . ,id-map)
+        (kind . ,kind)
+        (source-file . ,source-file)))))
+
+;;;###autoload
+(defun imoogi-project-notes-copy-to-project (&optional destination-entry kind)
+  "Copy current Org file or complete subtree to another project note.
+The copy keeps the original unchanged, assigns fresh IDs to copied ID-bearing
+nodes, rewrites internal copied ID links, strips managed project relationship
+entries, and writes a unique destination file without overwriting."
+  (interactive)
+  (let ((entry (or destination-entry
+                   (imoogi-project-notes--select-copy-destination-entry
+                    (imoogi-project-notes--current-entry)))))
+    (imoogi-project-notes--copy-current-source-to-entry entry kind)))
+
+(defun imoogi-project-notes--entries-for-tasks-file (file &optional entries)
+  "Return registered entries whose tasks file is FILE."
+  (let ((truename (file-truename file)))
+    (imoogi-project-notes--unique-entries
+     (cl-remove-if-not
+      (lambda (entry)
+        (when-let* ((tasks-file (imoogi-project-notes--alist-string
+                                 'tasks-file entry)))
+          (string= truename (file-truename tasks-file))))
+      (or entries (imoogi-project-notes--all-entries))))))
+
+(defun imoogi-project-notes--entry-from-project-id
+    (project-id candidates context)
+  "Return the unique CANDIDATES entry for PROJECT-ID.
+Signal a user error naming CONTEXT when PROJECT-ID is ambiguous."
+  (when (and project-id (not (string-empty-p project-id)))
+    (let ((matches (imoogi-project-notes--unique-entries
+                    (cl-remove-if-not
+                     (lambda (candidate)
+                       (string= project-id
+                                (imoogi-project-notes--entry-derived-note-id
+                                 candidate)))
+                     candidates))))
+      (cond
+       ((= (length matches) 1) (car matches))
+       ((= (length matches) 0)
+        (user-error "%s의 IMOOGI_PROJECT_ID가 등록된 프로젝트와 일치하지 않습니다: %s"
+                    context project-id))
+       ((> (length matches) 1)
+        (user-error "%s의 IMOOGI_PROJECT_ID가 중복 프로젝트를 가리킵니다: %s"
+                    context project-id))))))
+
+(defun imoogi-project-notes--entry-from-category (category candidates)
+  "Return the unique CANDIDATES entry named CATEGORY."
+  (when (and category (not (string-empty-p category)))
+    (let ((matches (imoogi-project-notes--unique-entries
+                    (cl-remove-if-not
+                     (lambda (candidate)
+                       (string= category
+                                (imoogi-project-notes--entry-name candidate)))
+                     candidates))))
+      (cond
+       ((= (length matches) 1) (car matches))
+       ((> (length matches) 1)
+        (user-error "작업 CATEGORY가 중복 프로젝트를 가리킵니다: %s"
+                    category))))))
+
+(defun imoogi-project-notes--entry-at-refile-target (rfloc candidates)
+  "Return destination entry from RFLOC heading metadata among CANDIDATES."
+  (let ((pos (nth 3 rfloc)))
+    (when pos
+      (goto-char (cond
+                  ((markerp pos) (marker-position pos))
+                  ((integerp pos) pos)
+                  (t (point-min))))
+      (unless (org-at-heading-p)
+        (condition-case nil
+            (org-back-to-heading t)
+          (error nil)))
+      (when (org-at-heading-p)
+        (or (imoogi-project-notes--entry-from-project-id
+             (org-entry-get (point) "IMOOGI_PROJECT_ID")
+             candidates "대상 작업")
+            (imoogi-project-notes--entry-from-category
+             (org-get-category) candidates))))))
+
+(defun imoogi-project-notes--refile-destination-entry (rfloc)
+  "Return the project entry owning RFLOC's destination."
+  (when-let* ((file (nth 1 rfloc)))
+    (or (imoogi-project-notes--find-entry-by-notes-file file)
+        (let ((candidates (imoogi-project-notes--entries-for-tasks-file file)))
+          (cond
+           ((= (length candidates) 1) (car candidates))
+           ((> (length candidates) 1)
+            (or (with-current-buffer (find-file-noselect file)
+                  (save-excursion
+                    (imoogi-project-notes--entry-at-refile-target
+                     rfloc candidates)))
+                (imoogi-project-notes--select-task-entry-candidate
+                 candidates "대상 작업 프로젝트: "))))))))
+
+(defun imoogi-project-notes--copy-action-for-refile (copy-requested)
+  "Return refile guard action for COPY-REQUESTED."
+  (if copy-requested
+      'copy
+    (if (and noninteractive
+             (subrp (symbol-function 'completing-read)))
+        'cancel
+    (let* ((choices '(("copy" . copy) ("cancel" . cancel)))
+           (choice (completing-read
+                    "연결된 프로젝트 항목은 이동하지 않습니다. 동작: "
+                    choices nil t nil nil "cancel")))
+      (cdr (assoc choice choices))))))
+
+(defun imoogi-project-notes--clock-refile-location ()
+  "Return an RFLOC-like destination for the running clock."
+  (unless (and (boundp 'org-clock-marker)
+               (markerp org-clock-marker)
+               (marker-buffer org-clock-marker))
+    (user-error "실행 중인 clock 대상이 없습니다"))
+  (let* ((marker (copy-marker org-clock-marker))
+         (buffer (marker-buffer marker))
+         (file (buffer-file-name buffer)))
+    (unless file
+      (user-error "실행 중인 clock 대상 파일을 찾지 못했습니다"))
+    (with-current-buffer buffer
+      (save-excursion
+        (goto-char marker)
+        (org-back-to-heading t)
+        (list (org-get-heading t t t t) file nil marker)))))
+
+(defun imoogi-project-notes--refile-target-for-arg (arg default-buffer rfloc)
+  "Return RFLOC, using ARG-specific Org destinations without prompting needlessly."
+  (cond
+   (rfloc rfloc)
+   ((equal arg 2) (imoogi-project-notes--clock-refile-location))
+   (t (org-refile-get-location "연결된 항목 대상" default-buffer nil))))
+
+(defun imoogi-project-notes--org-refile-around
+    (orig &optional arg default-buffer rfloc msg)
+  "Guard `org-refile' for cross-project managed project-note entities."
+  (if (member arg '(0 (4) (16) (64)))
+      (funcall orig arg default-buffer rfloc msg)
+    (let* ((kind (imoogi-project-notes--refile-source-kind))
+           (protected (and kind
+                           (imoogi-project-notes--copy-source-protected-p kind)))
+           (source-entry (or (and buffer-file-name
+                                   (imoogi-project-notes--find-entry-by-notes-file
+                                    buffer-file-name))
+                             (and (derived-mode-p 'org-mode)
+                                  (condition-case nil
+                                      (imoogi-project-notes--task-entry)
+                                    (user-error nil)))
+                             (imoogi-project-notes--current-entry)))
+           (copy-requested (or (equal arg 3) org-refile-keep)))
+      (if (not protected)
+          (funcall orig arg default-buffer rfloc msg)
+        (let* ((target (imoogi-project-notes--refile-target-for-arg
+                        arg default-buffer rfloc))
+               (destination-entry
+                (imoogi-project-notes--refile-destination-entry target)))
+          (cond
+           ((not destination-entry)
+            (user-error "프로젝트 밖 대상에는 연결된 항목을 이동하지 않습니다"))
+           ((imoogi-project-notes--entry-equal-p source-entry destination-entry)
+            (cond
+             (copy-requested
+              (imoogi-project-notes--copy-current-source-to-entry
+               destination-entry kind))
+             ((eq kind 'file)
+              (user-error "문서 관계를 나누는 same-project refile은 지원하지 않습니다"))
+             (t
+              (funcall orig arg default-buffer target msg))))
+           ((eq (imoogi-project-notes--copy-action-for-refile copy-requested)
+                'copy)
+            (imoogi-project-notes--copy-current-source-to-entry
+             destination-entry kind))
+           (t (user-error "프로젝트 항목 이동을 취소했습니다"))))))))
+
+(defun imoogi-project-notes--org-roam-refile-around (orig node)
+  "Guard `org-roam-refile' for cross-project managed project-note entities."
+  (let* ((kind (imoogi-project-notes--refile-source-kind))
+         (protected (and kind (imoogi-project-notes--copy-source-protected-p kind)))
+         (source-entry (or (and buffer-file-name
+                                 (imoogi-project-notes--find-entry-by-notes-file
+                                  buffer-file-name))
+                           (imoogi-project-notes--current-entry)))
+         (target-file (and (fboundp 'org-roam-node-file)
+                           (org-roam-node-file node)))
+         (destination-entry
+          (and target-file
+               (imoogi-project-notes--find-entry-by-notes-file target-file))))
+    (cond
+     ((not protected)
+      (funcall orig node))
+     ((not destination-entry)
+      (user-error "프로젝트 밖 org-roam 대상에는 연결된 항목을 이동하지 않습니다"))
+     ((imoogi-project-notes--entry-equal-p source-entry destination-entry)
+      (if (eq kind 'file)
+          (user-error "문서 관계를 나누는 same-project org-roam refile은 지원하지 않습니다")
+        (funcall orig node)))
+     ((eq (imoogi-project-notes--copy-action-for-refile nil) 'copy)
+      (imoogi-project-notes--copy-current-source-to-entry destination-entry kind))
+     (t (user-error "프로젝트 항목 이동을 취소했습니다")))))
+
+(defun imoogi-project-notes--install-refile-guards ()
+  "Install narrow project-notes refile guards idempotently."
+  (with-eval-after-load 'org-refile
+    (unless (advice-member-p #'imoogi-project-notes--org-refile-around
+                             'org-refile)
+      (advice-add 'org-refile :around
+                  #'imoogi-project-notes--org-refile-around)))
+  (with-eval-after-load 'org-roam-node
+    (unless (advice-member-p #'imoogi-project-notes--org-roam-refile-around
+                             'org-roam-refile)
+      (advice-add 'org-roam-refile :around
+                  #'imoogi-project-notes--org-roam-refile-around))))
+
 (defun imoogi-project-notes--append-artifact-link (artifact-id title)
   "Append a link to ARTIFACT-ID named TITLE under the current Org heading."
-  (let ((link (format "- [[id:%s][%s]]" artifact-id title))
-        (subtree-end (save-excursion (org-end-of-subtree t t))))
-    (save-excursion
-      (forward-line 1)
-      (if (re-search-forward "^산출물:[[:space:]]*$" subtree-end t)
-          (progn
-            (forward-line 1)
-            (while (and (< (point) subtree-end) (looking-at "^- "))
-              (forward-line 1))
-            (insert link "\n"))
-        (goto-char subtree-end)
-        (unless (bolp) (insert "\n"))
-        (insert "\n산출물:\n" link "\n")))))
+  (imoogi-project-notes--ensure-task-artifact-link artifact-id title))
+
+(defun imoogi-project-notes--cache-context-current-p
+    (buffer marker tick &optional entry)
+  "Return non-nil when BUFFER/MARKER/TICK still name the original request."
+  (and (buffer-live-p buffer)
+       (markerp marker)
+       (marker-buffer marker)
+       (eq (window-buffer (selected-window)) buffer)
+       (= tick (buffer-modified-tick buffer))
+       (or (not entry)
+           (when-let* ((registered
+                        (imoogi-project-notes--entry-by-note-id
+                         (imoogi-project-notes--entry-derived-note-id entry))))
+             (and (imoogi-project-notes--entry-same-scope-p
+                   entry registered)
+                  (with-current-buffer buffer
+                    (save-excursion
+                      (goto-char marker)
+                      (condition-case nil
+                          (imoogi-project-notes--entry-same-scope-p
+                           registered
+                           (imoogi-project-notes--task-entry registered))
+                        (user-error nil)))))))))
+
+(defun imoogi-project-notes--cache-document-choices (entry response)
+  "Return completing-read choices for RESPONSE documents in ENTRY."
+  (let ((root (imoogi-project-notes--alist-string 'notes-dir entry)))
+    (mapcar (lambda (doc)
+              (cons (format "%s — %s"
+                            (or (alist-get 'title doc)
+                                (file-name-base (alist-get 'file doc)))
+                            (file-relative-name (alist-get 'file doc) root))
+                    doc))
+            (alist-get 'documents response))))
+
+(defun imoogi-project-notes--cache-read-document (entry response prompt)
+  "Read a document from RESPONSE using PROMPT."
+  (when (active-minibuffer-window)
+    (user-error "minibuffer가 사용 중이라 프로젝트 문서 선택을 시작하지 않았습니다"))
+  (let* ((choices (imoogi-project-notes--cache-document-choices entry response))
+         (choice (completing-read prompt choices nil t)))
+    (cdr (assoc choice choices))))
+
+(defun imoogi-project-notes--cache-fresh-document (response selected)
+  "Return SELECTED document's fresh entry from RESPONSE."
+  (let ((file (and selected (alist-get 'file selected))))
+    (and file
+         (cl-find file (alist-get 'documents response)
+                  :key (lambda (doc) (alist-get 'file doc))
+                  :test #'string=))))
+
+(defun imoogi-project-notes--cache-run-selected-document-operation
+    (entry marker tick selected operation)
+  "Refresh catalog, then run OPERATION for SELECTED when context is current."
+  (let ((buffer (marker-buffer marker)))
+    (imoogi-project-notes--cache-call-async
+     entry "catalog"
+     (lambda (fresh)
+       (if (not (imoogi-project-notes--cache-context-current-p
+                 buffer marker tick entry))
+           (message "프로젝트 문서 캐시 결과를 버렸습니다: 원본 버퍼가 바뀌었습니다")
+         (let ((doc (imoogi-project-notes--cache-fresh-document fresh selected))
+               (imoogi-project-notes--document-cache-snapshot fresh)
+               (imoogi-project-notes--snapshot-live-record-cache
+                (make-hash-table :test #'equal)))
+           (with-current-buffer buffer
+             (save-excursion
+               (goto-char marker)
+               (funcall operation doc)))))))))
+
+(defun imoogi-project-notes--link-artifact-async (entry)
+  "Start asynchronous document selection and link it to the current task."
+  (let ((buffer (current-buffer))
+        (marker (copy-marker (point)))
+        (tick (buffer-modified-tick)))
+    (imoogi-project-notes--cache-call-async
+     entry "catalog"
+     (lambda (response)
+       (if (not (imoogi-project-notes--cache-context-current-p
+                 buffer marker tick entry))
+           (message "프로젝트 문서 캐시 결과를 버렸습니다: 원본 버퍼가 바뀌었습니다")
+         (let ((doc (imoogi-project-notes--cache-read-document
+                     entry response "연결할 프로젝트 문서: ")))
+           (imoogi-project-notes--cache-run-selected-document-operation
+            entry marker tick doc
+            (lambda (fresh-doc)
+              (imoogi-project-notes--link-current-task-to-document
+               (alist-get 'file fresh-doc) entry)))))))))
+
+;;;###autoload
+(defun imoogi-project-notes-link-artifact (&optional document entry)
+  "Link the current TODO to an existing project DOCUMENT."
+  (interactive)
+  (let* ((entry (imoogi-project-notes--task-entry entry))
+         (doc (cond
+               ((stringp document)
+                `((file . ,(expand-file-name document))))
+               ((and document (listp document)) document)
+               ((called-interactively-p 'interactive)
+                (if (imoogi-project-notes--cache-available-p)
+                    (progn
+                      (imoogi-project-notes--link-artifact-async entry)
+                      nil)
+                  (user-error
+                   "imoogi-notes 실행 파일이 없습니다. 저장소에서 make build-notes를 실행하세요")))
+               (t (imoogi-project-notes--select-document
+                   entry "연결할 프로젝트 문서: " t)))))
+    (when doc
+      (unless (alist-get 'file doc)
+        (signal 'quit nil))
+      (imoogi-project-notes--link-current-task-to-document
+       (alist-get 'file doc) entry))))
+
+;;;###autoload
+(defun imoogi-project-notes-unlink-artifact (&optional document entry)
+  "Remove the relation between the current TODO and DOCUMENT."
+  (interactive)
+  (let* ((entry (imoogi-project-notes--task-entry entry))
+         (doc (or document
+                  (imoogi-project-notes--select-linked-document entry))))
+    (imoogi-project-notes--unlink-current-task-from-document
+     (alist-get 'id doc) (alist-get 'file doc) entry)))
+
+;;;###autoload
+(defun imoogi-project-notes-insert-link (&optional document entry)
+  "Insert an ID link to a project DOCUMENT at point without creating a relation."
+  (interactive)
+  (setq-local case-fold-search nil)
+  (cl-labels
+      ((source-entry-strict
+        (expected)
+        (let* ((notes-entry
+                (and buffer-file-name
+                     (imoogi-project-notes--find-entry-by-notes-file
+                      buffer-file-name)))
+               (task-entries
+                (and buffer-file-name
+                     (imoogi-project-notes--entries-for-tasks-file
+                      buffer-file-name)))
+               (actual
+                (cond
+                 (task-entries
+                  (imoogi-project-notes--task-entry expected))
+                 (notes-entry notes-entry)
+                 (expected
+                  (user-error "문서 링크 삽입 위치가 선택한 프로젝트 문서 안이 아닙니다: %s"
+                              (or buffer-file-name (buffer-name)))))))
+          (when (and expected actual
+                     (not (imoogi-project-notes--entry-equal-p
+                           expected actual)))
+            (user-error "문서 링크 삽입 위치의 실제 프로젝트와 선택한 프로젝트가 다릅니다"))
+          (or expected actual
+              (user-error "문서 링크 삽입 위치의 프로젝트 소유자를 확인할 수 없습니다: %s"
+                          (or buffer-file-name (buffer-name))))))
+       (save-prepared-document-id
+        (actual-entry doc-buffer doc-id doc-title doc-preimage)
+        (imoogi-project-notes--run-link-operation
+         'insert-link
+         `((operation . insert-link)
+           (entry-note-id . ,(imoogi-project-notes--entry-derived-note-id
+                              actual-entry))
+           (entry-instance-id . ,(alist-get 'instance-id actual-entry))
+           (doc-file . ,(buffer-file-name doc-buffer))
+           (doc-id . ,doc-id)
+           (doc-title . ,doc-title))
+         (imoogi-project-notes--changed-endpoints doc-preimage))
+        (when doc-id
+          (org-id-add-location doc-id (buffer-file-name doc-buffer)))))
+    (let* ((entry (save-mark-and-excursion
+                    (source-entry-strict entry)))
+           (doc (cond
+                 ((stringp document)
+                  `((file . ,(expand-file-name document))))
+                 ((and document (listp document)) document)
+                 (t (imoogi-project-notes--select-document
+                     entry "삽입할 프로젝트 문서 링크: " t)))))
+      (unless (alist-get 'file doc)
+        (signal 'quit nil))
+      (setf (alist-get 'file doc)
+            (imoogi-project-notes--validate-document-target-file
+             entry (alist-get 'file doc) "문서 링크 삽입"))
+      (imoogi-project-notes--ensure-entry-mutable entry "문서 링크 삽입")
+      (when-let* ((visited (find-buffer-visiting (alist-get 'file doc))))
+        (unless (verify-visited-file-modtime visited)
+          (user-error "문서 링크 삽입 전에 파일을 다시 방문하거나 되돌리세요: %s"
+                      (alist-get 'file doc))))
+      (let* ((doc-buffer (imoogi-project-notes--file-buffer
+                          (alist-get 'file doc)))
+               doc-id doc-title doc-preimage)
+          (with-current-buffer doc-buffer
+            (when-let* ((existing (imoogi-project-notes--document-identity)))
+              (imoogi-project-notes--document-by-id entry (car existing)))
+            (setq doc-preimage
+                  (imoogi-project-notes--endpoint-preimage
+                   'doc doc-buffer "문서 링크 삽입"))
+            (pcase-let ((`(,id ,title ,_kind)
+                         (imoogi-project-notes--document-identity 'create)))
+              (setq doc-id id
+                    doc-title title)
+              (imoogi-project-notes--document-by-id entry doc-id)))
+          (save-prepared-document-id
+           entry doc-buffer doc-id doc-title doc-preimage)
+          (insert (format "[[id:%s][%s]]" doc-id doc-title))))))
+
+;;;###autoload
+(defun imoogi-project-notes-repair-link (old-id new-document &optional entry)
+  "Retarget current task relation from OLD-ID to NEW-DOCUMENT."
+  (interactive
+   (let* ((entry (imoogi-project-notes--task-entry))
+          (old-id (completing-read "교체할 누락 ID: "
+                                   (imoogi-project-notes--task-linked-doc-ids)
+                                   nil t))
+          (new-doc (imoogi-project-notes--select-document
+                    entry "새 문서 대상: " t)))
+     (list old-id new-doc entry)))
+  (let* ((entry (imoogi-project-notes--task-entry entry))
+         (new-doc (if (stringp new-document)
+                      `((file . ,(expand-file-name new-document)))
+                    new-document)))
+    (unless (alist-get 'file new-doc)
+      (signal 'quit nil))
+    (imoogi-project-notes--retarget-current-task-document
+     old-id (alist-get 'file new-doc) entry)))
+
+;;;###autoload
+(defun imoogi-project-notes-retry-link-operation ()
+  "Retry the last pending project document relation operation."
+  (interactive)
+  (unless imoogi-project-notes--pending-link-operation
+    (user-error "재시도할 project-notes 링크 작업이 없습니다"))
+  (let* ((operation imoogi-project-notes--pending-link-operation)
+         (endpoints (alist-get 'endpoints operation))
+         (task-file (alist-get 'task-file operation))
+         (doc-file (alist-get 'doc-file operation))
+         (doc-id (alist-get 'doc-id operation))
+         (entry-note-id (alist-get 'entry-note-id operation))
+         (entries (imoogi-project-notes--all-entries))
+         (entry (or (cl-find-if
+                     (lambda (candidate)
+                       (and entry-note-id
+                            (string= entry-note-id
+                                     (imoogi-project-notes--entry-derived-note-id
+                                      candidate))))
+                     entries)
+                    (and task-file
+                         (imoogi-project-notes--find-entry-by-notes-file
+                          task-file entries))
+                    (and doc-file
+                         (imoogi-project-notes--find-entry-by-notes-file
+                          doc-file entries))
+                    (when-let* ((new-doc-file
+                                 (alist-get 'new-doc-file operation)))
+                      (imoogi-project-notes--find-entry-by-notes-file
+                       new-doc-file entries)))))
+    (unless entry
+      (user-error "재시도할 프로젝트 항목을 찾지 못했습니다"))
+    (if endpoints
+        (progn
+          (imoogi-project-notes--retry-link-operation-save operation)
+          (when (eq (alist-get 'operation operation) 'insert-link)
+            (message "문서 ID 저장을 완료했습니다. 원래 위치에서 `imoogi-project-notes-insert-link'를 다시 실행해 링크를 삽입하세요.")))
+      (unless task-file
+        (user-error "이전 형식의 링크 재시도 작업은 자동 재시도할 수 없습니다"))
+      (with-current-buffer (imoogi-project-notes--file-buffer task-file)
+        (goto-char (point-min))
+        (imoogi-project-notes--goto-heading-id (alist-get 'task-id operation))
+        (pcase (alist-get 'operation operation)
+          ('link
+           (imoogi-project-notes--link-current-task-to-document doc-file entry))
+          ('unlink
+           (imoogi-project-notes--unlink-current-task-from-document
+            doc-id doc-file entry))
+          ('retarget
+           (imoogi-project-notes--retarget-current-task-document
+            (alist-get 'old-doc-id operation)
+            (alist-get 'new-doc-file operation)
+            entry))
+          (_ (user-error "알 수 없는 링크 재시도 작업입니다: %s"
+                         (alist-get 'operation operation))))))))
 
 ;;;###autoload
 (defun imoogi-project-notes-create-artifact (kind title &optional entry)
@@ -3449,35 +6108,64 @@ opens the new file below the project's artifacts directory."
   (unless (derived-mode-p 'org-mode)
     (user-error "Org TODO heading에서 실행하세요"))
   (org-back-to-heading t)
-  (let ((entry (or entry
-                   (imoogi-project-notes--current-entry)
-                   (imoogi-project-notes--select-entry "산출물 프로젝트: "))))
-    (imoogi-project-notes--ensure-entry-mutable entry "산출물 생성")
-    (let* ((spec (imoogi-project-notes--artifact-spec kind entry))
-           (task-title (org-get-heading t t t t))
-           (task-id (org-id-get-create))
-           (artifact-id (org-id-new))
-           (notes-dir (imoogi-project-notes--alist-string 'notes-dir entry))
-           (artifact-dir (expand-file-name "artifacts/" notes-dir))
-           (file (imoogi-project-notes--unique-artifact-file
-                  artifact-dir (nth 2 spec) title))
-           (project-name (imoogi-project-notes--entry-name entry))
-           (content (imoogi-project-notes--template
-                     "artifact"
-                     `(("ARTIFACT_TITLE" . ,title)
-                       ("ARTIFACT_TYPE" . ,(nth 1 spec))
-                       ("ARTIFACT_ID" . ,artifact-id)
-                       ("TASK_ID" . ,task-id)
-                       ("TASK_TITLE" . ,task-title)
-                       ("PROJECT_NAME" . ,project-name)
-                       ("ARTIFACT_SECTIONS" . ,(nth 3 spec))))))
-      (make-directory artifact-dir t)
-      (imoogi-project-notes--write-new-file file content)
-      (imoogi-project-notes--append-artifact-link artifact-id title)
-      (when buffer-file-name (save-buffer))
-      (org-id-add-location artifact-id file)
-      (imoogi-project-notes--find-file
-       entry file (imoogi-project-notes--current-source-root entry)))))
+  (let ((entry (imoogi-project-notes--task-entry entry)))
+      (imoogi-project-notes--ensure-entry-mutable entry "산출물 생성")
+      (let* ((spec (imoogi-project-notes--artifact-spec kind entry))
+             (task-title (org-get-heading t t t t))
+             (artifact-id (org-id-new))
+             (notes-dir (imoogi-project-notes--alist-string 'notes-dir entry))
+             (artifact-dir (expand-file-name "artifacts/" notes-dir))
+             (file (imoogi-project-notes--unique-artifact-file
+                    artifact-dir (nth 2 spec) title))
+             (project-name (imoogi-project-notes--entry-name entry))
+             (task-buffer (current-buffer))
+             task-id content doc-buffer task-preimage doc-preimage created)
+        (imoogi-project-notes--ensure-existing-task-id-valid entry)
+        (setq task-preimage
+              (imoogi-project-notes--endpoint-preimage
+               'task task-buffer "산출물 생성"))
+        (setq task-id (org-id-get-create))
+        (imoogi-project-notes--ensure-task-project-owner entry)
+        (setq content
+              (imoogi-project-notes--template
+               "artifact"
+               `(("ARTIFACT_TITLE" . ,title)
+                 ("ARTIFACT_TYPE" . ,(nth 1 spec))
+                 ("ARTIFACT_ID" . ,artifact-id)
+                 ("TASK_ID" . ,task-id)
+                 ("TASK_TITLE" . ,task-title)
+                 ("PROJECT_NAME" . ,project-name)
+                 ("ARTIFACT_SECTIONS" . ,(nth 3 spec)))))
+        (condition-case err
+            (progn
+              (imoogi-project-notes--exclusive-create-file file content)
+              (setq created t
+                    doc-buffer (imoogi-project-notes--file-buffer file))
+              (with-current-buffer doc-buffer
+                (setq doc-preimage
+                      (imoogi-project-notes--endpoint-preimage
+                       'doc doc-buffer "산출물 생성")))
+              (with-current-buffer task-buffer
+                (imoogi-project-notes--append-artifact-link artifact-id title))
+              (imoogi-project-notes--save-prepared-relation
+               'link entry task-buffer doc-buffer task-id artifact-id
+               task-title title task-preimage doc-preimage)
+              (imoogi-project-notes--find-file
+               entry file (imoogi-project-notes--current-source-root entry)))
+          (error
+           (when (and created
+                      (file-exists-p file)
+                      (string= (imoogi-project-notes--file-string-hash file)
+                               (secure-hash 'sha1 content))
+                      (not imoogi-project-notes--pending-link-operation))
+             (delete-file file))
+           (when (and (not imoogi-project-notes--pending-link-operation)
+                      (eq (imoogi-project-notes--endpoint-disk-state
+                           task-preimage)
+                          'pre))
+             (imoogi-project-notes--restore-endpoint-preimage-for-preparation
+              task-preimage))
+           (signal (car err) (cdr err)))))))
 
 ;;;###autoload
 (defun imoogi-notes-scratch ()
@@ -3511,6 +6199,8 @@ opens the new file below the project's artifacts directory."
   :ensure nil
   :config
   (imoogi-project-notes--restore-agenda-files))
+
+(imoogi-project-notes--install-refile-guards)
 
 (provide 'imoogi-project-notes)
 ;;; 26-project-notes.el ends here

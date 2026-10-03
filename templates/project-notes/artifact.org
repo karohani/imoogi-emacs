@@ -7,12 +7,11 @@
 :TYPE:     {{ARTIFACT_TYPE}}
 :END:
 
-** 관련 작업
-[[id:{{TASK_ID}}][{{TASK_TITLE}}]]
-
 {{ARTIFACT_SECTIONS}}
 
 ** 결과 요약
 
 ** 후속 작업
 
+* Link
+- [[id:{{TASK_ID}}][{{TASK_TITLE}}]]

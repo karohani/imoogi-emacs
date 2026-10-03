@@ -1152,9 +1152,24 @@
   (should (commandp #'imoogi-project-notes-setup-doctor))
   (should (eq (plist-get (cdr (transient-get-suffix 'imoogi-transient-project "m")) :command)
               'imoogi-project-notes-transient))
-  (dolist (key '("s" "S" "o" "t" "j" "l" "a" "A" "r" "d" "n" "h"
-                 "+" "L" "E" "R" "D" "x" "u" "c" "C" "e" "U" "T"))
+  (dolist (key '("o" "t" "j" "a" "A" "l" "r" "d" "n" "L" "s" "e" "R" "q"))
     (should (commandp (plist-get (cdr (transient-get-suffix 'imoogi-project-notes-transient key))
+                                 :command))))
+  (dolist (key '("1" "2" "3" "4" "5" "6" "b" "q"))
+    (should (commandp (plist-get (cdr (transient-get-suffix
+                                       'imoogi-project-notes-link-transient key))
+                                 :command))))
+  (dolist (key '("p" "s" "h" "b" "q"))
+    (should (commandp (plist-get (cdr (transient-get-suffix
+                                       'imoogi-project-notes-setup-transient key))
+                                 :command))))
+  (dolist (key '("+" "L" "E" "R" "D" "v" "x" "u" "c" "C" "e" "b" "q"))
+    (should (commandp (plist-get (cdr (transient-get-suffix
+                                       'imoogi-project-notes-external-transient key))
+                                 :command))))
+  (dolist (key '("U" "T" "b" "q"))
+    (should (commandp (plist-get (cdr (transient-get-suffix
+                                       'imoogi-project-notes-repair-transient key))
                                  :command)))))
 
 (ert-deftest imoogi-project-notes-doctor-suggests-valid-numbered-name ()
@@ -1284,6 +1299,7 @@
       (find-file tasks)
       (goto-char (point-max))
       (insert "\n* TODO 모델 조회 구현\n완료 조건:\n- 목록을 선택한다.\n")
+      (save-buffer)
       (forward-line -3)
       (imoogi-project-notes-create-artifact 'design "모델 조회 설계")
       (let* ((artifact buffer-file-name)
@@ -1295,7 +1311,7 @@
         (should (string-match-p
                  "\\[\\[id:[^]]+\\]\\[모델 조회 설계\\]\\]" task-text))
         (should (string-match-p "\\* 모델 조회 설계" artifact-text))
-        (should (string-match-p "\\*\\* 관련 작업" artifact-text))
+        (should (string-match-p "^\\* Link$" artifact-text))
         (should (string-match-p
                  "\\[\\[id:[^]]+\\]\\[모델 조회 구현\\]\\]" artifact-text))
         (should (string-match-p "\\*\\* 검토한 대안" artifact-text))))))
