@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/karohani/imoogi-emacs/internal/anki/ankiconnect"
 	"github.com/karohani/imoogi-emacs/internal/anki/model"
@@ -32,6 +33,7 @@ commands:
   install-models   read an install request document on stdin, install imoogi's note types
   migrate          re-home stock-note-type entries onto imoogi's own note types
     --dry-run      report the candidates and their count; write nothing
+  list-decks       read an AnkiConnect URL from stdin, write deck names as JSON
   --version        print the version and exit
 `
 
@@ -69,11 +71,42 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runInstall(stdin, stdout, stderr, logger)
 	case "migrate":
 		return runMigrate(args[1:], stdin, stdout, stderr, logger)
+	case "list-decks":
+		return runListDecks(stdin, stdout, stderr)
 	default:
 		logger.Event("command_rejected", map[string]any{"reason": "unknown_command", "command": args[0]})
 		_, _ = fmt.Fprintf(stderr, "imoogi: unknown command %q\n\n%s", args[0], usage)
 		return 2
 	}
+}
+
+// runListDecks is a read-only query for the interactive Emacs deck picker.
+// It does not load the sync registry or run the planner.
+func runListDecks(stdin io.Reader, stdout, stderr io.Writer) int {
+	var req struct {
+		AnkiConnectURL string `json:"anki_connect_url"`
+	}
+	if err := json.NewDecoder(stdin).Decode(&req); err != nil || req.AnkiConnectURL == "" {
+		_, _ = fmt.Fprintln(stderr, "imoogi: list-decks requires anki_connect_url")
+		return 1
+	}
+	client := ankiconnect.NewClient(req.AnkiConnectURL, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := client.Handshake(ctx); err != nil {
+		_, _ = fmt.Fprintf(stderr, "imoogi: AnkiConnect handshake failed: %v\n", err)
+		return 1
+	}
+	decks, err := client.DeckNames(ctx)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "imoogi: deck list failed: %v\n", err)
+		return 1
+	}
+	if err := json.NewEncoder(stdout).Encode(decks); err != nil {
+		_, _ = fmt.Fprintf(stderr, "imoogi: deck list output failed: %v\n", err)
+		return 1
+	}
+	return 0
 }
 
 // runSync is the `sync` subcommand: the full per-entry decision pass plus

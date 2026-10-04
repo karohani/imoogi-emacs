@@ -208,6 +208,20 @@ than reading process detail."
          (result (funcall imoogi-process-runner binary request-json)))
     (imoogi-process-parse-response (cdr result))))
 
+(defun imoogi-process-list-decks (binary anki-connect-url)
+  "Return Anki's current deck names, or nil if the query fails."
+  (let* ((imoogi-process-argv '("list-decks"))
+         (request (json-serialize
+                   (list (cons 'anki_connect_url anki-connect-url))))
+         (result (condition-case nil
+                     (funcall imoogi-process-runner binary request)
+                   (file-error nil))))
+    (when (and result (zerop (car result)))
+      (condition-case nil
+          (let ((decks (json-parse-string (cdr result) :array-type 'list)))
+            (and (listp decks) (seq-every-p #'stringp decks) decks))
+        (error nil)))))
+
 (defun imoogi-process-run-migrate (binary config census entries dry-run)
   "Run one `migrate' request/response cycle against BINARY.
 

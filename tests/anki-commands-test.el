@@ -7,6 +7,19 @@
 (require 'cl-lib)
 (require 'json)
 
+(ert-deftest imoogi-anki-reload-restores-deck-picker-dependencies ()
+  "Reload an already provided imoogi implementation after a code update."
+  (let ((old-binary-path imoogi-anki-binary-path))
+    (unwind-protect
+        (progn
+          (makunbound 'imoogi-anki-binary-path)
+          (fmakunbound 'imoogi-process-list-decks)
+          (load (expand-file-name "modules/org/24-anki.el" imoogi-emacs-dir)
+                nil t)
+          (should (boundp 'imoogi-anki-binary-path))
+          (should (fboundp 'imoogi-process-list-decks)))
+      (setq imoogi-anki-binary-path old-binary-path))))
+
 (defmacro imoogi-anki-test--with-org (text &rest body)
   "TEXT 로 채운 임시 org 버퍼에서 BODY 를 실행한다.
 배치 Emacs 는 `transient-mark-mode' 가 꺼져 있어 `use-region-p' 가 늘 nil
@@ -116,6 +129,44 @@ Anki 의 cloze 정규식은 비탐욕(non-greedy)이라 첫 `}}' 에서 빈칸�
     (should-not (org-entry-get (point) "ANKI_DECK"))
     ;; 상속으로는 보인다 -- 동기화가 실제로 쓰는 경로
     (should (equal (org-entry-get (point) "ANKI_DECK" t) "(PROGRAMMER)::(GO)"))))
+
+(ert-deftest imoogi-anki-set-deck-before-first-heading-updates-file-default ()
+  "At the file header, replace the file default instead of editing a heading."
+  (imoogi-anki-test--with-org
+      "#+TITLE: 단어\n#+PROPERTY: ANKI_DECK 기존 덱\n\n* 첫 카드\n"
+    (goto-char (point-min))
+    (let (initial)
+      (cl-letf (((symbol-function 'imoogi-anki--known-decks)
+                 (lambda () '("기존 덱" "새 덱")))
+                ((symbol-function 'completing-read)
+                 (lambda (_prompt _collection _predicate _require-match input
+                          &rest _)
+                   (setq initial input)
+                   "새 덱")))
+        (call-interactively #'imoogi-anki-set-deck))
+      (should (equal initial "기존 덱")))
+    (goto-char (point-min))
+    (should (= (count-matches "^#\\+PROPERTY: ANKI_DECK") 1))
+    (should (re-search-forward "^#\\+PROPERTY: ANKI_DECK 새 덱$" nil t))
+    (should-not (re-search-forward "^:ANKI_DECK:" nil t))))
+
+(ert-deftest imoogi-anki-set-deck-before-first-heading-creates-file-default ()
+  (imoogi-anki-test--with-org "#+TITLE: 단어\n\n* 첫 카드\n"
+    (goto-char (point-min))
+    (cl-letf (((symbol-function 'imoogi-anki--known-decks) (lambda () nil))
+              ((symbol-function 'completing-read)
+               (lambda (&rest _) "새 덱")))
+      (call-interactively #'imoogi-anki-set-deck))
+    (goto-char (point-min))
+    (should (looking-at "#\\+PROPERTY: ANKI_DECK 새 덱$"))))
+
+(ert-deftest imoogi-anki-known-decks-merges-live-and-local-names ()
+  (let ((imoogi-default-deck "Default")
+        (imoogi-sync-root nil))
+    (cl-letf (((symbol-function 'executable-find) (lambda (_name) "/bin/imoogi-anki"))
+              ((symbol-function 'imoogi-process-list-decks)
+               (lambda (_binary _url) '("현재 덱" "Default"))))
+      (should (equal (imoogi-anki--known-decks) '("현재 덱" "Default"))))))
 
 (ert-deftest imoogi-anki-set-deck-writes-heading-level-when-file-already-has-one ()
   "파일 레벨 덱이 이미 있으면 heading 에 쓴다 -- 그 heading 만 다른 덱."

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,6 +26,49 @@ func invoke(t *testing.T, stdin string, args ...string) (code int, stdout, stder
 	var out, errOut bytes.Buffer
 	code = run(args, strings.NewReader(stdin), &out, &errOut)
 	return code, out.String(), errOut.String()
+}
+
+func TestListDecksReturnsCurrentAnkiDecks(t *testing.T) {
+	var actions []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Action string `json:"action"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("decode AnkiConnect request: %v", err)
+			return
+		}
+		actions = append(actions, req.Action)
+		switch req.Action {
+		case "requestPermission":
+			_, _ = io.WriteString(w, `{"result":{"permission":"granted"},"error":null}`)
+		case "deckNames":
+			_, _ = io.WriteString(w, `{"result":["Default","한국어::문법"],"error":null}`)
+		default:
+			t.Errorf("unexpected AnkiConnect action: %s", req.Action)
+		}
+	}))
+	defer srv.Close()
+	request, _ := json.Marshal(map[string]string{"anki_connect_url": srv.URL})
+	code, output, errOutput := invoke(t, string(request), "list-decks")
+	if code != 0 || errOutput != "" {
+		t.Fatalf("list-decks exit=%d stderr=%q", code, errOutput)
+	}
+	var decks []string
+	if err := json.Unmarshal([]byte(output), &decks); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(decks, []string{"Default", "한국어::문법"}) ||
+		!reflect.DeepEqual(actions, []string{"requestPermission", "deckNames"}) {
+		t.Fatalf("decks=%q actions=%q", decks, actions)
+	}
+}
+
+func TestListDecksFailsWithoutURL(t *testing.T) {
+	code, output, _ := invoke(t, `{}`, "list-decks")
+	if code == 0 || output != "" {
+		t.Fatalf("list-decks exit=%d stdout=%q, want failure without output", code, output)
+	}
 }
 
 // newAnkiConnectStub answers AnkiConnect's own recommended first call

@@ -6,6 +6,20 @@
 (require 'cl-lib)
 (require 'imoogi-process)
 
+(ert-deftest imoogi-process-list-decks-uses-read-only-command ()
+  (let ((imoogi-process-runner
+         (lambda (_binary request)
+           (should (equal imoogi-process-argv '("list-decks")))
+           (should (equal (gethash "anki_connect_url"
+                                   (json-parse-string request)) "http://anki"))
+           '(0 . "[\"Default\",\"한국어::문법\"]"))))
+    (should (equal (imoogi-process-list-decks "binary" "http://anki")
+                   '("Default" "한국어::문법")))))
+
+(ert-deftest imoogi-process-list-decks-falls-back-on-error ()
+  (let ((imoogi-process-runner (lambda (_binary _request) '(1 . "failed"))))
+    (should-not (imoogi-process-list-decks "binary" "http://anki"))))
+
 (ert-deftest imoogi-process-test-serialize-request-shape ()
   (let* ((config (list :default-deck "Inbox"
                         :anki-connect-url "http://127.0.0.1:8765"

@@ -42,7 +42,14 @@
 ;; 그 구멍을 메우지만 여기서는 통하지 않으므로, imoogi 를 먼저 올린 뒤
 ;; imoogi-setup 을 따로 require 한다.  이게 없으면 M-x imoogi-anki-setup 이
 ;; 아예 없는 명령이 되고, 최초 설정 자체를 할 수 없다.
-(require 'imoogi)
+(let ((already-loaded (featurep 'imoogi)))
+  (require 'imoogi)
+  ;; `imoogi-reload' reloads this adapter, but `require' leaves already
+  ;; provided implementation files untouched.  Refresh the deck picker's
+  ;; dependencies in existing Emacs sessions.
+  (when already-loaded
+    (load (expand-file-name "imoogi.el" imoogi-anki-lisp-dir) nil t)
+    (load (expand-file-name "imoogi-process.el" imoogi-anki-lisp-dir) nil t)))
 (require 'imoogi-setup)
 
 ;;; 프로퍼티 자동완성
@@ -136,12 +143,12 @@ ANKI_NOTE_ID 는 일부러 남긴다.  식별자를 지우는 것은 \"이 노�
              "")))
 
 (defun imoogi-anki--known-decks ()
-  "`imoogi-sync-root' 아래 Org 파일에서 이미 쓰인 덱 이름을 모은다.
-
-Anki 에 직접 묻지 않는다 — AnkiConnect 대화는 Go 백엔드가 전담한다는
-이 패키지의 경계를 지키기 위해서다.  후보는 편의일 뿐이고, 목록에 없는
-덱 이름도 그대로 입력하면 된다(없으면 동기화가 만들어 준다)."
-  (let ((decks (and imoogi-default-deck (list imoogi-default-deck))))
+  "Anki의 현재 덱과 Org 파일에 이미 쓰인 덱 이름을 모은다.
+Anki에 연결할 수 없어도 로컬 후보를 사용할 수 있다."
+  (let* ((binary (executable-find imoogi-anki-binary-path))
+         (decks (and binary
+                     (imoogi-process-list-decks binary imoogi-anki-connect-url)))
+         (local-decks (and imoogi-default-deck (list imoogi-default-deck))))
     (when (and imoogi-sync-root (file-directory-p imoogi-sync-root))
       (dolist (file (directory-files-recursively imoogi-sync-root "\\.org\\'"))
         (with-temp-buffer
@@ -150,8 +157,8 @@ Anki 에 직접 묻지 않는다 — AnkiConnect 대화는 Go 백엔드가 전�
           (while (re-search-forward
                   "^[ \t]*\\(?::ANKI_DECK:\\|#\\+PROPERTY:[ \t]+ANKI_DECK\\)[ \t]+\\(.+?\\)[ \t]*$"
                   nil t)
-            (push (match-string-no-properties 1) decks)))))
-    (delete-dups (nreverse decks))))
+            (push (match-string-no-properties 1) local-decks)))))
+    (delete-dups (append decks (nreverse local-decks)))))
 
 (defun imoogi-anki--file-level-deck-p ()
   "이 버퍼에 파일 레벨 `#+PROPERTY: ANKI_DECK' 줄이 있으면 non-nil."
@@ -160,6 +167,15 @@ Anki 에 직접 묻지 않는다 — AnkiConnect 대화는 Go 백엔드가 전�
     (let ((case-fold-search t))
       (re-search-forward "^#\\+PROPERTY:[ \t]+ANKI_DECK\\b" nil t))))
 
+(defun imoogi-anki--file-level-deck ()
+  "Return this Org file's `#+PROPERTY: ANKI_DECK' value, if present."
+  (save-excursion
+    (goto-char (point-min))
+    (let ((case-fold-search t))
+      (when (re-search-forward
+             "^#\\+PROPERTY:[ \t]+ANKI_DECK[ \t]+\\(.*\\)$" nil t)
+        (match-string-no-properties 1)))))
+
 (defun imoogi-anki-set-deck (deck)
   "ANKI_DECK 를 DECK 으로 지정한다.  `::' 로 중첩한다 — 예: \"Geography::Europe\".
 
@@ -167,18 +183,29 @@ Anki 에 직접 묻지 않는다 — AnkiConnect 대화는 Go 백엔드가 전�
 아직 없으면 heading 이 아니라 파일 맨 위에 그 줄을 쓴다 — 파일 하나가
 보통 덱 하나라, 첫 카드의 덱이 파일 전체의 기본 덱이 되는 게 자연스럽고,
 heading 마다 같은 덱을 되풀이해 달 필요가 없어진다.  파일 레벨 덱이
-이미 있으면 heading 에 쓴다 — 그 heading 만 다른 덱으로 보내는 예외."
+이미 있고 커서가 heading 아래에 있으면 그 heading 에 쓴다 — 그 heading 만
+다른 덱으로 보내는 예외. 첫 heading 앞에서는 파일 기본 덱을 바꾼다."
   (interactive
-   (list (completing-read "덱: " (imoogi-anki--known-decks) nil nil
-                          (org-entry-get (point) "ANKI_DECK" t))))
-  (if (imoogi-anki--file-level-deck-p)
+   (progn
+     (unless (derived-mode-p 'org-mode)
+       (user-error "imoogi: Org 버퍼에서만 쓸 수 있습니다"))
+     (list (completing-read
+            "덱: " (imoogi-anki--known-decks) nil nil
+            (if (org-before-first-heading-p)
+                (imoogi-anki--file-level-deck)
+              (org-entry-get (point) "ANKI_DECK" t))))))
+  (if (and (imoogi-anki--file-level-deck-p)
+           (not (org-before-first-heading-p)))
       (progn
         (imoogi-anki--at-heading)
         (org-set-property "ANKI_DECK" deck)
         (message "imoogi: 이 heading 만 덱 %s 으로 지정했습니다" deck))
     (save-excursion
       (goto-char (point-min))
-      (insert (format "#+PROPERTY: ANKI_DECK %s\n" deck)))
+      (let ((case-fold-search t))
+        (if (re-search-forward "^#\\+PROPERTY:[ \t]+ANKI_DECK\\b.*$" nil t)
+            (replace-match (format "#+PROPERTY: ANKI_DECK %s" deck) t t)
+          (insert (format "#+PROPERTY: ANKI_DECK %s\n" deck)))))
     ;; #+PROPERTY 는 org 가 모드 진입 때 읽어 캐시하므로, 지금 쓴 줄이
     ;; 상속(`org-entry-get' 의 INHERIT)에 바로 보이도록 다시 읽게 한다.
     (org-set-regexps-and-options)
