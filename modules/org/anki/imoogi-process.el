@@ -216,7 +216,7 @@ than reading process detail."
          (result (condition-case nil
                      (funcall imoogi-process-runner binary request)
                    (file-error nil))))
-    (when (and result (zerop (car result)))
+    (when (and result (equal (car result) 0))
       (condition-case nil
           (let ((decks (json-parse-string (cdr result) :array-type 'list)))
             (and (listp decks) (seq-every-p #'stringp decks) decks))

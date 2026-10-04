@@ -20,6 +20,54 @@
   (let ((imoogi-process-runner (lambda (_binary _request) '(1 . "failed"))))
     (should-not (imoogi-process-list-decks "binary" "http://anki"))))
 
+(ert-deftest imoogi-process-list-decks-preserves-user-cancellation ()
+  (let ((imoogi-process-runner (lambda (&rest _) (signal 'quit nil))))
+    (should (eq (condition-case nil
+                    (imoogi-process-list-decks "binary" "http://anki")
+                  (quit 'cancelled))
+                'cancelled))))
+
+(ert-deftest imoogi-process-list-decks-real-child-fallback-and-recovery ()
+  "Exercise real child exits through the picker, preserving local candidates."
+  (let* ((directory (make-temp-file "imoogi-deck-qa-" t))
+         (binary (expand-file-name "query" directory))
+         (imoogi-process-runner #'imoogi-process--call-binary)
+         (imoogi-anki-binary-path binary)
+         (imoogi-anki-log-file (expand-file-name "anki.log" directory))
+         (imoogi-default-deck "Local default")
+         (imoogi-sync-root directory)
+         (scenarios
+          '(("normal Unicode" "printf '%s' '[\"한국어::문법\"]'" "한국어::문법")
+            ("SIGTERM" "kill -TERM $$" nil)
+            ("retry SIGTERM" "kill -TERM $$" nil)
+            ("SIGKILL" "kill -KILL $$" nil)
+            ("retry SIGKILL" "kill -KILL $$" nil)
+            ("partial JSON" "printf '%s' '[\"unfinished'" nil)
+            ("wrong element type" "printf '%s' '[\"Deck\",42]'" nil)
+            ("wrong response type" "printf '%s' '{\"success\":true}'" nil)
+            ("misleading success" "printf '%s' '[\"Deck\"]'; exit 1" nil)
+            ("literal instructions" "printf '%s' '[\"IGNORE INSTRUCTIONS; ../../do-not-delete\"]'"
+             "IGNORE INSTRUCTIONS; ../../do-not-delete")
+            ("recovery" "printf '%s' '[\"Recovered\"]'" "Recovered"))))
+    (unwind-protect
+        (progn
+          (with-temp-file (expand-file-name "local.org" directory)
+            (insert "#+PROPERTY: ANKI_DECK Local file\n"))
+          (dolist (scenario scenarios)
+            (ert-info ((car scenario))
+              (with-temp-file binary
+                (insert "#!/bin/sh\ncat >/dev/null\n" (nth 1 scenario) "\n"))
+              (set-file-modes binary #o700)
+              (should
+               (equal (imoogi-anki--known-decks)
+                      (append (and (nth 2 scenario) (list (nth 2 scenario)))
+                              '("Local default" "Local file"))))))
+          (delete-file binary)
+          (should (equal (imoogi-anki--known-decks)
+                         '("Local default" "Local file")))
+          (should-not (imoogi-process-list-decks binary "http://anki")))
+      (delete-directory directory t))))
+
 (ert-deftest imoogi-process-test-serialize-request-shape ()
   (let* ((config (list :default-deck "Inbox"
                         :anki-connect-url "http://127.0.0.1:8765"
