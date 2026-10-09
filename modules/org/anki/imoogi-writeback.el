@@ -2,7 +2,8 @@
 
 ;;; Commentary:
 
-;; Write-back for newly `added' results is performed through a live
+;; Write-back for newly `added' results also ensures a heading-local Org ID.
+;; It is performed through a live
 ;; Emacs buffer visiting the originating file, using Org's own property
 ;; API -- never direct file I/O (plan.md D-4, REQ-007).
 ;;
@@ -15,6 +16,7 @@
 ;;; Code:
 
 (require 'org)
+(require 'org-id)
 
 (defun imoogi-writeback--find-target (n)
   "Move point in the current Org buffer to the Nth (0-based) sync
@@ -64,7 +66,8 @@ one value the front end can compute."
 (defun imoogi-writeback--apply-added (sync-root results write-fn)
   "For each RESULTS plist with :action \"added\", locate the originating
 heading under SYNC-ROOT and call WRITE-FN with point on it and the
-result plist as its argument.
+result plist as its argument, then ensure its own Org ID exists.
+An existing ID is preserved; a parent's ID is never inherited.
 
 Returns the list of relative file paths left needing a save: a buffer
 that already had unsaved modifications is left modified rather than
@@ -86,7 +89,8 @@ whatever WRITE-FN wrote (plan.md D-4, REQ-007)."
               (delay-mode-hooks (org-mode)))
             (save-excursion
               (when (imoogi-writeback--find-target index)
-                (funcall write-fn result)))
+                (funcall write-fn result)
+                (org-id-get (point) 'create)))
             (if had-unsaved
                 (push relative-path needs-save)
               (save-buffer))))))
