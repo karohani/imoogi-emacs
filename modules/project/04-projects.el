@@ -111,6 +111,12 @@ root would be searched again on every tab-bar redisplay.  Keyed per
 Perspective rather than one slot, so two frames showing different
 Perspectives do not evict each other.  Cleared on every Perspective switch.")
 
+(defvar imoogi-project--context-call-root nil
+  "Context root of the running `imoogi-project-context-call', or nil.
+While it is non-nil, the Perspective finder answers a lookup of exactly this
+root that no other member answered with a transient project, from any buffer,
+so `f', `s' and `d' never prompt when a context root exists.")
+
 (defvar imoogi-project-perspective-finder-exclude-functions nil
   "Predicates that keep the current buffer away from the Perspective finder.
 Each function is called with no arguments in the buffer being looked up; the
@@ -136,7 +142,9 @@ is under VC, and otherwise a transient project rooted at ROOT."
   "Return the mapped Perspective's project for an implicit lookup of DIR.
 Guards run cheapest first and each one declines: explicit lookups, Eglot,
 remote names (checked before any file operation), an inactive or unmapped
-Perspective, a missing root, and excluded buffers."
+Perspective, a missing root, and excluded buffers.  Inside
+`imoogi-project-context-call', a lookup of its context root is answered
+before the Perspective guards (the context-call clause)."
   (unless (or imoogi-project--perspective-finder-inhibit
               (bound-and-true-p eglot-lsp-context)
               ;; On the raw strings first: `expand-file-name' would already
@@ -145,20 +153,31 @@ Perspective, a missing root, and excluded buffers."
               (file-remote-p default-directory)
               project-current-directory-override
               (not (imoogi-project--same-directory-p dir default-directory)))
-    ;; `persp-current-name' signals while `persp-mode' is off.
-    (when-let* (((bound-and-true-p persp-mode))
-                (name (persp-current-name))
-                (raw-root (car (rassoc name imoogi-project-perspective-alist)))
-                ((not (file-remote-p raw-root)))
-                ((file-directory-p raw-root))
-                ((not (run-hook-with-args-until-success
-                       'imoogi-project-perspective-finder-exclude-functions))))
-      (let ((key (cons name raw-root)))
-        (or (cdr (assoc key imoogi-project--perspective-finder-memo))
-            (let ((project (imoogi-project-resolve-root
-                            (imoogi-project--canonical-root raw-root))))
-              (push (cons key project) imoogi-project--perspective-finder-memo)
-              project))))))
+    (if (and imoogi-project--context-call-root
+             (imoogi-project--same-directory-p
+              dir imoogi-project--context-call-root))
+        ;; Every other member declined, so the root is not under VC.  This
+        ;; also answers in notes buffers: `f'/`s'/`d' never consult
+        ;; `imoogi-project-notes--current-source-root'.
+        (cons 'transient imoogi-project--context-call-root)
+      (imoogi-project--perspective-find-mapped))))
+
+(defun imoogi-project--perspective-find-mapped ()
+  "Return the current Perspective's project for the current buffer, or nil."
+  ;; `persp-current-name' signals while `persp-mode' is off.
+  (when-let* (((bound-and-true-p persp-mode))
+              (name (persp-current-name))
+              (raw-root (car (rassoc name imoogi-project-perspective-alist)))
+              ((not (file-remote-p raw-root)))
+              ((file-directory-p raw-root))
+              ((not (run-hook-with-args-until-success
+                     'imoogi-project-perspective-finder-exclude-functions))))
+    (let ((key (cons name raw-root)))
+      (or (cdr (assoc key imoogi-project--perspective-finder-memo))
+          (let ((project (imoogi-project-resolve-root
+                          (imoogi-project--canonical-root raw-root))))
+            (push (cons key project) imoogi-project--perspective-finder-memo)
+            project)))))
 
 ;; @MX:ANCHOR: [AUTO] every implicit `project-current' call reaches this finder
 ;; @MX:REASON: it runs on each tab-bar redisplay and under every project.el
@@ -211,14 +230,45 @@ Perspectives immediately changes the project used by COMMAND.  Commands that
 already have a project fallback continue to use the current buffer when no
 Imoogi context is mapped."
   (interactive)
-  (let ((default-directory (or (plist-get (imoogi-project-context) :root)
-                               default-directory)))
+  (let* ((root (plist-get (imoogi-project-context) :root))
+         ;; The Perspective finder's context-call clause reads this, so
+         ;; commands resolving with `(project-current t)' find ROOT even when
+         ;; it is not under VC or the buffer is a notes buffer.
+         (imoogi-project--context-call-root root)
+         (default-directory (or root default-directory)))
     (call-interactively command)))
 
+(defun imoogi-project--find-file-in-context (&optional include-all)
+  "Find a file in the context root's project and in its notes directory.
+Called by `imoogi-project-context-call'.  With INCLUDE-ALL (interactively, a
+prefix argument), include every file under the directories, as
+`project-find-file' does."
+  (interactive "P")
+  (let* ((context-root imoogi-project--context-call-root)
+         ;; Route (a).  The middle branch only restates the context-call
+         ;; clause for a local root; a remote root falls through to the
+         ;; prompt like `s' and `d' (REQ-PIN-006).
+         (project (or (project-current nil)
+                      (and context-root
+                           (not (file-remote-p context-root))
+                           (cons 'transient context-root))
+                      (project-current t)))
+         (root (project-root project))
+         (notes (imoogi-project--notes-directory root)))
+    ;; `project-files-relative-names' stays unbound: the notes files lie
+    ;; outside ROOT and must reach the reader as absolute names.
+    (project-find-file-in
+     (delq nil (list (and buffer-file-name
+                          (project--find-default-from buffer-file-name project))
+                     (thing-at-point 'filename)))
+     (if notes (list root notes) (list root))
+     project include-all)))
+
 (defun imoogi-project-find-file ()
-  "Find a file in the current Imoogi project context."
+  "Find a file in the current Imoogi project context.
+The candidates are the project's files plus the files of its project notes."
   (interactive)
-  (imoogi-project-context-call #'project-find-file))
+  (imoogi-project-context-call #'imoogi-project--find-file-in-context))
 
 (defun imoogi-project-find-regexp ()
   "Search files in the current Imoogi project context."
