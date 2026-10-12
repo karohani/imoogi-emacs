@@ -24,7 +24,8 @@ Card t35 (Class C, feature). Tier M: `spec.md`, `plan.md`, `acceptance.md`,
 - `project.el` 0.11.1 facts used here: `project-find-functions` is a run-until-
   success hook; `project--find-in-directory` absorbs only `permission-denied`;
   `project-current` passes the prompted directory back through the same hook;
-  `project-try-vc` caches per directory; `project--read-project-buffer` filters
+  `project-try-vc` caches **positive** results only (a non-VC directory is
+  re-searched on every call); `project--read-project-buffer` filters
   by `project-buffers`; `project-forget-project` calls `project-prompter`
   directly; Eglot binds `eglot-lsp-context` to t around its lookup.
 - `perspective.el`: `persp-current-name` → `persp-curr` → `persp-mode-guard`,
@@ -49,7 +50,8 @@ Card t35 (Class C, feature). Tier M: `spec.md`, `plan.md`, `acceptance.md`,
 ### A.3 PRESERVE list
 
 - `tests/project-notes-perspective-test.el` (4 tests) — unmodified.
-- `tests/workspace-bridge-test.el` switch-perspective and context tests.
+- `tests/workspace-bridge-test.el` switch-perspective tests (unmodified) and the
+  two context tests (assertions unmodified; stub moved per A.4).
 - `tests/transient-menu-test.el` rows other than `b`.
 - `imoogi-project-context-root` semantics (Perspective-first).
 
@@ -57,11 +59,15 @@ Card t35 (Class C, feature). Tier M: `spec.md`, `plan.md`, `acceptance.md`,
 
 - `tests/transient-menu-test.el:80` row `(project-switch-to-buffer transient--do-exit)`
   becomes the new `b` command with `transient--do-exit`.
-- `tests/workspace-bridge-test.el:141` stubs `project-find-file` and expects it
-  to be called. If the `f` notes inclusion is implemented by delegating to a
-  different `project.el` entry point (D-4 option ii), that stub changes to the
-  new entry point; the assertion (`default-directory` follows the Perspective)
-  stays.
+- `tests/workspace-bridge-test.el:141`
+  (`imoogi-project-context-root-follows-perspective-mapping`) stubs
+  `project-find-file` and expects it to be called. D-4 makes `f` call
+  `project-find-file-in` instead, so the stub **moves to `project-find-file-in`**
+  (a lambda accepting `(suggested dirs project &optional include-all)` that
+  records `default-directory`). The assertion stays: the recorded directory
+  equals the context root before and after the Perspective switch.
+  `imoogi-project-context-falls-back-to-project-el` (`:160`) gets the same stub
+  move. No other assertion in either test changes.
 
 ## § B Design Decisions
 
@@ -96,28 +102,39 @@ with the Perspective root would silently select/forget the current project;
 and (b) per-command wrappers binding `project-current-directory-override` —
 rejected as the primary mechanism because it covers only the commands wrapped
 and leaves `C-x p *`, consult, and the tab name prompting/unpinned. The finder
-is installed with `add-hook` at the maximum depth (90 or higher) so later
-`add-hook` calls at default depth or with APPEND still sort before it
-(AC-PIN-003).
+is installed with `add-hook` at **depth 95**, strictly above 90. `add-hook … t`
+(APPEND) means depth 90, and at equal positive depth a newer function sorts
+*after* an older one (subr.el `add-hook`). So depth 90 would let a later APPEND
+land after the finder, while 95 keeps every later default-depth or APPEND
+member before it (AC-PIN-003). 95 rather than 100 follows the `add-hook`
+docstring's advice against 100 and leaves room above for a deliberately-last
+member. Members added later at a depth above 95 are not covered (spec.md
+REQ-PIN-002).
 
 Guards, evaluated cheapest first, each a decline:
 1. inhibit variable bound (explicit selection) or re-entry;
-2. `eglot-lsp-context` non-nil;
+2. `(bound-and-true-p eglot-lsp-context)` — Eglot is `:commands`-deferred, so
+   the variable may be unbound when the finder runs;
 3. `project-current-directory-override` non-nil, or DIR ≠ the current buffer's
    `default-directory` (compared after `expand-file-name` +
-   `file-name-as-directory`);
+   `file-name-as-directory`), or DIR is remote (`file-remote-p` on the string —
+   no connection is opened);
 4. `persp-mode` not active;
 5. no alist entry for `persp-current-name`;
 6. raw mapped root `file-remote-p`;
 7. mapped root not `file-directory-p`;
 8. notes-context buffer (predicate supplied by `26-project-notes.el` through a
    hook variable owned by `04-projects.el`, so 04 never requires 26). The
-   predicate short-circuits on the buffer-local notes variables, then on
-   `buffer-file-name` (nil → not a notes file), then compares the file against
-   an in-memory list of notes directories (see D-7). The predicate never calls
+   predicate short-circuits on the buffer-local variables
+   `imoogi-project-notes-source-root`, `imoogi-project-notes-directory-local`,
+   `imoogi-project-notes-entry-instance-id`, then on `buffer-file-truename`
+   (nil → not a notes file). It then compares the expanded truename against
+   the in-memory list of truename notes directories (D-7), so a symlinked
+   `~/project-notes` still matches. The predicate never calls
    `--all-entries`, `--read-registry`, or `--find-metadata-file` itself
    (AC-PIN-010, second part).
-Then resolve the canonical root with the finder inhibited:
+Then return the memoized project for the pinned root (D-8). On a memo miss,
+resolve the canonical root with the finder inhibited:
 `project--find-in-directory` on the root, else `(transient . ROOT)`. The whole
 body is wrapped so any error declines (REQ-PIN-007).
 
@@ -133,13 +150,24 @@ fallback inside the command makes `b` work from notes-context buffers too.
 
 ### D-4 — `f` gains the notes directory as an extra search root
 
-Options for the run phase (pick the one that keeps `project-files` untouched):
-(i) call `project-find-file-in` with `dirs` = (root, notes-dir) and the
-resolved project; (ii) `project-or-external-find-file` with
-`project-vc-external-roots-function` let-bound to return the notes directory.
-Either must exclude VCS metadata in the notes dir and must not mark notes as
-project files. Option (i) is preferred because (ii) is VC-project-only
-(transient projects have no external-roots hook).
+**Decided (audit r1 D4): one code path.** With `default-directory` at the
+context root (as today), `f` resolves the project and calls
+`project-find-file-in` with `dirs` = (root) or (root, notes-dir) when the root
+has a notes entry, always through this single entry point (it no longer calls
+`project-find-file`). `project-files` is untouched. Notes files come in only
+through the extra `dirs` element, and VCS metadata directories under the notes
+dir are excluded because, for a directory outside the root,
+`project--dir-ignores` falls back to the default `project-ignores`
+(`vc-directory-exclusion-list` + `grep-find-ignored-files`), which
+`project--files-in-directory` passes to `find`. The suggested filename keeps `project-find-file`'s list (buffer file
+name, `thing-at-point 'filename`). Consequence: the two workspace-bridge stubs
+move per A.4.
+
+Rejected: `project-or-external-find-file` with
+`project-vc-external-roots-function`, because it only works for VC projects
+(transient projects have no external-roots hook). Also rejected: keeping
+`project-find-file` for the no-notes case, because two code paths would be
+exercised by different tests for no gain.
 
 ### D-5 — t34 fallback retained
 
@@ -162,6 +190,13 @@ buffers. Why: claiming them would redirect `--current-source-root` for
 worktree-opened notes, and the card names projectless buffers (scratch), not
 notes buffers. Recorded as a known limitation (acceptance.md § Residual Risk)
 and an out-of-scope item (spec.md § 5).
+
+Consequence stated (audit r1 D5, does not reopen D-6): a study-note
+Perspective (`imoogi-project-notes--open-study-workspace`,
+`26-project-notes.el:2615`) is mapped to the notes directory itself. So every
+note file of a study project is a notes-context buffer, and `c`/`k` prompt from
+all of them. Only projectless buffers (scratch, help) are pinned in a study
+Perspective. Recorded in spec.md § 5 and acceptance.md § Residual Risk.
 
 ### D-7 — Notes-directory list: concrete refresh trigger points
 
@@ -200,17 +235,48 @@ Each rebuild calls `--all-entries` inside `condition-case`; on any error
 displayed. Before the first rebuild (list never built), the predicate treats a
 file as a notes file when it is inside `imoogi-project-notes-directory` — a
 pure string-prefix check with no I/O. Rebuilds happen at the call sites (a
-direct call at the end of each function in 1-5), not via advice.
+direct call at the end of each function in 1-5), not via advice. Trigger 6 is a
+named function, so the test can call it directly without running the other
+`persp-switch-hook` members. Trigger 7 cannot run in the batch runner
+(`tests/run.el` exits inside `-l`, so `emacs-startup-hook` never fires) and is
+verified by registration only (AC-PIN-010, third part).
+
+### D-8 — Memoize the finder's answer per pinned root
+
+**Decided (audit r1 D6).** `project-try-vc` caches only positive results, so a
+non-VC mapped root (the study-note case) would repeat a `locate-dominating-file`
+walk and a `hack-dir-local-variables` pass on every tab-bar redisplay. The
+finder therefore keeps a one-slot memo `(KEY . PROJECT)`, where KEY is
+(Perspective name, raw mapped root string from the alist):
+
+- **Hit**: KEY equals the current (name, raw root). Guards 1-8 still run first
+  on every call, including the `file-directory-p` of guard 7, so a deleted root
+  still declines.
+- **Miss**: resolve as in D-2 and store.
+- **Invalidation**: KEY no longer matching (a remap or alist change) invalidates
+  it implicitly, and a named function on `persp-switch-hook` clears it
+  explicitly (the same hook as D-7 trigger 6).
+
+Accepted staleness: running `git init` in a pinned non-VC root keeps the
+transient project until the next Perspective switch. Chosen over option (b)
+(accepting the uncached search) because the finder runs on redisplay.
+
+### B.3 Risks
 
 ### B.3 Risks
 
 - Stale mapping to a deleted root → declined by guard 7 (AC-PIN-005c).
-- Remote root → declined by guard 6 before I/O (AC-PIN-008).
+- Remote root → declined by guard 6 before I/O; remote lookup directory (a
+  TRAMP buffer in a local Perspective) → declined by guard 3 (AC-PIN-008).
+- Study-note Perspectives: `c`/`k` prompt from every note file (D-6
+  consequence, accepted).
 - savehist-restored alist with duplicate names → first match wins (existing).
-- Hot path: `project-current` runs on tab-bar redisplay; guards 1-6 are pure
+- Hot path: `project-current` runs on tab-bar redisplay. Guards 1-6 are pure
   Lisp, guard 7 is one `file-directory-p`, guard 8 is buffer-local plus an
-  in-memory prefix comparison, and the VC lookup on the root is cached by
-  `project-try-vc`. `imoogi-project-notes--all-entries` is NOT cached (it
+  in-memory prefix comparison, and the resolved project comes from the D-8
+  memo. Without the memo a non-VC root would be re-searched on every call,
+  because `project-try-vc` caches only positive results.
+  `imoogi-project-notes--all-entries` is NOT cached (it
   re-scans metadata, the registry JSON, and mounted roots each call), which is
   why guard 8 must not call it. A notes directory created outside Emacs (or a
   mount appearing without `--write-mounted-state`) is unknown until the next
@@ -239,7 +305,11 @@ Record the count and the skip set before any change.
 `imoogi-persppin-test--isolated`: extends the t34 macro
 (`tests/project-notes-perspective-test.el`) with `project-list-file`,
 `project--list` let-bound to nil, `persp-mode` let-bound to t,
-`project-find-functions` rebuilt by the installer, and prompt stubs that signal.
+`project-find-functions` rebuilt by the installer, the D-8 memo and the D-7
+notes-directory list reset, and prompt stubs that signal. The test file
+declares `(defvar eglot-lsp-context)` so its `let` binding is dynamic under
+`lexical-binding: t`. Stubs for `compile` are interactive lambdas, because
+`project-compile` uses `call-interactively`.
 Git-backed tests use `(skip-unless (executable-find "git"))` and
 `call-process "git" nil nil nil "init" "-q"` inside the sandbox.
 
@@ -256,12 +326,15 @@ Git-backed tests use `(skip-unless (executable-find "git"))` and
 
 - Every AC test fails before its milestone's change (RED evidence in
   progress.md §E.2) and passes after.
-- The four t34 tests and the two named workspace-bridge tests pass unmodified.
+- The four t34 tests pass unmodified.
+- The two named workspace-bridge tests pass with only the A.4 stub move
+  (`project-find-file` → `project-find-file-in`). Their assertions are
+  unchanged.
 
 ## § F Milestones
 
 ### M1 — Finder and its guards (highest change likelihood)
-AC-PIN-001..009. Installer, guards D-2, inhibit in
+AC-PIN-001..009. Installer at depth 95, guards D-2, D-8 memo, inhibit in
 `imoogi-project-switch-perspective`.
 
 ### M2 — Notes-context exclusion and t34 compatibility
@@ -273,7 +346,7 @@ AC-PIN-011 (b part), AC-PIN-012, AC-PIN-017 (b part); transient row change and
 the amended `transient-menu-test.el` row.
 
 ### M4 — `f` notes files
-AC-PIN-013, AC-PIN-017 (f part); D-4.
+AC-PIN-013, AC-PIN-017 (f part); D-4; the A.4 workspace-bridge stub move.
 
 ### M5 — Non-membership and unchanged entries (most mechanical)
 AC-PIN-011 (c/k part), AC-PIN-014, AC-PIN-015; full selector run (Quality Gate).
