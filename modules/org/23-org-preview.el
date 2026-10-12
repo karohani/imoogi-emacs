@@ -14,6 +14,7 @@
 (declare-function org-element-type "org-element")
 (declare-function project-current "project")
 (declare-function project-root "project")
+(declare-function imoogi-org-color-preview-map "14-org")
 
 (defgroup imoogi-org-preview nil
   "Live Org/Markdown preview backed by the local imoogi-org-preview server."
@@ -414,6 +415,8 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
      (allowed_roots . ,(imoogi-org-preview--allowed-roots))
      (asset_map . ,(when (fboundp 'imoogi-clipboard-preview-asset-map)
                      (imoogi-clipboard-preview-asset-map)))
+     (color_map . ,(when (fboundp 'imoogi-org-color-preview-map)
+                     (imoogi-org-color-preview-map)))
      (text . ,(buffer-substring-no-properties (point-min) (point-max)))
      (cursor_byte . ,(imoogi-org-preview--cursor-byte)))))
 

@@ -47,6 +47,7 @@ func (r *RevisionRequest) UnmarshalJSON(data []byte) error {
 		AllowedRoots      []string          `json:"allowed_roots"`
 		AllowedRootsCamel []string          `json:"allowedRoots"`
 		AssetMap          map[string]string `json:"asset_map"`
+		ColorMap          map[string]string `json:"color_map"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
@@ -72,6 +73,7 @@ func (r *RevisionRequest) UnmarshalJSON(data []byte) error {
 		r.AllowedRoots = raw.AllowedRootsCamel
 	}
 	r.AssetMap = raw.AssetMap
+	r.ColorMap = raw.ColorMap
 	return nil
 }
 
@@ -121,6 +123,7 @@ type RevisionRequest struct {
 	CursorByte   int               `json:"cursor_byte,omitempty"`
 	AllowedRoots []string          `json:"allowed_roots,omitempty"`
 	AssetMap     map[string]string `json:"asset_map,omitempty"`
+	ColorMap     map[string]string `json:"color_map,omitempty"`
 }
 
 type RevisionResponse struct {

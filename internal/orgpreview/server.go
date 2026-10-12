@@ -280,6 +280,7 @@ func (s *Server) handleRevision(w http.ResponseWriter, r *http.Request) {
 		BaseFile:    req.Path,
 		AssetHref:   func(path string) string { return secureURL("/asset", path) },
 		PreviewHref: func(path string) string { return secureURL("/preview", path) },
+		ColorMap:    req.ColorMap,
 	}.Render(doc)
 	renderEvent := RenderEvent{Envelope: req.Envelope, Document: doc, HTML: html}
 	committed := s.commitRevision(req, doc, html, roots, view, handles)

@@ -3,6 +3,7 @@ package orgpreview
 import (
 	"html"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -15,6 +16,20 @@ type Renderer struct {
 	AssetBufferID  string
 	AssetHref      func(string) string
 	PreviewHref    func(string) string
+	// ColorMap maps color link names to #rrggbb values resolved by Emacs.
+	ColorMap map[string]string
+}
+
+var hexColorRE = regexp.MustCompile(`^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$`)
+
+// colorValue returns a CSS-safe hex color for a color link name, or "".
+func (r Renderer) colorValue(name string) string {
+	for _, candidate := range []string{r.ColorMap[name], name} {
+		if hexColorRE.MatchString(candidate) {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func (r Renderer) Render(doc Document) string {
@@ -188,6 +203,19 @@ func (r Renderer) renderLink(b *strings.Builder, n Node) {
 	label := n.Attrs["label"]
 	if label == "" {
 		label = target
+	}
+	if name, ok := strings.CutPrefix(target, "color:"); ok {
+		if label == target {
+			label = name // undescribed link: show the color name, not the link type
+		}
+		attrs := map[string]string{}
+		if color := r.colorValue(name); color != "" {
+			attrs["style"] = "color:" + color
+		}
+		r.openMappedAttrs(b, "span", n, attrs)
+		b.WriteString(escapeText(label))
+		b.WriteString("</span>")
+		return
 	}
 	if id, ok := strings.CutPrefix(target, "id:"); ok {
 		// Org ID links resolve inside Emacs; the preview only carries the ID.

@@ -526,8 +526,49 @@ suppresses `text-scale-mode-hook', so local fitting alone is too early."
   "Return a foreground face for valid COLOR, or the normal link face."
   (if (color-defined-p color) (list :foreground color) 'org-link))
 
+(defun imoogi-org-color-hex (color)
+  "Return COLOR as #rrggbb, or nil when it is not a known color.
+Uses the standard color table, so the result is the same in batch export,
+a terminal, or a GUI frame.  Export and the live preview share it."
+  ;; The standard table only knows lowercase, spaceless names ("lightblue").
+  (when-let* ((values (and (stringp color)
+                           (tty-color-standard-values
+                            (downcase (replace-regexp-in-string " " "" color))))))
+    (apply #'format "#%02x%02x%02x"
+           (mapcar (lambda (value) (/ value 257)) values))))
+
+(declare-function org-export-derived-backend-p "ox")
+(declare-function org-html-encode-plain-text "ox-html")
+
+(defun imoogi-org-color--export (color description backend _info)
+  "Export a color link: a colored span in HTML backends, plain text elsewhere.
+DESCRIPTION arrives already exported; a bare COLOR is raw link text and is
+escaped for HTML."
+  (let* ((html (org-export-derived-backend-p backend 'html))
+         (text (cond (description)
+                     (html (org-html-encode-plain-text color))
+                     (t color)))
+         (hex (imoogi-org-color-hex color)))
+    (if (and hex html)
+        (format "<span style=\"color:%s\">%s</span>" hex text)
+      text)))
+
+(defun imoogi-org-color-preview-map ()
+  "Return (NAME . #rrggbb) pairs for color links in the current buffer."
+  (let (mapping)
+    (save-excursion
+      (goto-char (point-min))
+      (while (re-search-forward "\\[\\[color:\\([^]\n]+\\)\\]" nil t)
+        (let ((name (match-string-no-properties 1)))
+          (unless (assoc name mapping)
+            (when-let* ((hex (imoogi-org-color-hex name)))
+              (push (cons name hex) mapping))))))
+    (nreverse mapping)))
+
 (with-eval-after-load 'org
-  (org-link-set-parameters "color" :face #'imoogi-org-color--face))
+  (org-link-set-parameters "color"
+                           :face #'imoogi-org-color--face
+                           :export #'imoogi-org-color--export))
 
 (defun imoogi-org-color--link ()
   "Return the color link at point, if any."

@@ -31,7 +31,7 @@ var (
 	headingRE     = regexp.MustCompile(`^(\*+)\s+(.*)$`)
 	listItemRE    = regexp.MustCompile(`^(\s*)([-+*]|\d+[.)])\s+(.*)$`)
 	orgCheckboxRE = regexp.MustCompile(`^\[([ Xx-])\](?:[ \t]+|$)(.*)$`)
-	linkRE        = regexp.MustCompile(`\[\[((?:file:|id:|https?://)[^\]\n]+)\](?:\[([^\]\n]*)\])?\]|(https?://[^\s<>\[\]]+)`)
+	linkRE        = regexp.MustCompile(`\[\[((?:file:|id:|color:|https?://)[^\]\n]+)\](?:\[([^\]\n]*)\])?\]|(https?://[^\s<>\[\]]+)`)
 	propertyRE    = regexp.MustCompile(`^:([[:alnum:]_@#%+.-]+):[[:space:]]*(.*)$`)
 	// Org keyword lines (#+TITLE:, #+CATEGORY:, #+CAPTION: ...) are document
 	// metadata, not body text, and are not rendered.

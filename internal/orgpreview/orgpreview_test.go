@@ -129,6 +129,44 @@ func TestOrgKeywordLinesAreNotRenderedAsText(t *testing.T) {
 	}
 }
 
+func TestOrgColorLinkRendersResolvedColor(t *testing.T) {
+	source := "[[color:blue1][파란 <글>]] [[color:#3498db][hex]] [[color:nope][plain]] [[color:red;x:y][evil]]\n"
+	doc, err := FallbackParser{}.Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := Renderer{ColorMap: map[string]string{"blue1": "#0000ff", "red;x:y": "red;x:y"}}.Render(doc)
+	for _, unwanted := range []string{"[[", "]]", "color:blue1", "href=", "x:y"} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("color link leaked %q:\n%s", unwanted, out)
+		}
+	}
+	for _, want := range []string{
+		`style="color:#0000ff">파란 &lt;글&gt;</span>`,
+		`style="color:#3498db">hex</span>`,
+		`>plain</span>`,
+		`>evil</span>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("color link missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Count(out, "style=") != 2 {
+		t.Fatalf("only resolved hex colors may carry a style:\n%s", out)
+	}
+}
+
+func TestOrgColorLinkWithoutDescriptionShowsColorName(t *testing.T) {
+	doc, err := FallbackParser{}.Parse("[[color:blue1]]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := Renderer{ColorMap: map[string]string{"blue1": "#0000ff"}}.Render(doc)
+	if !strings.Contains(out, `style="color:#0000ff">blue1</span>`) || strings.Contains(out, ">color:blue1<") {
+		t.Fatalf("undescribed color link must show the bare color name:\n%s", out)
+	}
+}
+
 func TestMalformedPropertyDrawerRemainsPlainText(t *testing.T) {
 	source := "* Task\n:PROPERTIES:\nnot-a-property\n:END:\n"
 	doc, err := FallbackParser{}.Parse(source)
