@@ -220,11 +220,18 @@ empty source block (seen through the paired span). Each is a case in
   (`tests/anki-setup-test.el:86`). Neither file nor its subject is touched here;
   both look timing-dependent. Not investigated further.
 - `git config --get core.bare` printed `false` after every commit, and the
-  local `[user]` / `core.bare` entries were byte-identical before and after
-  M2-M5 (`gitconfig-before-M*.txt` vs `gitconfig-after-*`). The shared
-  `.git/config` carries a local `[user]` block (`user.name=jay`,
-  `user.email=a@gmail.com`); it was first observed after M1, with no snapshot
-  before it, so this run cannot say when it appeared. It was not edited.
+  local `[user]` / `core.bare` values were identical in every snapshot from
+  just after M1 (23:05) to just before the evidence commit (23:22)
+  (`gitconfig-after-M1.txt`, `gitconfig-before-M*.txt`,
+  `gitconfig-before-evidence.txt`). The shared `.git/config` carries a local
+  `[user]` block (`user.name=jay`, `user.email=a@gmail.com`). Its origin is not
+  attributable from this run: the first snapshot was taken after M1. The
+  pre-commit hook printed `heavy gate not opted in — skipping the project-wide
+  steps` on every commit, so the pre-commit `go test` the hazard names did not
+  run here. `stat` shows the file rewritten at 23:21:41, inside the
+  `make ci-local` window or by another session on the shared repository, and
+  that rewrite left the `[user]` and `core.bare` values unchanged. The file was
+  not edited by this run.
 
 ## §E.3 Run-phase Audit-Ready Signal
 
