@@ -90,6 +90,101 @@
       (when (file-directory-p root)
         (imoogi-project--canonical-root root)))))
 
+;;; Perspective finder
+;;
+;; A buffer with no project of its own (scratch, help) follows the project its
+;; Perspective was opened for, so generic `project.el' commands stop asking
+;; "which project?".  The finder is the last member of `project-find-functions':
+;; a buffer that any other member resolves keeps its own project.
+
+(defvar imoogi-project--perspective-finder-inhibit nil
+  "Non-nil while the Perspective finder must decline every lookup.
+Explicit project selection binds it, and so does the finder's own resolution
+of the mapped root, which therefore cannot re-enter the finder.")
+
+(defvar imoogi-project--perspective-finder-memo nil
+  "Projects the Perspective finder resolved, as an alist (KEY . PROJECT).
+KEY is (PERSPECTIVE-NAME . RAW-ROOT), RAW-ROOT being the string stored in
+`imoogi-project-perspective-alist', so a remap misses implicitly.
+`project-try-vc' caches only positive results; without this memo a non-VC
+root would be searched again on every tab-bar redisplay.  Keyed per
+Perspective rather than one slot, so two frames showing different
+Perspectives do not evict each other.  Cleared on every Perspective switch.")
+
+(defvar imoogi-project-perspective-finder-exclude-functions nil
+  "Predicates that keep the current buffer away from the Perspective finder.
+Each function is called with no arguments in the buffer being looked up; the
+finder declines when any of them returns non-nil.  The finder runs on every
+tab-bar redisplay, so these functions must not do file I/O.
+`26-project-notes.el' adds its notes-context predicate here, which keeps this
+module from requiring it.")
+
+(defun imoogi-project--same-directory-p (left right)
+  "Return non-nil when directory names LEFT and RIGHT are the same string."
+  (string= (file-name-as-directory (expand-file-name left))
+           (file-name-as-directory (expand-file-name right))))
+
+(defun imoogi-project-resolve-root (root)
+  "Return the project `project.el' resolves for ROOT itself.
+The Perspective finder is inhibited, so this is ROOT's VC project when ROOT
+is under VC, and otherwise a transient project rooted at ROOT."
+  (let ((imoogi-project--perspective-finder-inhibit t))
+    (or (project-current nil root)
+        (cons 'transient root))))
+
+(defun imoogi-project--perspective-find (dir)
+  "Return the mapped Perspective's project for an implicit lookup of DIR.
+Guards run cheapest first and each one declines: explicit lookups, Eglot,
+remote names (checked before any file operation), an inactive or unmapped
+Perspective, a missing root, and excluded buffers."
+  (unless (or imoogi-project--perspective-finder-inhibit
+              (bound-and-true-p eglot-lsp-context)
+              ;; On the raw strings first: `expand-file-name' would already
+              ;; enter the TRAMP handler.
+              (file-remote-p dir)
+              (file-remote-p default-directory)
+              project-current-directory-override
+              (not (imoogi-project--same-directory-p dir default-directory)))
+    ;; `persp-current-name' signals while `persp-mode' is off.
+    (when-let* (((bound-and-true-p persp-mode))
+                (name (persp-current-name))
+                (raw-root (car (rassoc name imoogi-project-perspective-alist)))
+                ((not (file-remote-p raw-root)))
+                ((file-directory-p raw-root))
+                ((not (run-hook-with-args-until-success
+                       'imoogi-project-perspective-finder-exclude-functions))))
+      (let ((key (cons name raw-root)))
+        (or (cdr (assoc key imoogi-project--perspective-finder-memo))
+            (let ((project (imoogi-project-resolve-root
+                            (imoogi-project--canonical-root raw-root))))
+              (push (cons key project) imoogi-project--perspective-finder-memo)
+              project))))))
+
+;; @MX:ANCHOR: [AUTO] every implicit `project-current' call reaches this finder
+;; @MX:REASON: it runs on each tab-bar redisplay and under every project.el
+;; command; an escaping error or file I/O here breaks or slows them all
+(defun imoogi-project-perspective-find (dir)
+  "Perspective finder for `project-find-functions'; see SPEC-PERSPPIN-001.
+Resolve an implicit lookup of DIR from a buffer with no project of its own to
+the project of the root the current Perspective is mapped to.  Any error
+declines, because `project--find-in-directory' only absorbs
+`permission-denied'."
+  (condition-case nil
+      (imoogi-project--perspective-find dir)
+    (error nil)))
+
+(defun imoogi-project--perspective-finder-memo-clear ()
+  "Forget every project the Perspective finder memoized."
+  (setq imoogi-project--perspective-finder-memo nil))
+
+(defun imoogi-project-install-perspective-finder ()
+  "Add the Perspective finder to `project-find-functions' at depth 95.
+`add-hook' with APPEND means depth 90, and at equal depth a newer member
+sorts after an older one, so 95 keeps every member added at default depth or
+with APPEND, before or after this call, ahead of the finder.  95 rather than
+100 leaves room for a member that deliberately wants to be last."
+  (add-hook 'project-find-functions #'imoogi-project-perspective-find 95))
+
 (defun imoogi-project-context-root ()
   "Return the root for the current Imoogi project context.
 
@@ -217,7 +312,10 @@ the selected project without leaving the current Perspective."
   (interactive "P")
   (let* ((selected-root (funcall project-prompter))
          (project
-          (let ((project-prompter (lambda () selected-root)))
+          ;; An explicit selection resolves on its own merits, even when it
+          ;; equals the buffer's directory and is not under VC.
+          (let ((project-prompter (lambda () selected-root))
+                (imoogi-project--perspective-finder-inhibit t))
             (project-current t selected-root)))
          (root (project-root project)))
     (project-remember-project project)
@@ -298,7 +396,9 @@ perspective 의 `persp-new' 는 interactive 가 아니라 메뉴에 직접 붙�
   :ensure nil
   :demand t
   :bind (:map project-prefix-map
-              ("p" . imoogi-project-switch-perspective)))
+              ("p" . imoogi-project-switch-perspective))
+  :config
+  (imoogi-project-install-perspective-finder))
 
 ;;; Perspective
 (use-package perspective
@@ -337,6 +437,7 @@ perspective 의 `persp-new' 는 interactive 가 아니라 메뉴에 직접 붙�
   (add-hook 'persp-before-switch-hook
             #'imoogi-perspective--remember-treemacs-visibility)
   (add-hook 'persp-switch-hook #'imoogi-perspective--restore-treemacs)
+  (add-hook 'persp-switch-hook #'imoogi-project--perspective-finder-memo-clear)
   (add-hook 'kill-emacs-hook #'imoogi-perspective-state-save))
 
 (provide 'imoogi-projects)
