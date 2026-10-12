@@ -35,6 +35,8 @@ type InstallOptions struct {
 	// and testable without touching Launch Services (REQ-ASRC-013.2).
 	Register bool
 	Run      Runner
+	// Rename moves the app bundles during an install (default os.Rename).
+	Rename func(oldpath, newpath string) error
 }
 
 // DefaultInstallDest is ~/Applications.
@@ -136,7 +138,14 @@ func InfoPlist() string {
 // registers it with Launch Services. It returns the app's path.
 //
 // An existing app at that path is replaced only when it is one Install made
-// (its Info.plist names BundleID); anything else is left alone.
+// (its Info.plist names BundleID); anything else is left alone. The new app
+// is compiled, signed and verified in a staging directory beside the final
+// one first, so a failed build leaves the working handler untouched. The old
+// app is then set aside, the new one moved in, and the old one put back when
+// that move fails; it is deleted only once the new app is in place.
+//
+// @MX:WARN: [AUTO] Install moves a user-visible app bundle; between the two renames no handler exists at the path.
+// @MX:REASON: The gap is two same-directory renames long, and a failed second rename restores the old bundle.
 func Install(opts InstallOptions) (string, error) {
 	if !filepath.IsAbs(opts.BinaryPath) {
 		return "", fmt.Errorf("binary path must be absolute: %q", opts.BinaryPath)
@@ -148,17 +157,19 @@ func Install(opts InstallOptions) (string, error) {
 		}
 		opts.Dest = dest
 	}
+	renameFile := opts.Rename
+	if renameFile == nil {
+		renameFile = os.Rename
+	}
 	app := filepath.Join(opts.Dest, AppName)
-	plistPath := filepath.Join(app, "Contents", "Info.plist")
 
+	replacing := false
 	if _, err := os.Stat(app); err == nil {
-		existing, readErr := os.ReadFile(plistPath)
+		existing, readErr := os.ReadFile(filepath.Join(app, "Contents", "Info.plist"))
 		if readErr != nil || !strings.Contains(string(existing), BundleID) {
 			return "", fmt.Errorf("%s exists and was not created by imoogi-anki; move it away first", app)
 		}
-		if err := os.RemoveAll(app); err != nil {
-			return "", err
-		}
+		replacing = true
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
@@ -166,36 +177,83 @@ func Install(opts InstallOptions) (string, error) {
 		return "", err
 	}
 
-	work, err := os.MkdirTemp("", "imoogi-anki-handler-*")
+	// The staging directory sits in Dest so both moves are renames on one
+	// file system; the leading dot keeps it out of Finder.
+	staging, err := os.MkdirTemp(opts.Dest, ".imoogi-anki-staging-*")
 	if err != nil {
 		return "", err
 	}
-	defer func() { _ = os.RemoveAll(work) }()
-	source := filepath.Join(work, "imoogi-anki-url-handler.applescript")
-	if err := os.WriteFile(source, []byte(AppleScriptSource(opts.BinaryPath)), 0o600); err != nil {
+	keepStaging := false
+	defer func() {
+		if !keepStaging {
+			_ = os.RemoveAll(staging)
+		}
+	}()
+
+	built := filepath.Join(staging, AppName)
+	if err := buildApp(opts, staging, built); err != nil {
 		return "", err
 	}
 
-	if err := runTool(opts.Run, osacompileCommand, "-o", app, source); err != nil {
+	if replacing {
+		previous := filepath.Join(staging, "previous-"+AppName)
+		if err := renameFile(app, previous); err != nil {
+			return "", fmt.Errorf("could not set the existing %s aside: %v", AppName, err)
+		}
+		if err := renameFile(built, app); err != nil {
+			if restoreErr := renameFile(previous, app); restoreErr != nil {
+				// The old app now exists only inside the staging directory.
+				keepStaging = true
+				return "", fmt.Errorf("could not install the new %s (%v) nor put the old one back (%v); the old one is at %s",
+					AppName, err, restoreErr, previous)
+			}
+			return "", fmt.Errorf("could not install the new %s; the old one was kept: %v", AppName, err)
+		}
+	} else if err := renameFile(built, app); err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(filepath.Dir(plistPath), 0o755); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(plistPath, []byte(InfoPlist()), 0o644); err != nil {
-		return "", err
-	}
-	// osacompile signs the applet ad hoc, and rewriting Info.plist breaks that
-	// seal; re-sign so the app still launches on Apple silicon.
-	if err := runTool(opts.Run, codesignCommand, "--force", "--sign", "-", app); err != nil {
-		return "", err
-	}
+
 	if opts.Register {
 		if err := runTool(opts.Run, lsregisterCommand, "-f", app); err != nil {
 			return "", err
 		}
 	}
 	return app, nil
+}
+
+// buildApp compiles the app at built, writes its Info.plist, signs it, and
+// checks the result. The script source is written into dir.
+func buildApp(opts InstallOptions, dir, built string) error {
+	source := filepath.Join(dir, "imoogi-anki-url-handler.applescript")
+	if err := os.WriteFile(source, []byte(AppleScriptSource(opts.BinaryPath)), 0o600); err != nil {
+		return err
+	}
+	if err := runTool(opts.Run, osacompileCommand, "-o", built, source); err != nil {
+		return err
+	}
+	plistPath := filepath.Join(built, "Contents", "Info.plist")
+	if err := os.MkdirAll(filepath.Dir(plistPath), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(plistPath, []byte(InfoPlist()), 0o644); err != nil {
+		return err
+	}
+	// osacompile signs the applet ad hoc, and rewriting Info.plist breaks that
+	// seal; re-sign so the app still launches on Apple silicon.
+	if err := runTool(opts.Run, codesignCommand, "--force", "--sign", "-", built); err != nil {
+		return err
+	}
+	if err := runTool(opts.Run, codesignCommand, "--verify", "--strict", built); err != nil {
+		return err
+	}
+	written, err := os.ReadFile(plistPath)
+	if err != nil {
+		return err
+	}
+	if string(written) != InfoPlist() {
+		return fmt.Errorf("the built %s carries an unexpected Info.plist", AppName)
+	}
+	return nil
 }
 
 func runTool(run Runner, name string, args ...string) error {

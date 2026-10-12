@@ -59,12 +59,29 @@ Every timing is well under the 10 s eval budget (REQ-010.3). These numbers come 
 | REQ-011.7 | `imoogi-anki-src-open-receiver-is-required-by-the-module` | PASS |
 | DoD — operator click | none (cannot be automated) | GAP (operator) |
 
+### Card-review fix pass (on `a3520d9`)
+
+Three codex card-review findings were fixed test-first (deviations 10-12). The work ran on an `rsync -a --exclude .git` copy of the t25 tree at `a3520d9`, and was handed back as `t25-fix3.patch`. RED logs: `t25-fix3-red-el.log` (4 new Elisp tests failing, e.g. `(equal "ok" "incomplete")`) and `t25-fix3-red-go.log` (staged-build, rebuild-failure, swap-restore and `incomplete`-classification failures).
+
+| Check | Command | Verbatim tail |
+|---|---|---|
+| Full ERT | `IMOOGI_TEST_USER_DIR=<scratch> emacs --batch -Q -l tests/run.el` | `Ran 671 tests, 660 results as expected, 0 unexpected, 11 skipped (2026-10-12 23:18:20+0900, 56.362701 sec)` (5 new tests) |
+| check-parens | the `tests/run.sh` step-1 loops, moved into a file | `check-parens OK: 125 files (root three + modules/ + tests/)`. That is the earlier 122 under `modules/` and `tests/`, plus the three root files `run.sh` also checks. |
+| Go tests | `go test -count=1 ./...` | `ok  github.com/karohani/imoogi-emacs/internal/anki/opener 1.874s`, with every package `ok` and 0 `FAIL` lines |
+| go vet | `go vet ./internal/anki/... ./cmd/imoogi-anki/...` | exit 0, no output |
+| gofmt | `gofmt -l internal/anki cmd/imoogi-anki` | no output |
+
 ### Existing tests changed (SPEC-driven fixture updates)
 
 REQ-ASRC-001 changes what a sync writes: a card heading without its own `:ID:` now receives one. Two existing one-way tests assert that a sync's on-disk delta is `ANKI_NOTE_ID` alone, so their fixtures now start with a heading-local `:ID:` line. Each test also binds `org-id-locations-file`, `org-id-locations`, and `org-id-files` to temporary state. Neither assertion was weakened.
 
 - `imoogi-sync-oneway-test-ac024-synced-entry-leaves-org-untouched` (changed earlier in this run phase)
 - `imoogi-sync-oneway-test-card-options-are-never-written-back` (changed in this pass; it was the one failing test)
+
+The card-review fixes (deviations 10-12 below) changed two more existing tests. Neither assertion was weakened.
+
+- `imoogi-anki-src-open-rejects-ids-outside-the-character-set`: the list of values a rejected ID must not return now includes `"incomplete"`.
+- `TestInstallGeneratesAppWithoutRegistering`: osacompile and codesign now run on the staged bundle, not the final path. The test checks that this bundle is named `ImoogiAnki.app`, is not the final path, is signed, and that nothing but the app is left in the destination.
 
 `tests/anki-error-test.el` registers `org_id_invalid` as a Go-emitted code. It also registers `org_id_duplicated` and `org_id_create_failed` as codes that exist only in Elisp (DD-4).
 
@@ -79,6 +96,9 @@ REQ-ASRC-001 changes what a sync writes: a card heading without its own `:ID:` n
 7. **Exit codes.** `imoogi-anki open` exits 2 when a link is rejected before Emacs is contacted, and 1 for every other failure. The SPEC only requires a non-zero code.
 8. **`internal/agentipc`.** Two exported wrappers were added: `FindEmacsclient` and `ParseLispString`. Neither changes behavior. `imoogi-agent` still uses its own `classify`, and its tests (`go test ./internal/agentipc/ ./cmd/imoogi-agent/`) pass unchanged.
 9. **Optional audit notes folded in.** For O4, the uniqueness regexp ends in `[ \t]*$`. For O5, IDs made in a modified buffer or on a failed pass are `remhash`-ed from the in-memory cache.
+10. **A fourth normal receiver value, `"incomplete"` (card-review finding 1).** REQ-011.2 requires uniqueness over every target before moving, and REQ-010.2 names three normal values. When a target file cannot be read, or discovery cannot walk a directory, uniqueness is not established. In that case the receiver returns `"incomplete"` when it found fewer than two headings. It does not move, does not register the location, lists the unread paths and any heading it found in `*imoogi-anki-open*`, and raises the frame. A known duplicate (two or more headings) still returns `"duplicate"`, and that listing also shows the unread paths. The handler classifies `"incomplete"` like `"not-found"` and `"duplicate"`: exit 0, no notification, because the explanation is already on the focused frame. A root that does not exist, and a file deleted after discovery, hold nothing to check, so they are not counted as unread.
+11. **Source re-checked before the move (card-review finding 2).** After the scan, the receiver checks the file again before visiting it and confirms the ID is still in it. If the file is gone or the ID was removed, it returns `"not-found"` with the REQ-011.4 message, creates no file, and kills any buffer it opened for that file. A buffer the user was already visiting is left alone. The location is registered only after the move succeeds, so a vanished source no longer writes a stale cache entry.
+12. **Reinstall builds before it replaces (card-review finding 3).** `install-url-handler` compiles, writes `Info.plist`, re-signs, and verifies (`codesign --verify --strict`) the new app in a hidden staging directory inside the destination. Only then does it move the existing app aside, move the new one in, and delete the old one. If the move fails, it restores the old app. If the restore also fails, it keeps the staging directory and names the old app's path in the error. A failed build leaves the existing handler untouched. The guard that refuses to replace an `ImoogiAnki.app` without its own bundle ID is unchanged. A new field, `InstallOptions.Rename` (default `os.Rename`), is the seam the tests use to make the move fail.
 
 ### Gaps (not observed)
 

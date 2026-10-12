@@ -233,7 +233,7 @@ func TestOpenWithoutEmacsclientOnlyNotifies(t *testing.T) {
 	}
 }
 
-// AC-ASRC-015 (d) and (f): only "ok", "not-found" and "duplicate" are
+// AC-ASRC-015 (d) and (f): only "ok", "not-found", "duplicate" and "incomplete" are
 // normal; anything else notifies with the error text and exits non-zero.
 func TestOpenClassifiesTheReceiverResult(t *testing.T) {
 	cases := []struct {
@@ -244,6 +244,9 @@ func TestOpenClassifiesTheReceiverResult(t *testing.T) {
 	}{
 		{"not-found", CmdResult{Stdout: []byte("\"not-found\"\n")}, true, ""},
 		{"duplicate", CmdResult{Stdout: []byte("\"duplicate\"\n")}, true, ""},
+		// A target the receiver could not read: it listed the unreadable
+		// paths on the focused frame and moved nowhere, so it is normal too.
+		{"incomplete", CmdResult{Stdout: []byte("\"incomplete\"\n")}, true, ""},
 		{"nonzero", CmdResult{ExitCode: 1, Stderr: []byte("server went away")}, false, "server went away"},
 		{"void-function", CmdResult{ExitCode: 1,
 			Stderr: []byte("*ERROR*: Symbol’s function definition is void: imoogi-anki-open-id\n")}, false, "imoogi-anki-open-id"},

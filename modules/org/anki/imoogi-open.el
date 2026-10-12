@@ -22,9 +22,13 @@
 ;;     file, tolerant of trailing whitespace -- and only a hit is checked
 ;;     with Org for heading-locality, which keeps a click cheap (plan R-7).
 ;;     A file the user is visiting is searched in that buffer.
-;;  3. One heading: register its location, go there.  None: say so and
-;;     point at `imoogi-sync'.  Two or more: list them and move nowhere.
-;;     Every outcome raises the Emacs frame.
+;;  3. Two or more headings: list them and move nowhere.  Any target that
+;;     could not be read -- a file or a directory -- leaves uniqueness
+;;     unproven, so fewer than two found plus an unread target lists the
+;;     unread paths and moves nowhere either ("incomplete").  One heading:
+;;     check the file again, go there, then register its location; if it
+;;     vanished meanwhile, treat it as none.  None: say so and point at
+;;     `imoogi-sync'.  Every outcome raises the Emacs frame.
 ;;
 ;; The receiver never creates a file, never saves, reverts, or edits a
 ;; user buffer, and never writes :ID: or ANKI_NOTE_ID.  The only thing it
@@ -58,14 +62,17 @@ heading, a not-found message, a candidate list -- would sit behind it
       (ignore-errors (select-frame-set-input-focus frame)))))
 
 (defun imoogi-anki-open--target-files ()
-  "Return the truenames of every sync-target file, without duplicates.
+  "Return (FILES . FAILED) for the sync targets.
+FILES are the truenames of every sync-target file, without duplicates.
 The legacy root and registered directories are walked with the same
 discovery the sync uses; registered files are taken as they are; a file
-matching `imoogi-exclude-patterns' relative to its root is left out."
+matching `imoogi-exclude-patterns' relative to its root is left out.
+FAILED are the directories discovery could not walk.  A root that does
+not exist holds nothing to check and is not a failure."
   (let ((seen (make-hash-table :test #'equal))
         (patterns (and (boundp 'imoogi-exclude-patterns) imoogi-exclude-patterns))
         (targets (imoogi-targets-load))
-        roots files)
+        roots files failed)
     (when (and (boundp 'imoogi-sync-root) imoogi-sync-root)
       (push imoogi-sync-root roots))
     (dolist (target targets)
@@ -81,16 +88,17 @@ matching `imoogi-exclude-patterns' relative to its root is left out."
                     (push true files)))))
       (dolist (root (nreverse roots))
         (when (file-directory-p root)
-          (let ((true-root (imoogi-target-scan--true-directory root)))
-            (dolist (file (plist-get (imoogi-target-scan--discover-directory
-                                      true-root true-root (make-hash-table :test #'equal))
-                                     :files))
-              (add file true-root)))))
+          (let* ((true-root (imoogi-target-scan--true-directory root))
+                 (scan (imoogi-target-scan--discover-directory
+                        true-root true-root (make-hash-table :test #'equal))))
+            (dolist (file (plist-get scan :files))
+              (add file true-root))
+            (setq failed (append failed (plist-get scan :failures))))))
       (dolist (target targets)
         (let ((path (plist-get target :path)))
           (when (and (eq (plist-get target :kind) 'file) (file-regular-p path))
             (add path (file-name-directory (expand-file-name path)))))))
-    (nreverse files)))
+    (cons (nreverse files) (delete-dups failed))))
 
 (defun imoogi-anki-open--id-line-regexp (id)
   "Return the regexp for a property line naming ID, trailing blanks allowed."
@@ -118,10 +126,12 @@ matching `imoogi-exclude-patterns' relative to its root is left out."
     (nreverse hits)))
 
 (defun imoogi-anki-open--scan-file (id file)
-  "Return (:file FILE :pos POS :title TITLE) for each ID heading in FILE.
-A buffer visiting FILE in Org mode is searched as it is, unsaved edits
-included; otherwise a temporary copy is read, so no buffer is created
-and nothing the user sees changes."
+  "Return the ID headings in FILE, or the symbol `failed'.
+Each heading is (:file FILE :pos POS :title TITLE).  A buffer visiting
+FILE in Org mode is searched as it is, unsaved edits included; otherwise
+a temporary copy is read, so no buffer is created and nothing the user
+sees changes.  A file that vanished since discovery holds nothing; one
+that cannot be read is `failed', since it may hold the ID."
   (let* ((visiting (find-buffer-visiting file))
          (hits
           (condition-case nil
@@ -133,8 +143,11 @@ and nothing the user sees changes."
                       (insert-buffer-substring visiting)
                     (insert-file-contents file))
                   (imoogi-anki-open--scan-current-buffer id)))
-            (file-error nil))))
-    (mapcar (lambda (hit) (list :file file :pos (car hit) :title (cdr hit))) hits)))
+            (file-missing nil)
+            (file-error 'failed))))
+    (if (eq hits 'failed)
+        'failed
+      (mapcar (lambda (hit) (list :file file :pos (car hit) :title (cdr hit))) hits))))
 
 (defun imoogi-anki-open--cached-file (id)
   "Return the existing truename `org-id-locations' records for ID, or nil."
@@ -145,14 +158,25 @@ and nothing the user sees changes."
         (file-truename (expand-file-name file))))))
 
 (defun imoogi-anki-open--candidates (id)
-  "Return every heading whose own :ID: is ID, over the targets and cache."
-  (let* ((files (imoogi-anki-open--target-files))
-         (cached (imoogi-anki-open--cached-file id)))
+  "Return (:candidates HEADINGS :failed PATHS) for ID over the targets and cache.
+HEADINGS are every heading whose own :ID: is ID.  PATHS are the
+directories and files that could not be checked; when there are any,
+the uniqueness of HEADINGS is not established."
+  (let* ((discovery (imoogi-anki-open--target-files))
+         (files (car discovery))
+         (failed (cdr discovery))
+         (cached (imoogi-anki-open--cached-file id))
+         candidates)
     ;; O3: a cached file outside the targets joins the search, so the
     ;; uniqueness check covers the targets plus that one file.
     (when (and cached (not (member cached files)))
       (setq files (append files (list cached))))
-    (apply #'append (mapcar (lambda (file) (imoogi-anki-open--scan-file id file)) files))))
+    (dolist (file files)
+      (let ((hits (imoogi-anki-open--scan-file id file)))
+        (if (eq hits 'failed)
+            (setq failed (append failed (list file)))
+          (setq candidates (append candidates hits)))))
+    (list :candidates candidates :failed failed)))
 
 (defun imoogi-anki-open--register (id file)
   "Record FILE as ID's location and save the cache when it changed."
@@ -164,25 +188,45 @@ and nothing the user sees changes."
         (imoogi-orgid-save)))))
 
 (defun imoogi-anki-open--goto (id candidate)
-  "Visit CANDIDATE's file and put point on ID's heading there."
+  "Visit CANDIDATE's file and put point on ID's heading there.
+Return non-nil when the heading was reached.  The file is checked again
+first, because it may have changed since the scan: when it is gone or
+no longer holds ID, nothing is shown, no file is created, and a buffer
+this function opened for it is killed again."
   (let* ((file (plist-get candidate :file))
-         (buffer (or (find-buffer-visiting file) (find-file-noselect file))))
-    (pop-to-buffer-same-window buffer)
-    (let ((pos (car (car (imoogi-anki-open--scan-current-buffer id)))))
-      (when pos
-        (when (or (< pos (point-min)) (> pos (point-max)))
-          (widen))
-        (goto-char pos)
-        (org-fold-show-context 'link-search)))))
+         (visiting (find-buffer-visiting file))
+         (buffer (or visiting
+                     (and (file-regular-p file)
+                          (condition-case nil
+                              (find-file-noselect file)
+                            (file-error nil)))))
+         (pos (and (buffer-live-p buffer)
+                   (with-current-buffer buffer
+                     (car (car (imoogi-anki-open--scan-current-buffer id)))))))
+    (if (not pos)
+        (progn
+          (when (and buffer (not visiting) (buffer-live-p buffer))
+            (kill-buffer buffer))
+          nil)
+      (pop-to-buffer-same-window buffer)
+      (when (or (< pos (point-min)) (> pos (point-max)))
+        (widen))
+      (goto-char pos)
+      (org-fold-show-context 'link-search)
+      t)))
 
-(defun imoogi-anki-open--show-candidates (id candidates)
-  "List CANDIDATES sharing ID in `imoogi-anki-open-candidates-buffer'."
+(defun imoogi-anki-open--not-found (id)
+  "Say that no heading carries ID."
+  (message "imoogi-anki: Org ID %s의 원본 heading을 찾을 수 없습니다. 파일이 옮겨졌거나 삭제·ID 변경되었을 수 있습니다. 확인 후 M-x imoogi-sync 로 다시 동기화하세요."
+           id))
+
+(defun imoogi-anki-open--show-listing (header candidates failed)
+  "Show HEADER, CANDIDATES and the unchecked FAILED paths in a listing buffer.
+The buffer is `imoogi-anki-open-candidates-buffer'."
   (with-current-buffer (get-buffer-create imoogi-anki-open-candidates-buffer)
     (let ((inhibit-read-only t))
       (erase-buffer)
-      (insert (format "imoogi-anki: Org ID %s 를 가진 heading이 %d개입니다. 어느 것으로도 이동하지 않았습니다.\n"
-                      id (length candidates))
-              "하나만 남기고 나머지의 :ID: 줄을 지운 뒤 M-x imoogi-sync 로 다시 동기화하세요.\n\n")
+      (insert header "\n")
       (dolist (candidate candidates)
         (insert "  ")
         (insert-text-button (plist-get candidate :file)
@@ -192,39 +236,64 @@ and nothing the user sees changes."
                             'action (lambda (button)
                                       (find-file (button-get button 'imoogi-file))
                                       (goto-char (button-get button 'imoogi-pos))))
-        (insert (format "  %s\n" (plist-get candidate :title)))))
+        (insert (format "  %s\n" (plist-get candidate :title))))
+      (when failed
+        (insert "\n확인하지 못한 경로:\n")
+        (dolist (path failed)
+          (insert (format "  %s\n" path)))))
     (special-mode)
     (goto-char (point-min))
     (display-buffer (current-buffer))))
+
+(defun imoogi-anki-open--show-candidates (id candidates failed)
+  "List CANDIDATES sharing ID, plus the unchecked FAILED paths."
+  (imoogi-anki-open--show-listing
+   (concat (format "imoogi-anki: Org ID %s 를 가진 heading이 %d개입니다. 어느 것으로도 이동하지 않았습니다.\n"
+                   id (length candidates))
+           "하나만 남기고 나머지의 :ID: 줄을 지운 뒤 M-x imoogi-sync 로 다시 동기화하세요.\n")
+   candidates failed))
+
+(defun imoogi-anki-open--show-incomplete (id candidates failed)
+  "Explain that FAILED could not be checked for ID, listing CANDIDATES found."
+  (imoogi-anki-open--show-listing
+   (concat (format "imoogi-anki: 읽지 못한 경로가 %d개 있어 Org ID %s 가 하나뿐인지 확인할 수 없습니다. 어느 것으로도 이동하지 않았습니다.\n"
+                   (length failed) id)
+           "아래 경로의 읽기 권한을 확인한 뒤 링크를 다시 누르세요.\n")
+   candidates failed))
 
 ;;;###autoload
 (defun imoogi-anki-open-id (id)
   "Open the Org heading whose own :ID: is ID; return the outcome as a string.
 
 \"ok\" when exactly one heading was found and opened, \"not-found\" when
-none was, \"duplicate\" when several were (they are listed, and point
-does not move).  An ID outside the shared character set returns
-\"invalid-id\" without touching any file.  The `imoogi-anki open'
-handler treats only the first three as normal outcomes."
+none was (or the one found vanished before it could be opened),
+\"duplicate\" when several were (they are listed, and point does not
+move), and \"incomplete\" when fewer than two were found but some target
+could not be read, so a duplicate cannot be ruled out (the unread paths
+are listed, and point does not move).  An ID outside the shared
+character set returns \"invalid-id\" without touching any file.  The
+`imoogi-anki open' handler treats all but \"invalid-id\" as normal."
   (if (not (imoogi-orgid-valid-p id))
       (progn
         (message "imoogi-anki: 올바르지 않은 Org ID 라서 열지 않았습니다: %S" id)
         "invalid-id")
-    (let ((candidates (imoogi-anki-open--candidates id)))
+    (let* ((result (imoogi-anki-open--candidates id))
+           (candidates (plist-get result :candidates))
+           (failed (plist-get result :failed)))
       (prog1
-          (pcase (length candidates)
-            (0
-             (message "imoogi-anki: Org ID %s의 원본 heading을 찾을 수 없습니다. 파일이 옮겨졌거나 삭제·ID 변경되었을 수 있습니다. 확인 후 M-x imoogi-sync 로 다시 동기화하세요."
-                      id)
-             "not-found")
-            (1
-             (let ((candidate (car candidates)))
-               (imoogi-anki-open--register id (plist-get candidate :file))
-               (imoogi-anki-open--goto id candidate))
-             "ok")
-            (_
-             (imoogi-anki-open--show-candidates id candidates)
-             "duplicate"))
+          (cond
+           ((cdr candidates)
+            (imoogi-anki-open--show-candidates id candidates failed)
+            "duplicate")
+           (failed
+            (imoogi-anki-open--show-incomplete id candidates failed)
+            "incomplete")
+           ((and candidates (imoogi-anki-open--goto id (car candidates)))
+            (imoogi-anki-open--register id (plist-get (car candidates) :file))
+            "ok")
+           (t
+            (imoogi-anki-open--not-found id)
+            "not-found"))
         (imoogi-anki-open--focus-frame)))))
 
 (provide 'imoogi-open)

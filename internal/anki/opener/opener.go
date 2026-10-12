@@ -27,7 +27,7 @@ import (
 
 // Exit codes of `imoogi-anki open`.
 const (
-	ExitOK     = 0 // the receiver returned "ok", "not-found" or "duplicate"
+	ExitOK     = 0 // the receiver returned "ok", "not-found", "duplicate" or "incomplete"
 	ExitFailed = 1 // Emacs unreachable, timed out, or the receiver failed
 	ExitUsage  = 2 // the link itself was rejected before Emacs was contacted
 )
@@ -49,10 +49,13 @@ const (
 	outputLimit       = 64 << 10
 )
 
-// normalResults are the receiver's three normal outcomes (REQ-ASRC-010.2).
-// "not-found" and "duplicate" are normal: their explanation is already on the
-// Emacs frame the receiver raised, so the handler adds nothing.
-var normalResults = map[string]bool{"ok": true, "not-found": true, "duplicate": true}
+// normalResults are the receiver's normal outcomes (REQ-ASRC-010.2).
+// "not-found", "duplicate" and "incomplete" are normal: their explanation is
+// already on the Emacs frame the receiver raised, so the handler adds nothing.
+// "incomplete" means a target could not be read, so the receiver listed it
+// and moved nowhere (a deviation from the SPEC's three values; see
+// progress.md §E.2).
+var normalResults = map[string]bool{"ok": true, "not-found": true, "duplicate": true, "incomplete": true}
 
 // CmdResult is what one external command produced.
 type CmdResult struct {

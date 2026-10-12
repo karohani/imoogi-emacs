@@ -182,6 +182,109 @@
         (insert "* Copy\n:PROPERTIES:\n:ANKI_NOTE_TYPE: Basic\n:ID: id-w \t\n:END:\nBody\n"))
       (should (equal (imoogi-anki-open-id "id-w") "duplicate")))))
 
+;; --- Card review finding 1: a target that could not be checked blocks the
+;; automatic move, because a duplicate in it cannot be ruled out.
+
+(defmacro imoogi-anki-src-open-test--with-locked (path &rest body)
+  "Run BODY with PATH unreadable, restoring its modes afterwards."
+  (declare (indent 1))
+  `(let ((modes (file-modes ,path)))
+     (set-file-modes ,path 0)
+     (unwind-protect
+         (progn
+           (skip-unless (and (not (zerop (user-uid)))
+                             (not (file-readable-p ,path))))
+           ,@body)
+       (set-file-modes ,path modes))))
+
+(defun imoogi-anki-src-open-test--assert-incomplete (id file unreadable)
+  "Assert that opening ID refused to move to FILE and listed UNREADABLE."
+  (let ((buffers (buffer-list)))
+    (with-current-buffer " *imoogi-open-start*" (insert "abc") (goto-char 2))
+    (should (equal (imoogi-anki-open-id id) "incomplete"))
+    (should (eq (current-buffer) (get-buffer " *imoogi-open-start*")))
+    (should (= (point) 2))
+    (should-not (find-buffer-visiting file))
+    (should-not (imoogi-anki-src-open-test--saved-path id))
+    (should (= imoogi-anki-src-open-test--focus 1))
+    (let ((listing (with-current-buffer "*imoogi-anki-open*" (buffer-string))))
+      (should (string-match-p (regexp-quote id) listing))
+      (should (string-match-p (regexp-quote unreadable) listing))
+      (should (string-match-p (regexp-quote (file-truename file)) listing)))
+    (should-not (cl-remove (get-buffer "*imoogi-anki-open*")
+                           (cl-set-difference (buffer-list) buffers)))))
+
+(ert-deftest imoogi-anki-src-open-unreadable-file-blocks-navigation ()
+  (imoogi-anki-src-open-test--with-root
+    (let ((file (imoogi-anki-src-open-test--write root "a.org" "id-r"))
+          (locked (imoogi-anki-src-open-test--write root "b.org" "id-other")))
+      (imoogi-anki-src-open-test--with-locked locked
+        (imoogi-anki-src-open-test--assert-incomplete
+         "id-r" file (file-truename locked))))))
+
+(ert-deftest imoogi-anki-src-open-unreadable-directory-blocks-navigation ()
+  (imoogi-anki-src-open-test--with-root
+    (let ((file (imoogi-anki-src-open-test--write root "a.org" "id-r"))
+          (locked (expand-file-name "locked" root)))
+      (imoogi-anki-src-open-test--write locked "c.org" "id-other")
+      (imoogi-anki-src-open-test--with-locked locked
+        (imoogi-anki-src-open-test--assert-incomplete
+         "id-r" file (directory-file-name (file-truename locked)))))))
+
+(ert-deftest imoogi-anki-src-open-known-duplicate-wins-over-unreadable ()
+  (imoogi-anki-src-open-test--with-root
+    (imoogi-anki-src-open-test--write root "one.org" "id-d")
+    (imoogi-anki-src-open-test--write root "two.org" "id-d")
+    (let ((locked (imoogi-anki-src-open-test--write root "three.org" "id-x")))
+      (imoogi-anki-src-open-test--with-locked locked
+        (should (equal (imoogi-anki-open-id "id-d") "duplicate"))))))
+
+;; --- Card review finding 2: the source vanished between the scan and the
+;; move.  Nothing is created, no buffer is left behind, and the answer is
+;; "not-found".
+
+(ert-deftest imoogi-anki-src-open-source-gone-before-navigation-is-not-found ()
+  (dolist (change '(delete remove-id))
+    (imoogi-anki-src-open-test--with-root
+      (let* ((file (imoogi-anki-src-open-test--write root "a.org" "id-g"))
+             (original (symbol-function 'imoogi-anki-open--candidates))
+             (buffers (buffer-list)))
+        (cl-letf (((symbol-function 'imoogi-anki-open--candidates)
+                   (lambda (id)
+                     (prog1 (funcall original id)
+                       (pcase change
+                         ('delete (delete-file file))
+                         ('remove-id
+                          (with-temp-file file
+                            (insert "* Card\n:PROPERTIES:\n:ANKI_NOTE_TYPE: Basic\n:END:\nBody\n"))))))))
+          (should (equal (imoogi-anki-open-id "id-g") "not-found")))
+        (let ((shown (string-join imoogi-anki-src-open-test--messages "\n")))
+          (should (string-match-p "id-g" shown))
+          (should (string-match-p "imoogi-sync" shown)))
+        (should (eq (eq change 'delete) (not (file-exists-p file))))
+        (should-not (find-buffer-visiting file))
+        (should-not (cl-set-difference (buffer-list) buffers))
+        (should (eq (current-buffer) (get-buffer " *imoogi-open-start*")))
+        (should-not (imoogi-anki-src-open-test--saved-path "id-g"))
+        (should (= imoogi-anki-src-open-test--focus 1))))))
+
+;; The ID left a buffer the user already visits: that buffer stays.
+(ert-deftest imoogi-anki-src-open-id-gone-from-user-buffer-keeps-buffer ()
+  (imoogi-anki-src-open-test--with-root
+    (let* ((file (imoogi-anki-src-open-test--write root "a.org" "id-k"))
+           (buffer (find-file-noselect file))
+           (original (symbol-function 'imoogi-anki-open--candidates)))
+      (cl-letf (((symbol-function 'imoogi-anki-open--candidates)
+                 (lambda (id)
+                   (prog1 (funcall original id)
+                     (with-current-buffer buffer
+                       (goto-char (point-min))
+                       (while (re-search-forward "^:ID: id-k\n" nil t)
+                         (replace-match "")))))))
+        (should (equal (imoogi-anki-open-id "id-k") "not-found")))
+      (should (buffer-live-p buffer))
+      (should (eq (current-buffer) (get-buffer " *imoogi-open-start*"))))))
+
 ;; --- AC-ASRC-013: the user's unsaved edits are left exactly as they were.
 
 (ert-deftest imoogi-anki-src-open-keeps-unsaved-user-buffer-untouched ()
@@ -210,7 +313,7 @@
     (let ((buffers (buffer-list)))
       (imoogi-anki-src-open-test--write root "a.org" "id-a")
       (dolist (bad '("x\")(shell-command \"touch pwn\"" "a b" "" "a/b"))
-        (should-not (member (imoogi-anki-open-id bad) '("ok" "not-found" "duplicate"))))
+        (should-not (member (imoogi-anki-open-id bad) '("ok" "not-found" "duplicate" "incomplete"))))
       (should-not (cl-set-difference (buffer-list) buffers))
       (should (eq (current-buffer) (get-buffer " *imoogi-open-start*"))))))
 
