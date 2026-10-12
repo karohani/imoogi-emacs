@@ -93,10 +93,13 @@ func (e *NavigationEvent) UnmarshalJSON(data []byte) error {
 		CursorByte      int         `json:"cursor_byte"`
 		CursorByteCamel int         `json:"cursorByte"`
 		Range           SourceRange `json:"range"`
+		Type            string      `json:"type"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
+	// Open is deliberately not decoded: only the server may set it.
+	e.Type = raw.Type
 	e.Envelope = Envelope{
 		Version:   raw.Version,
 		SessionID: firstNonEmpty(raw.SessionID, raw.SessionIDCamel),
@@ -140,6 +143,19 @@ type NavigationEvent struct {
 	ElementID  string      `json:"element_id"`
 	CursorByte int         `json:"cursor_byte,omitempty"`
 	Range      SourceRange `json:"range,omitempty"`
+	// Type "open" asks Emacs to open the link named by ElementID; the server
+	// fills Open from its own document, never from the browser payload.
+	Type string      `json:"type,omitempty"`
+	Open *OpenTarget `json:"open,omitempty"`
+}
+
+// OpenTarget is a server-validated link target for Emacs to open.
+// Kind is "file" (Path set), "id" (ID set), or "unavailable" (Target only).
+type OpenTarget struct {
+	Kind   string `json:"kind"`
+	Path   string `json:"path,omitempty"`
+	ID     string `json:"id,omitempty"`
+	Target string `json:"target,omitempty"`
 }
 
 type RenderEvent struct {

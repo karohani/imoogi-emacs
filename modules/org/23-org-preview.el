@@ -15,6 +15,8 @@
 (declare-function project-current "project")
 (declare-function project-root "project")
 (declare-function imoogi-org-color-preview-map "14-org")
+(declare-function org-id-find "org-id")
+(declare-function org-fold-show-context "org-fold")
 
 (defgroup imoogi-org-preview nil
   "Live Org/Markdown preview backed by the local imoogi-org-preview server."
@@ -636,7 +638,42 @@ The preview scrolls only when that paragraph is off screen."
            (imoogi-org-preview--apply-navigation event)))
         ("status"
          (when-let* ((status (alist-get 'status event)))
-           (imoogi-org-preview--set-status (intern status))))))))
+           (imoogi-org-preview--set-status (intern status))))
+        ("open"
+         (unless (equal origin "emacs")
+           ;; Opening switches buffers; keep SSE consumption in this buffer.
+           (save-current-buffer
+             (imoogi-org-preview--apply-open (alist-get 'open event)))))))))
+
+(defun imoogi-org-preview--apply-open (open)
+  "Open the link target OPEN that the preview server resolved.
+The path is checked again against this buffer's allowed roots, and a missing
+file or Org ID only produces a message; nothing is created."
+  (let ((kind (alist-get 'kind open)))
+    (pcase kind
+      ("file"
+       (let ((path (alist-get 'path open)))
+         (if (and (stringp path)
+                  (file-name-absolute-p path)
+                  (file-regular-p path)
+                  (seq-some (lambda (root) (file-in-directory-p path root))
+                            (imoogi-org-preview--allowed-roots)))
+             (find-file-other-window path)
+           (message "Org preview: cannot open %s" path))))
+      ("id"
+       (let* ((id (alist-get 'id open))
+              (marker (and (stringp id) (org-id-find id 'marker))))
+         (if (not (markerp marker))
+             (message "Org preview: no heading with ID %s" id)
+           (pop-to-buffer (marker-buffer marker))
+           (unless (<= (point-min) marker (point-max))
+             (widen))
+           (goto-char marker)
+           (set-marker marker nil)
+           (when (fboundp 'org-fold-show-context)
+             (org-fold-show-context)))))
+      (_ (message "Org preview: link target not found: %s"
+                  (or (alist-get 'target open) "?"))))))
 
 (defun imoogi-org-preview--apply-navigation (event)
   "Move point according to a browser-originated navigation EVENT."

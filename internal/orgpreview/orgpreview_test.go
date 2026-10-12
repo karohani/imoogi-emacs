@@ -1103,3 +1103,98 @@ func TestServerServesMermaidDiagnostics(t *testing.T) {
 		t.Fatalf("POST status=%d", recorder.Code)
 	}
 }
+
+// Structural guard: a click on a local (non-http) link asks Emacs to open it
+// by naming the link node only, instead of navigating the browser.
+func TestBrowserShellSendsLinkClicksToEmacs(t *testing.T) {
+	connect := functionBody(t, browserShell, "function connect(")
+	for _, want := range []string{
+		`event.target.closest('a[data-org-kind="link"]')`,
+		"event.preventDefault()",
+		"sendOpen(ws, link)",
+	} {
+		if !strings.Contains(connect, want) {
+			t.Fatalf("connect() missing %q:\n%s", want, connect)
+		}
+	}
+	send := functionBody(t, browserShell, "function sendOpen(")
+	if !strings.Contains(send, "type:'open'") || !strings.Contains(send, "element_id:link.dataset.orgId") ||
+		strings.Contains(send, "href") || strings.Contains(send, "path") {
+		t.Fatalf("sendOpen must name only the link node:\n%s", send)
+	}
+}
+
+// The browser names only the clicked link node; the server derives the
+// target from its own parsed document and validates it against the roots.
+func TestBrowserOpenLinkIsResolvedByServerForEmacs(t *testing.T) {
+	dir := t.TempDir()
+	doc := filepath.Join(dir, "notes", "doc.org")
+	if err := os.MkdirAll(filepath.Dir(doc), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"notes/doc.org", "notes/other.org", "outside.org"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("* x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server, err := NewServer(ServerConfig{Token: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := "[[file:other.org][o]] [[file:missing.org][m]] [[file:../outside.org][x]] [[id:ABC-1][i]] [[https://example.com][w]]\n"
+	resp := postRevision(t, server.Handler(), "test-token", RevisionRequest{
+		Envelope: NewEnvelope("s1", "b1", 1, OriginEmacs, "rev-1"),
+		Path:     doc, Syntax: "org", Text: text, AllowedRoots: []string{filepath.Dir(doc)},
+	})
+	links := map[string]string{}
+	var walk func([]Node)
+	walk = func(nodes []Node) {
+		for _, node := range nodes {
+			if node.Type == "link" {
+				links[node.Attrs["label"]] = node.ID
+			}
+			walk(node.Children)
+		}
+	}
+	walk(resp.Document.Nodes)
+	ch := make(chan NavigationEvent, 8)
+	server.addEmacsSubscriber("s1", ch)
+	client := &browserClient{sessionID: "s1", bufferID: "b1"}
+	open := func(label string) *OpenTarget {
+		t.Helper()
+		ev := NavigationEvent{Envelope: NewEnvelope("s1", "b1", 1, OriginBrowser, "open-"+label), Type: "open", ElementID: links[label]}
+		server.handleBrowserEvent(client, ev)
+		select {
+		case got := <-ch:
+			if got.Type != "open" || got.Open == nil {
+				t.Fatalf("%s: not an open event: %#v", label, got)
+			}
+			return got.Open
+		default:
+			t.Fatalf("%s: nothing sent to Emacs", label)
+			return nil
+		}
+	}
+	other, _ := filepath.EvalSymlinks(filepath.Join(dir, "notes", "other.org"))
+	if got := open("o"); got.Kind != "file" || got.Path != other {
+		t.Fatalf("file link: %#v, want path %s", got, other)
+	}
+	if got := open("m"); got.Kind != "unavailable" || got.Path != "" {
+		t.Fatalf("missing file must not be opened: %#v", got)
+	}
+	if got := open("x"); got.Kind != "unavailable" || got.Path != "" {
+		t.Fatalf("file outside allowed roots must not be opened: %#v", got)
+	}
+	if got := open("i"); got.Kind != "id" || got.ID != "ABC-1" {
+		t.Fatalf("id link: %#v", got)
+	}
+	for _, id := range []string{links["w"], "no-such-node"} {
+		ev := NavigationEvent{Envelope: NewEnvelope("s1", "b1", 1, OriginBrowser, "open-"+id), Type: "open", ElementID: id}
+		server.handleBrowserEvent(client, ev)
+	}
+	select {
+	case got := <-ch:
+		t.Fatalf("web links and unknown nodes must not reach Emacs: %#v", got)
+	default:
+	}
+}

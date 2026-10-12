@@ -909,19 +909,76 @@ func (s *Server) browserReadLoop(client *browserClient, rw *bufio.ReadWriter) er
 		if err := json.Unmarshal(payload, &ev); err != nil {
 			continue
 		}
-		if err := ev.Envelope.Validate(); err != nil {
-			continue
-		}
-		if ev.Origin != OriginBrowser || ev.SessionID != client.sessionID || ev.BufferID != client.bufferID {
-			continue
-		}
-		if ev.ElementID == "" {
-			continue
-		}
-		if s.markSeen(ev.SessionID, ev.EventID) {
-			s.broadcastEmacs(ev)
-		}
+		s.handleBrowserEvent(client, ev)
 	}
+}
+
+func (s *Server) handleBrowserEvent(client *browserClient, ev NavigationEvent) {
+	if err := ev.Envelope.Validate(); err != nil {
+		return
+	}
+	if ev.Origin != OriginBrowser || ev.SessionID != client.sessionID || ev.BufferID != client.bufferID {
+		return
+	}
+	if ev.ElementID == "" {
+		return
+	}
+	ev.Open = nil
+	if ev.Type == "open" {
+		open, ok := s.resolveOpen(ev.SessionID, ev.BufferID, ev.ElementID)
+		if !ok {
+			return
+		}
+		ev.Open = open
+	} else {
+		ev.Type = ""
+	}
+	if s.markSeen(ev.SessionID, ev.EventID) {
+		s.broadcastEmacs(ev)
+	}
+}
+
+var orgIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+
+// resolveOpen turns a clicked link node into something Emacs may open. The
+// target comes from the buffer's committed document, and file targets must
+// be existing regular files inside the buffer's allowed roots.
+func (s *Server) resolveOpen(sessionID, bufferID, elementID string) (*OpenTarget, bool) {
+	s.mu.Lock()
+	var buf *bufferState
+	if state := s.sessions[sessionID]; state != nil {
+		buf = state.buffers[bufferID]
+	}
+	s.mu.Unlock()
+	if buf == nil {
+		return nil, false
+	}
+	node := FindNodeByID(buf.document.Nodes, elementID)
+	if node == nil || node.Type != "link" {
+		return nil, false
+	}
+	target := node.Attrs["target"]
+	if id, ok := strings.CutPrefix(target, "id:"); ok {
+		if !orgIDRE.MatchString(id) {
+			return &OpenTarget{Kind: "unavailable", Target: target}, true
+		}
+		return &OpenTarget{Kind: "id", ID: id}, true
+	}
+	if strings.HasPrefix(target, "color:") || strings.Contains(target, "://") {
+		return nil, false
+	}
+	resolver, err := NewAssetResolverWithMap(buf.roots, buf.exactAssets)
+	if err != nil {
+		return &OpenTarget{Kind: "unavailable", Target: target}, true
+	}
+	path, err := resolver.Resolve(buf.path, target)
+	if err != nil {
+		return &OpenTarget{Kind: "unavailable", Target: target}, true
+	}
+	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
+		return &OpenTarget{Kind: "unavailable", Target: target}, true
+	}
+	return &OpenTarget{Kind: "file", Path: path}, true
 }
 
 func (c *browserClient) writeLoop() error {
@@ -1154,6 +1211,13 @@ function connect(){
   };
   root.onclick = event => {
     if (event.target.closest('[data-mermaid-controls]')) return;
+    // Local file and Org ID links open in Emacs; web links keep browser behavior.
+    const link = event.target.closest('a[data-org-kind="link"]');
+    if (link && !/^https?:/i.test(link.getAttribute('href') || '')) {
+      event.preventDefault();
+      if (sessionID && bufferID && ws.readyState === WebSocket.OPEN) sendOpen(ws, link);
+      return;
+    }
     const el = blockFor(event.target.closest('[data-org-id]'));
     if (!el || !sessionID || !bufferID || ws.readyState !== WebSocket.OPEN) return;
     sendNavigation(ws, el);
@@ -1184,6 +1248,9 @@ async function loadLinkedFile(){
 }
 function sendNavigation(ws, el){
   ws.send(JSON.stringify({version:'org-preview/v1',session_id:sessionID,buffer_id:bufferID,revision:revision,event_id:String(Date.now()),origin:'browser',element_id:el.dataset.orgId,range:{start:Number(el.dataset.orgRangeStart||0),end:Number(el.dataset.orgRangeEnd||0)}}));
+}
+function sendOpen(ws, link){
+  ws.send(JSON.stringify({version:'org-preview/v1',session_id:sessionID,buffer_id:bufferID,revision:revision,event_id:'open-'+Date.now(),origin:'browser',type:'open',element_id:link.dataset.orgId}));
 }
 function renderRevision(msg){
   if (typeof msg.revision === 'number' && msg.revision < revision) return;
