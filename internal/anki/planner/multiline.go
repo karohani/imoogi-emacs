@@ -20,10 +20,16 @@ import (
 // unrecognized value with `card_option_invalid` — so an unrecognized direction
 // reaching this point would already have been reported against the drawer line
 // the user wrote.
+//
+// The swift option joins the pair here and nowhere else (SPEC-ANKICARD-004
+// REQ-SW-009.1), read by the same `readBoolean` the gate reads it with.
 func readCardOptions(entry protocol.Entry) orgdoc.CardOptions {
 	opts := orgdoc.CardOptions{}
 	if incremental, _ := readBoolean(entry.Incremental); incremental {
 		opts.Incremental = true
+	}
+	if swift, _ := readBoolean(entry.Swift); swift {
+		opts.Swift = true
 	}
 	if on, _ := readDirection(entry.Direction); !on {
 		return opts
@@ -53,7 +59,9 @@ func readCardOptions(entry protocol.Entry) orgdoc.CardOptions {
 // reported only for an entry that already passed the validation gate, which is
 // what keeps it out of that gate's fixed order (REQ-ML-011). The unpaired
 // supplementary-marker code is the same kind of skip, decided during the render
-// as well (SPEC-ANKICARD-005 REQ-AKX-005).
+// as well (SPEC-ANKICARD-005 REQ-AKX-005), and so is the swift card's missing
+// arrow line (SPEC-ANKICARD-004 REQ-SW-010) — fifth by construction, never a
+// fifth position in the gate's order.
 func renderError(err error) (code string, skip bool) {
 	switch err.(type) {
 	case *orgdoc.ClozeMarkerMissingError:
@@ -62,6 +70,8 @@ func renderError(err error) (code string, skip bool) {
 		return protocol.CodeMultilineAnswerMissing, true
 	case *orgdoc.ExtraBlockUnbalancedError:
 		return protocol.CodeExtraBlockUnbalanced, true
+	case *orgdoc.SwiftArrowMissingError:
+		return protocol.CodeSwiftArrowMissing, true
 	default:
 		return protocol.CodeOrgParseError, false
 	}

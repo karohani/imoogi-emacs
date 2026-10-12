@@ -124,6 +124,18 @@ const (
 	// missing marker or a missing answer list (REQ-AKX-004).
 	CodeExtraBlockUnbalanced = "extra_block_unbalanced"
 
+	// CodeSwiftArrowMissing reports a swift entry whose remaining body yields
+	// no arrow line (SPEC-ANKICARD-004 REQ-SW-002).
+	//
+	// Like the two codes above it is decided during the render, so it never
+	// competes with the gate's three codes for the one-diagnostic slot: it is
+	// fifth by construction rather than by placement (REQ-SW-010). It cannot
+	// co-occur with CodeMultilineAnswerMissing — the gate rejects swift beside
+	// a multiline option before either renderer runs — nor with
+	// CodeExtraBlockUnbalanced, whose check runs on the split, before
+	// composition.
+	CodeSwiftArrowMissing = "swift_arrow_missing"
+
 	// CodeOrgIDInvalid reports an entry whose org_id falls outside the
 	// character set ValidOrgID accepts (SPEC-ANKISRC-001 REQ-ASRC-006.3). It
 	// is advisory: the note is still added or updated, only without the

@@ -6,6 +6,7 @@
 (require 'org)
 (require 'cl-lib)
 (require 'json)
+(require 'seq)
 
 (ert-deftest imoogi-anki-reload-restores-deck-picker-dependencies ()
   "Reload an already provided imoogi implementation after a code update."
@@ -332,11 +333,242 @@ Anki 의 cloze 정규식은 비탐욕(non-greedy)이라 첫 `}}' 에서 빈칸�
     (should-not (org-entry-get (point) "ANKI_INCREMENTAL"))))
 
 (ert-deftest imoogi-anki-multiline-property-names-are-completion-candidates ()
-  "AC-ML-012e: 두 이름은 프로퍼티 이름 후보에 들어가고, ANKI_SWIFT 는
-들어가지 않는다 -- 그것은 그 프로퍼티를 쓰는 명령(t15)과 함께 간다."
+  "AC-ML-012e: 두 이름은 프로퍼티 이름 후보에 들어간다.
+
+이 테스트는 원래 ANKI_SWIFT 가 들어가지 않는다는 것도 단언했다 -- 그
+이름은 그 프로퍼티를 쓰는 명령(t15)과 함께 간다는 것이 SPEC-ANKICARD-003
+REQ-ML-013.5 의 판단이었다.  SPEC-ANKICARD-004 가 그 명령을 들여오면서 이
+유보를 거둬들이므로(REQ-SW-013.5), 그 단언은 아래
+`imoogi-anki-swift-property-name-is-a-completion-candidate' 가 뒤집어
+이어받는다."
   (should (member "ANKI_DIRECTION" imoogi-anki-property-names))
-  (should (member "ANKI_INCREMENTAL" imoogi-anki-property-names))
-  (should-not (member "ANKI_SWIFT" imoogi-anki-property-names)))
+  (should (member "ANKI_INCREMENTAL" imoogi-anki-property-names)))
+
+;;; --- SPEC-ANKICARD-004: swift 카드 옵션 명령 (REQ-SW-013) ---
+
+;; 아래 OFF 방향 테스트는 확인 프롬프트를 `항상 예' 로 바꿔 두지 않는다
+;; (AC-SW-014, plan.md DD-10).  그렇게 바꿔 두면 프롬프트가 떠도 테스트가
+;; 통과해, 고치려는 결함이 그대로 숨는다.  대신 프롬프트가 뜨는 순간 테스트가
+;; 실패하도록 덫을 놓는다 -- 답을 주는 것이 아니라 뜨는 것 자체를 잡는다.
+;; 배치 Emacs 에서 맨 프롬프트는 표준 입력을 읽으므로, 덫이 없으면 실행
+;; 환경에 따라 실패하는 대신 멈춰 버릴 수 있다.
+
+(defmacro imoogi-anki-test--no-prompt (&rest body)
+  "BODY 를 실행하되, 확인 프롬프트가 뜨면 그 자리에서 테스트를 실패시킨다."
+  (declare (indent 0))
+  `(cl-letf (((symbol-function 'yes-or-no-p)
+              (lambda (prompt &rest _) (ert-fail (list "프롬프트가 떴다" prompt))))
+             ((symbol-function 'y-or-n-p)
+              (lambda (prompt &rest _) (ert-fail (list "프롬프트가 떴다" prompt)))))
+     ,@body))
+
+(defun imoogi-anki-test--own-drawer-line-p (property value)
+  "heading 자신의 드로어에 PROPERTY 가 VALUE 로 쓰여 있으면 non-nil."
+  (string-match-p (format "^[ \t]*:%s:[ \t]*%s[ \t]*$"
+                          (regexp-quote property) (regexp-quote value))
+                  (buffer-string)))
+
+(ert-deftest imoogi-anki-toggle-swift-turns-an-absent-option-on ()
+  "AC-SW-014: ANKI_SWIFT 가 없는 heading 에서 토글하면 켜고, 노트 타입이
+없으면 imoogi-Cloze 를 달아 준다."
+  (imoogi-anki-test--with-org "* 제목\n\n도쿄 :-> 일본\n"
+    (goto-char (point-max))
+    (imoogi-anki-test--no-prompt
+      (imoogi-anki-toggle-swift))
+    (org-back-to-heading t)
+    (should (equal (org-entry-get (point) "ANKI_SWIFT") "t"))
+    (should (equal (org-entry-get (point) "ANKI_NOTE_TYPE") "imoogi-Cloze"))))
+
+(ert-deftest imoogi-anki-toggle-swift-leaves-a-cloze-style-type-alone ()
+  "AC-SW-014: 이미 Cloze 계열이면 노트 타입은 그대로 둔다 -- 손으로 쓴 스톡
+이름을 조용히 바꾸지 않는다."
+  (imoogi-anki-test--with-org
+      "* 제목\n:PROPERTIES:\n:ANKI_NOTE_TYPE: Cloze\n:END:\n\n도쿄 :-> 일본\n"
+    (goto-char (point-max))
+    (imoogi-anki-test--no-prompt
+      (imoogi-anki-toggle-swift))
+    (org-back-to-heading t)
+    (should (equal (org-entry-get (point) "ANKI_SWIFT") "t"))
+    (should (equal (org-entry-get (point) "ANKI_NOTE_TYPE") "Cloze"))))
+
+(ert-deftest imoogi-anki-toggle-swift-turns-an-inherited-option-off-without-a-prompt ()
+  "AC-SW-014: 상속으로 켜진 swift 를 끄면 heading 자신의 드로어에 거짓 철자가
+쓰이고 프로퍼티가 지워지지 않으며, swift 충돌 프롬프트는 뜨지 않는다.
+
+`imoogi-anki--write-card-option' 을 거쳤다면 여기서 \"swift 를 끄고
+계속할까요?\" 가 떴을 것이다 -- 끄려는 바로 그 경로에서.  검증은
+`org-entry-get' 이 아니라 `imoogi-props-resolve-swift' 로 한다
+(REQ-ML-013.2 의 실측)."
+  (imoogi-anki-test--with-org
+      "#+PROPERTY: ANKI_SWIFT t\n\n* 제목\n\n도쿄 :-> 일본\n"
+    (org-set-regexps-and-options)
+    (goto-char (point-max))
+    (imoogi-anki-test--no-prompt
+      (imoogi-anki-toggle-swift))
+    (org-back-to-heading t)
+    (should (equal (imoogi-props-resolve-swift) "nil"))
+    (should (imoogi-anki-test--own-drawer-line-p "ANKI_SWIFT" "nil"))))
+
+(ert-deftest imoogi-anki-toggle-swift-on-with-both-multiline-options-asks-first ()
+  "AC-SW-014: 켜는 방향에서 두 멀티라인 옵션이 모두 켜져 있으면 묻는다.
+거절하면 아무것도 쓰지 않는다 -- ANKI_SWIFT 도, ANKI_NOTE_TYPE 도."
+  (imoogi-anki-test--with-org
+      "* 제목\n:PROPERTIES:\n:ANKI_DIRECTION: ->\n:ANKI_INCREMENTAL: t\n:END:\n\n도쿄 :-> 일본\n"
+    (goto-char (point-max))
+    (let ((asked 0))
+      (cl-letf (((symbol-function 'yes-or-no-p)
+                 (lambda (&rest _) (setq asked (1+ asked)) nil)))
+        (imoogi-anki-toggle-swift))
+      (should (= asked 1)))
+    (org-back-to-heading t)
+    (should-not (org-entry-get (point) "ANKI_SWIFT"))
+    (should-not (org-entry-get (point) "ANKI_NOTE_TYPE"))
+    (should (equal (imoogi-props-resolve-direction) "->"))
+    (should (equal (imoogi-props-resolve-incremental) "t"))))
+
+(ert-deftest imoogi-anki-toggle-swift-on-confirmed-clears-every-multiline-option ()
+  "AC-SW-014: 확인하면 켜진 멀티라인 옵션을 하나도 남김없이 거짓 철자로 끄고
+ANKI_SWIFT 를 쓴다.  하나만 끄면 충돌 규칙이 거부하는 바로 그 상태가 남는다.
+알림은 끈 옵션을 모두 이름으로 부른다."
+  (imoogi-anki-test--with-org
+      "* 제목\n:PROPERTIES:\n:ANKI_DIRECTION: ->\n:ANKI_INCREMENTAL: t\n:END:\n\n도쿄 :-> 일본\n"
+    (goto-char (point-max))
+    (let (prompt-text)
+      (cl-letf (((symbol-function 'yes-or-no-p)
+                 (lambda (prompt &rest _) (setq prompt-text prompt) t)))
+        (imoogi-anki-toggle-swift))
+      (should (string-match-p "ANKI_DIRECTION" prompt-text))
+      (should (string-match-p "ANKI_INCREMENTAL" prompt-text)))
+    (org-back-to-heading t)
+    (should (equal (org-entry-get (point) "ANKI_SWIFT") "t"))
+    (should (equal (imoogi-props-resolve-direction) "nil"))
+    (should (equal (imoogi-props-resolve-incremental) "nil"))
+    (should (imoogi-anki-test--own-drawer-line-p "ANKI_DIRECTION" "nil"))
+    (should (imoogi-anki-test--own-drawer-line-p "ANKI_INCREMENTAL" "nil"))))
+
+(ert-deftest imoogi-anki-toggle-swift-off-keeps-the-multiline-option-without-a-prompt ()
+  "AC-SW-014 (REQ-SW-013.4): 끄는 방향에서는 멀티라인 충돌 확인을 하지 않는다.
+
+heading 자신의 드로어에 ANKI_DIRECTION 이 있고 swift 는 상속으로만 켜진
+경우 -- 동기화가 card_option_conflict 로 거부하는 바로 그 heading 이다.
+swift 를 끄는 것이 그 진단이 안내하는 해결이므로, 여기서 방향을 지울지
+묻는다면 사용자가 지키려던 옵션을 지우게 된다."
+  (imoogi-anki-test--with-org
+      "#+PROPERTY: ANKI_SWIFT t\n\n* 제목\n:PROPERTIES:\n:ANKI_DIRECTION: ->\n:END:\n\n- 답 하나\n"
+    (org-set-regexps-and-options)
+    (goto-char (point-max))
+    (imoogi-anki-test--no-prompt
+      (imoogi-anki-toggle-swift))
+    (org-back-to-heading t)
+    (should (equal (imoogi-props-resolve-swift) "nil"))
+    (should (imoogi-anki-test--own-drawer-line-p "ANKI_SWIFT" "nil"))
+    (should (equal (imoogi-props-resolve-direction) "->"))
+    (should-not (string-match-p "ANKI_INCREMENTAL" (buffer-string)))))
+
+(ert-deftest imoogi-anki-toggle-swift-on-refuses-a-non-cloze-type ()
+  "AC-SW-014: 켜는 방향에서 노트 타입이 imoogi-Basic 이면 알리기만 하고
+아무것도 쓰지 않는다 -- ANKI_SWIFT 도, ANKI_NOTE_TYPE 도."
+  (imoogi-anki-test--with-org
+      "* 제목\n:PROPERTIES:\n:ANKI_NOTE_TYPE: imoogi-Basic\n:END:\n\n도쿄 :-> 일본\n"
+    (goto-char (point-max))
+    (let (said)
+      (cl-letf (((symbol-function 'message)
+                 (lambda (fmt &rest args) (push (apply #'format fmt args) said))))
+        (imoogi-anki-test--no-prompt
+          (imoogi-anki-toggle-swift)))
+      ;; 실패 메시지는 멀티라인 쌍이 아니라 카드 옵션을 부른다 -- 이제
+      ;; swift heading 에서도 이 메시지가 나오기 때문이다.
+      (should (seq-some (lambda (m) (string-match-p "imoogi-Basic" m)) said))
+      (should (seq-some (lambda (m) (string-match-p "카드 옵션" m)) said))
+      (should-not (seq-some (lambda (m) (string-match-p "멀티라인" m)) said)))
+    (org-back-to-heading t)
+    (should-not (org-entry-get (point) "ANKI_SWIFT"))
+    (should (equal (org-entry-get (point) "ANKI_NOTE_TYPE") "imoogi-Basic"))))
+
+(ert-deftest imoogi-anki-toggle-swift-on-refuses-a-non-cloze-type-before-clearing-options ()
+  "REQ-SW-013.3: 다른 타입이면 알리기만 하고 아무것도 바꾸지 않는다 -- 멀티라인
+충돌 확인에 \"예\" 라고 답할 수 있는 상황이어도.
+
+노트 타입 확인이 충돌 해소보다 늦으면, imoogi-Basic heading 자신의
+ANKI_DIRECTION 이 지워진 뒤에야 swift 가 거부된다 (카드 리뷰 t15, 발견 3).
+그래서 프롬프트는 \"예\" 로 답하게 두고, 프로퍼티가 하나도 바뀌지 않았는지
+본다."
+  (imoogi-anki-test--with-org
+      "* 제목\n:PROPERTIES:\n:ANKI_NOTE_TYPE: imoogi-Basic\n:ANKI_DIRECTION: ->\n:END:\n\n도쿄 :-> 일본\n"
+    (goto-char (point-max))
+    (let ((before (buffer-string))
+          said)
+      (cl-letf (((symbol-function 'yes-or-no-p) (lambda (&rest _) t))
+                ((symbol-function 'message)
+                 (lambda (fmt &rest args) (push (apply #'format fmt args) said))))
+        (imoogi-anki-toggle-swift))
+      (should (seq-some (lambda (m) (string-match-p "imoogi-Basic" m)) said))
+      (should (equal (buffer-string) before)))
+    (org-back-to-heading t)
+    (should-not (org-entry-get (point) "ANKI_SWIFT"))
+    (should (equal (org-entry-get (point) "ANKI_NOTE_TYPE") "imoogi-Basic"))
+    (should (equal (org-entry-get (point) "ANKI_DIRECTION") "->"))))
+
+(ert-deftest imoogi-anki-toggle-swift-off-on-a-basic-heading-writes-the-falsy-spelling ()
+  "AC-SW-014 (REQ-SW-013.3): 끄는 방향에서는 노트 타입 계약이 걸리지 않는다.
+
+heading 자신의 드로어에 imoogi-Basic 이 있고 swift 는 상속으로만 켜진
+경우 -- 동기화가 card_option_needs_cloze 로 거부하는 heading 이다.  그
+진단이 안내하는 해결이 바로 자신의 드로어에 `nil' 을 쓰는 것이므로, 여기서
+거부하면 명령이 진단의 처방을 거부하는 셈이 된다."
+  (imoogi-anki-test--with-org
+      "#+PROPERTY: ANKI_SWIFT t\n\n* 제목\n:PROPERTIES:\n:ANKI_NOTE_TYPE: imoogi-Basic\n:END:\n\n본문\n"
+    (org-set-regexps-and-options)
+    (goto-char (point-max))
+    (let (said)
+      (cl-letf (((symbol-function 'message)
+                 (lambda (fmt &rest args) (push (apply #'format fmt args) said))))
+        (imoogi-anki-test--no-prompt
+          (imoogi-anki-toggle-swift)))
+      (should-not (seq-some (lambda (m) (string-match-p "카드 옵션을 달 수 없습니다" m)) said)))
+    (org-back-to-heading t)
+    (should (equal (imoogi-props-resolve-swift) "nil"))
+    (should (imoogi-anki-test--own-drawer-line-p "ANKI_SWIFT" "nil"))
+    (should (equal (org-entry-get (point) "ANKI_NOTE_TYPE") "imoogi-Basic"))))
+
+(ert-deftest imoogi-anki-toggle-swift-off-creates-no-note-type ()
+  "AC-SW-014: 노트 타입이 없는 heading 에서 상속된 swift 를 끄면 거짓 철자만
+쓰이고 ANKI_NOTE_TYPE 은 생기지 않는다 -- 카드 옵션을 거절하는 행위가 카드
+표식을 만들지 않는다."
+  (imoogi-anki-test--with-org
+      "#+PROPERTY: ANKI_SWIFT t\n\n* 제목\n\n본문\n"
+    (org-set-regexps-and-options)
+    (goto-char (point-max))
+    (imoogi-anki-test--no-prompt
+      (imoogi-anki-toggle-swift))
+    (org-back-to-heading t)
+    (should (equal (imoogi-props-resolve-swift) "nil"))
+    (should-not (org-entry-get (point) "ANKI_NOTE_TYPE"))))
+
+(ert-deftest imoogi-anki-multiline-commands-name-the-card-option-on-a-non-cloze-type ()
+  "REQ-SW-013.3: 노트 타입 헬퍼의 실패 메시지는 이제 멀티라인 쌍이 아니라
+카드 옵션을 부른다.  기존 명령에서도 같은 헬퍼가 같은 메시지를 낸다."
+  (imoogi-anki-test--with-org
+      "* 제목\n:PROPERTIES:\n:ANKI_NOTE_TYPE: imoogi-Basic\n:END:\n\n- 답 하나\n"
+    (goto-char (point-max))
+    (let (said)
+      (cl-letf (((symbol-function 'message)
+                 (lambda (fmt &rest args) (push (apply #'format fmt args) said))))
+        (imoogi-anki-set-direction "->"))
+      (should (seq-some (lambda (m) (string-match-p "카드 옵션" m)) said))
+      (should-not (seq-some (lambda (m) (string-match-p "멀티라인" m)) said)))))
+
+(ert-deftest imoogi-anki-swift-property-name-is-a-completion-candidate ()
+  "AC-SW-014 (REQ-SW-013.5): ANKI_SWIFT 는 이제 프로퍼티 이름 후보다 --
+그 프로퍼티를 쓰는 명령이 이 카드와 함께 들어왔다."
+  (should (member "ANKI_SWIFT" imoogi-anki-property-names)))
+
+(ert-deftest imoogi-anki-toggle-swift-is-reachable-from-the-key-map-and-the-menu ()
+  "REQ-SW-013: swift 토글은 `C-c a' 접두 맵과 Anki transient 에서 닿는다."
+  (should (eq (lookup-key imoogi-anki-map (kbd "w")) #'imoogi-anki-toggle-swift))
+  (should (fboundp 'imoogi-anki-transient))
+  (should (eq (plist-get (cdr (transient-get-suffix 'imoogi-anki-transient "w")) :command)
+              #'imoogi-anki-toggle-swift)))
 
 ;;; --- AC-ML-007c: Go 작성기와 편집기 헬퍼가 같은 하나의 픽스처를 읽는다 ---
 

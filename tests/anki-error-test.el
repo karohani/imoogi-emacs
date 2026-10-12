@@ -30,6 +30,7 @@
     "card_option_needs_cloze"
     "multiline_answer_missing"
     "extra_block_unbalanced"
+    "swift_arrow_missing"
     "org_id_invalid")
   "The `Code...' string constants internal/anki/protocol/protocol.go
 declares today -- hardcoded here because this suite has no Go parser
@@ -152,6 +153,29 @@ transport error, an Emacs backtrace, or a bare process exit code."
                             "exit status" "wrong-type-argument" "file-missing"
                             "Debugger entered"))
         (should-not (string-match-p (regexp-quote forbidden) msg))))))
+
+(ert-deftest imoogi-error-test-swift-arrow-missing-message-states-the-fix ()
+  "SPEC-ANKICARD-004 AC-SW-015 (REQ-SW-014.1): the message names the
+problem and a corrective action -- including what does NOT count as an
+arrow line, since a body that looks to its author as though it carries
+arrows is exactly the case that produces this code."
+  (let ((msg (cdr (assoc "swift_arrow_missing" imoogi-error-table))))
+    (should msg)
+    ;; the problem: the option, and the arrow line it found none of
+    (should (string-match-p "ANKI_SWIFT" msg))
+    (should (string-match-p "arrow line" msg))
+    ;; the three tokens
+    (should (string-match-p (regexp-quote ":->") msg))
+    (should (string-match-p (regexp-quote ":<-") msg))
+    (should (string-match-p (regexp-quote ":<->") msg))
+    ;; what does not count -- the shapes an author most often writes
+    (should (string-match-p "list" msg))
+    (should (string-match-p (regexp-quote "#+BEGIN_") msg))
+    (should (string-match-p "table" msg))
+    (should (string-match-p "footnote" msg))
+    ;; and how to opt out, inheritance included
+    (should (string-match-p (regexp-quote "`nil'") msg))
+    (should (string-match-p "inherited" msg))))
 
 (ert-deftest imoogi-error-test-message-lookup-known-code ()
   (should (string-match-p "sync root" (imoogi-error-message "sync_root_unset"))))
