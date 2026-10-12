@@ -231,6 +231,46 @@
         (imoogi-anki-src-open-test--assert-incomplete
          "id-r" file (directory-file-name (file-truename locked)))))))
 
+(defun imoogi-anki-src-open-test--register (&rest targets)
+  "Write TARGETS, a list of (KIND . PATH), to `imoogi-targets-file'."
+  (make-directory (file-name-directory imoogi-targets-file) t)
+  (with-temp-file imoogi-targets-file
+    (insert (json-encode
+             `((targets . ,(vconcat
+                            (mapcar (lambda (target)
+                                      `((kind . ,(symbol-name (car target)))
+                                        (path . ,(cdr target))))
+                                    targets))))))))
+
+(ert-deftest imoogi-anki-src-open-target-behind-locked-ancestor-blocks-navigation ()
+  ;; A registered target whose parent denies traversal is not "absent":
+  ;; it may hold a duplicate, so the move is refused.
+  (dolist (kind '(directory file))
+    (imoogi-anki-src-open-test--with-root
+      (let* ((file (imoogi-anki-src-open-test--write root "a.org" "id-t"))
+             (gate (expand-file-name "gate" base))
+             (target (if (eq kind 'directory)
+                         (expand-file-name "inner" gate)
+                       (expand-file-name "inner.org" gate))))
+        (if (eq kind 'directory)
+            (imoogi-anki-src-open-test--write target "c.org" "id-t")
+          (make-directory gate t)
+          (with-temp-file target
+            (insert "* Card\n:PROPERTIES:\n:ID: id-t\n:END:\n")))
+        (imoogi-anki-src-open-test--register (cons kind target))
+        (imoogi-anki-src-open-test--with-locked gate
+          (imoogi-anki-src-open-test--assert-incomplete
+           "id-t" file (directory-file-name (expand-file-name target))))))))
+
+(ert-deftest imoogi-anki-src-open-missing-registered-target-is-not-a-failure ()
+  (imoogi-anki-src-open-test--with-root
+    (let ((file (imoogi-anki-src-open-test--write root "a.org" "id-m")))
+      (imoogi-anki-src-open-test--register
+       (cons 'directory (expand-file-name "gone/dir" base))
+       (cons 'file (expand-file-name "gone/x.org" base)))
+      (should (equal (imoogi-anki-open-id "id-m") "ok"))
+      (should (imoogi-anki-src-open-test--at-heading-p file "id-m")))))
+
 (ert-deftest imoogi-anki-src-open-known-duplicate-wins-over-unreadable ()
   (imoogi-anki-src-open-test--with-root
     (imoogi-anki-src-open-test--write root "one.org" "id-d")

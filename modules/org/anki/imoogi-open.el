@@ -61,14 +61,28 @@ heading, a not-found message, a candidate list -- would sit behind it
       (ignore-errors (raise-frame frame))
       (ignore-errors (select-frame-set-input-focus frame)))))
 
+(defun imoogi-anki-open--confirmed-absent-p (path)
+  "Non-nil when PATH is known not to exist.
+Existence predicates also answer nil when an ancestor denies traversal,
+so absence counts only when the nearest reachable ancestor directory can
+be listed and shows the missing component.  Anything else is unknown."
+  (let* ((path (directory-file-name (expand-file-name path)))
+         (parent (file-name-directory path)))
+    (cond ((file-exists-p path) nil)
+          ((or (null parent) (equal (directory-file-name parent) path)) nil)
+          ((file-accessible-directory-p parent) t)
+          (t (imoogi-anki-open--confirmed-absent-p parent)))))
+
 (defun imoogi-anki-open--target-files ()
   "Return (FILES . FAILED) for the sync targets.
 FILES are the truenames of every sync-target file, without duplicates.
 The legacy root and registered directories are walked with the same
 discovery the sync uses; registered files are taken as they are; a file
 matching `imoogi-exclude-patterns' relative to its root is left out.
-FAILED are the directories discovery could not walk.  A root that does
-not exist holds nothing to check and is not a failure."
+FAILED are the directories discovery could not walk and the targets
+whose existence could not be determined (see
+`imoogi-anki-open--confirmed-absent-p').  A target confirmed not to
+exist holds nothing to check and is not a failure."
   (let ((seen (make-hash-table :test #'equal))
         (patterns (and (boundp 'imoogi-exclude-patterns) imoogi-exclude-patterns))
         (targets (imoogi-targets-load))
@@ -87,17 +101,24 @@ not exist holds nothing to check and is not a failure."
                     (puthash true t seen)
                     (push true files)))))
       (dolist (root (nreverse roots))
-        (when (file-directory-p root)
+        (cond
+         ((file-directory-p root)
           (let* ((true-root (imoogi-target-scan--true-directory root))
                  (scan (imoogi-target-scan--discover-directory
                         true-root true-root (make-hash-table :test #'equal))))
             (dolist (file (plist-get scan :files))
               (add file true-root))
-            (setq failed (append failed (plist-get scan :failures))))))
+            (setq failed (append failed (plist-get scan :failures)))))
+         ((not (imoogi-anki-open--confirmed-absent-p root))
+          (push (directory-file-name (expand-file-name root)) failed))))
       (dolist (target targets)
         (let ((path (plist-get target :path)))
-          (when (and (eq (plist-get target :kind) 'file) (file-regular-p path))
-            (add path (file-name-directory (expand-file-name path)))))))
+          (when (eq (plist-get target :kind) 'file)
+            (cond
+             ((file-regular-p path)
+              (add path (file-name-directory (expand-file-name path))))
+             ((not (imoogi-anki-open--confirmed-absent-p path))
+              (push (expand-file-name path) failed)))))))
     (cons (nreverse files) (delete-dups failed))))
 
 (defun imoogi-anki-open--id-line-regexp (id)
