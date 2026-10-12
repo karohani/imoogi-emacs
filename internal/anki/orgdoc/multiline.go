@@ -166,8 +166,15 @@ func splitLines(body string) []sourceLine {
 	return lines
 }
 
-// blockRegions reports which lines sit inside a block interior, and the index
-// of the first `#+BEGIN_` line that is never terminated.
+// blockSpan is one paired block: the indices of its opening and closing
+// delimiter lines, and its upper-cased NAME.
+type blockSpan struct {
+	begin, end int
+	name       string
+}
+
+// pairedBlocks pairs the body's `#+BEGIN_` and `#+END_` lines, and reports the
+// index of the first `#+BEGIN_` line that is never terminated.
 //
 // The pairing rule is go-org's own: a block closes at the next `#+END_` whose
 // NAME matches, compared case-insensitively, so `#+END_EXAMPLE` does not close
@@ -177,11 +184,10 @@ func splitLines(body string) []sourceLine {
 // split leaves exactly that shape behind when the author nested one
 // `#+BEGIN_EXTRA` block inside another.
 //
-// `undefinedFrom` is what REQ-ML-009.2's decline keys on: from an unterminated
-// opening to the end of the body the extent of the block is undefined, so the
-// collapse declines rather than guessing where it ends.
-func blockRegions(lines []sourceLine) (interior []bool, undefinedFrom int) {
-	interior = make([]bool, len(lines))
+// This is the package's ONE implementation of that rule. blockRegions derives
+// the interior from it, and the swift scanner reads the spans themselves — an
+// empty block has no interior line, so only the span can say where it closes.
+func pairedBlocks(lines []sourceLine) (spans []blockSpan, undefinedFrom int) {
 	undefinedFrom = -1
 	for i := 0; i < len(lines); {
 		m := beginBlockLinePattern.FindStringSubmatch(lines[i].text)
@@ -205,10 +211,26 @@ func blockRegions(lines []sourceLine) (interior []bool, undefinedFrom int) {
 			i++
 			continue
 		}
-		for j := i + 1; j < end; j++ {
+		spans = append(spans, blockSpan{begin: i, end: end, name: name})
+		i = end + 1
+	}
+	return spans, undefinedFrom
+}
+
+// blockRegions reports which lines sit inside a block interior, and the index
+// of the first `#+BEGIN_` line that is never terminated, by the pairing rule
+// pairedBlocks carries.
+//
+// `undefinedFrom` is what REQ-ML-009.2's decline keys on: from an unterminated
+// opening to the end of the body the extent of the block is undefined, so the
+// collapse declines rather than guessing where it ends.
+func blockRegions(lines []sourceLine) (interior []bool, undefinedFrom int) {
+	interior = make([]bool, len(lines))
+	spans, undefinedFrom := pairedBlocks(lines)
+	for _, span := range spans {
+		for j := span.begin + 1; j < span.end; j++ {
 			interior[j] = true
 		}
-		i = end + 1
 	}
 	return interior, undefinedFrom
 }
@@ -369,42 +391,86 @@ func scanAnswerList(body, kind string) (answerList, bool) {
 	}
 
 	list := answerList{containerAt: lines[first].start}
-	cur := base
 	spanOpen := false
+	walkList(lines, first, base, func(i int, role listLineRole, b bulletLine) {
+		ln := lines[i]
+		switch role {
+		case listBlankLine:
+			spanOpen = false
+		case listItemLine:
+			start := ln.start + b.contentStart + answerContentOffset(ln.text[b.contentStart:], kind)
+			list.items = append(list.items, answerItem{start: start, end: ln.end})
+			spanOpen = true
+		case listNestedBullet:
+			spanOpen = false
+		default:
+			// A continuation of the current item. It extends the span only
+			// while the span is still open — a nested bullet is a child, and a
+			// blank line has already closed it.
+			if spanOpen {
+				list.items[len(list.items)-1].end = ln.end
+			}
+		}
+	})
+	return list, true
+}
+
+// listLineRole is what the list-continuation rule makes of one line it
+// attaches to a list.
+type listLineRole int
+
+const (
+	listContinuationLine listLineRole = iota // an indented line of the current item
+	listItemLine                             // a bullet starting a sibling item
+	listNestedBullet                         // a deeper bullet: a child of the current item
+	listBlankLine                            // a single blank line, which does not end the list
+)
+
+// walkList walks the list whose first bullet is lines[first], calling visit for
+// every line go-org's list-continuation rule attaches to it, and returns the
+// index of the first line past the list.
+//
+// The four rules the bare bullet grammar does not carry, each measured against
+// go-org v1.9.1: the base indentation comes from the list's FIRST bullet rather
+// than from column zero; a sibling item is a bullet at that indentation and of
+// the same main kind; a continuation line must reach the current item's own
+// minimum indent, which is the bullet's indent plus the bullet's own width; and
+// two consecutive blank lines end the list where one does not.
+//
+// It is the ONE copy of that rule in the package: the multiline answer scan
+// reads item spans from it, and the swift scanner reads which lines are list
+// content (SPEC-ANKICARD-004 REQ-SW-001.5).
+func walkList(lines []sourceLine, first int, base bulletLine, visit func(i int, role listLineRole, b bulletLine)) int {
+	cur := base
 	blankRun := 0
 	for i := first; i < len(lines); i++ {
 		ln := lines[i]
 		if ln.blank {
 			blankRun++
 			if blankRun >= 2 {
-				break
+				return i
 			}
-			spanOpen = false
+			visit(i, listBlankLine, bulletLine{})
 			continue
 		}
 		b, isBullet := readBullet(ln.text)
 		if isBullet && b.indent == base.indent && b.mainKind == base.mainKind {
 			blankRun = 0
 			cur = b
-			start := ln.start + b.contentStart + answerContentOffset(ln.text[b.contentStart:], kind)
-			list.items = append(list.items, answerItem{start: start, end: ln.end})
-			spanOpen = true
+			visit(i, listItemLine, b)
 			continue
 		}
 		if ln.indent < cur.minIndent {
-			break
+			return i
 		}
-		// A continuation of the current item. It extends the span only while
-		// the span is still open and the line is not itself a bullet — a
-		// nested bullet is a child, and a blank line has already closed it.
 		blankRun = 0
-		if spanOpen && !isBullet {
-			list.items[len(list.items)-1].end = ln.end
+		if isBullet {
+			visit(i, listNestedBullet, b)
 		} else {
-			spanOpen = false
+			visit(i, listContinuationLine, b)
 		}
 	}
-	return list, true
+	return len(lines)
 }
 
 // --- composition ------------------------------------------------------------
