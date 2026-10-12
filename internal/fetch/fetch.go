@@ -35,9 +35,12 @@ type Options struct {
 }
 
 type Sources struct {
-	NodeDistBase string
-	NPMRegistry  string
-	GoProxy      string
+	NodeDistBase     string
+	NPMRegistry      string
+	GoProxy          string
+	EclipseDownloads string
+	GitHub           string
+	GitHubRaw        string
 }
 
 func Run(ctx context.Context, opts Options) error {
@@ -67,6 +70,15 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	if opts.Sources.GoProxy == "" {
 		opts.Sources.GoProxy = "https://proxy.golang.org"
+	}
+	if opts.Sources.EclipseDownloads == "" {
+		opts.Sources.EclipseDownloads = "https://download.eclipse.org"
+	}
+	if opts.Sources.GitHub == "" {
+		opts.Sources.GitHub = "https://github.com"
+	}
+	if opts.Sources.GitHubRaw == "" {
+		opts.Sources.GitHubRaw = "https://raw.githubusercontent.com"
 	}
 	if opts.Go == "" {
 		opts.Go = "go"
@@ -330,6 +342,12 @@ func fetchComponent(ctx context.Context, opts Options, repoRoot, staging string,
 			{Path: "bin/basedpyright-langserver", Mode: "executable"},
 			{Path: "bin/basedpyright", Mode: "executable"},
 		}, config.Probe{Command: "bin/basedpyright", Args: []string{"--version"}}), artifacts, nil
+	case "jdtls":
+		return fetchJdtls(ctx, opts, repoRoot, staging, previous, component, target, retrievedAt)
+	case "kotlin-language-server":
+		return fetchKotlinLanguageServer(ctx, opts, repoRoot, staging, previous, component, target, retrievedAt)
+	case "clojure-lsp":
+		return fetchClojureLsp(ctx, opts, repoRoot, staging, previous, component, target, retrievedAt)
 	case "gopls":
 		version := component.UpstreamVersion
 		rel := fmt.Sprintf("vendor/toolchains/go/gopls/%s/darwin-arm64/gopls", version)
