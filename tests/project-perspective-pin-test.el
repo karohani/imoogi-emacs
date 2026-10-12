@@ -512,4 +512,108 @@ Prompting signals \"prompted\", and `compile' records its directory in
           (should entry)
           (should (file-equal-p (alist-get 'notes-dir entry) directory)))))))
 
+;;; M3 — the `b' command and its candidate set
+
+(defmacro imoogi-persppin-test--capturing-buffers (candidates &rest body)
+  "Run BODY with `read-buffer' recording its offered buffers in CANDIDATES.
+The stub answers with the first offered buffer."
+  (declare (indent 1) (debug t))
+  `(cl-letf (((symbol-function 'read-buffer)
+              (lambda (_prompt &optional _default _require-match predicate)
+                (setq ,candidates
+                      (cl-remove-if-not
+                       (lambda (buffer)
+                         (funcall predicate (cons (buffer-name buffer) buffer)))
+                       (buffer-list)))
+                (buffer-name (car ,candidates)))))
+     ,@body))
+
+(defun imoogi-persppin-test--kill-sandbox-buffers (sandbox)
+  "Kill every buffer visiting a file below SANDBOX."
+  (dolist (buffer (buffer-list))
+    (when (and (buffer-file-name buffer)
+               (file-in-directory-p (buffer-file-name buffer) sandbox))
+      (with-current-buffer buffer (set-buffer-modified-p nil))
+      (kill-buffer buffer))))
+
+(defun imoogi-persppin-test--same-set-p (left right)
+  "Return non-nil when lists LEFT and RIGHT hold the same elements."
+  (null (cl-set-exclusive-or left right)))
+
+(ert-deftest imoogi-persppin-transient-b-c-k-without-prompt ()
+  "AC-PIN-011: `b', `c' and `k' act on the Perspective's project from scratch."
+  (imoogi-persppin-test--isolated
+    (let ((p1 (imoogi-persppin-test--visit (expand-file-name "a.txt" root)))
+          (prompts nil)
+          (candidates nil))
+      (push (cons (imoogi-persppin-test--canonical root) "src")
+            imoogi-project-perspective-alist)
+      (setq current-perspective "src")
+      (call-interactively (imoogi-persppin-test--suffix "c"))
+      (should (equal compiled (imoogi-persppin-test--canonical root)))
+      (cl-letf (((symbol-function 'yes-or-no-p)
+                 (lambda (prompt) (push prompt prompts) nil)))
+        (call-interactively (imoogi-persppin-test--suffix "k")))
+      (should (= (length prompts) 1))
+      (should (string-match-p (regexp-quote (project-name (project-current nil)))
+                              (car prompts)))
+      (should (buffer-live-p p1))
+      (imoogi-persppin-test--capturing-buffers candidates
+        (should (eq (call-interactively (imoogi-persppin-test--suffix "b")) p1)))
+      (should (equal candidates (list p1))))))
+
+(ert-deftest imoogi-persppin-switch-buffer-candidates ()
+  "AC-PIN-012: `b' offers the project's buffers plus its own notes buffers."
+  (imoogi-persppin-test--isolated
+    (let* ((other-root (file-name-as-directory
+                        (expand-file-name "other-source/" sandbox)))
+           (directory (imoogi-project-notes-setup root))
+           (other-directory (progn (make-directory other-root t)
+                                   (imoogi-project-notes-setup other-root)))
+           (candidates nil))
+      (push (cons (imoogi-persppin-test--canonical root) "src")
+            imoogi-project-perspective-alist)
+      (setq current-perspective "src")
+      (imoogi-persppin-test--kill-sandbox-buffers sandbox)
+      (let ((p1 (imoogi-persppin-test--visit (expand-file-name "a.txt" root)))
+            (tree (dired-noselect root))
+            (x (imoogi-persppin-test--visit
+                (expand-file-name "unrelated/x.txt" sandbox)))
+            (n1 (imoogi-persppin-test--visit
+                 (expand-file-name "project.org" directory)))
+            (m1 (imoogi-persppin-test--visit
+                 (expand-file-name "project.org" other-directory))))
+        (imoogi-persppin-test--capturing-buffers candidates
+          (call-interactively (imoogi-persppin-test--suffix "b")))
+        (should (imoogi-persppin-test--same-set-p candidates (list p1 tree n1)))
+        (dolist (excluded (list x m1 (get-buffer "*scratch*")))
+          (should-not (memq excluded candidates)))))))
+
+(ert-deftest imoogi-persppin-no-notes-entry-project-only ()
+  "AC-PIN-017: without a notes entry, or for a remote root, lists are project-only."
+  (imoogi-persppin-test--isolated
+    (let ((p1 (imoogi-persppin-test--visit (expand-file-name "a.txt" root)))
+          (messages nil)
+          (candidates nil))
+      (push (cons (imoogi-persppin-test--canonical root) "src")
+            imoogi-project-perspective-alist)
+      (setq current-perspective "src")
+      (cl-letf (((symbol-function 'message)
+                 (lambda (format-string &rest args)
+                   (when format-string
+                     (push (apply #'format-message format-string args) messages))
+                   nil)))
+        ;; `b' with no notes entry.
+        (imoogi-persppin-test--capturing-buffers candidates
+          (call-interactively (imoogi-persppin-test--suffix "b")))
+        (should (equal candidates (list p1)))
+        ;; `b' when the identity key refuses the root (as for a remote root).
+        (cl-letf (((symbol-function 'imoogi-project-notes--identity-key)
+                   (lambda (&rest _) (user-error "Remote project"))))
+          (setq candidates nil)
+          (imoogi-persppin-test--capturing-buffers candidates
+            (call-interactively (imoogi-persppin-test--suffix "b")))
+          (should (equal candidates (list p1)))))
+      (should-not messages))))
+
 ;;; project-perspective-pin-test.el ends here

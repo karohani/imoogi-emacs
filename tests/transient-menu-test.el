@@ -77,7 +77,7 @@
      (imoogi-project-find-file         transient--do-exit)
      (imoogi-project-find-regexp       transient--do-exit)
      (imoogi-project-dired             transient--do-exit)
-     (project-switch-to-buffer         transient--do-exit)
+     (imoogi-project-switch-to-buffer  transient--do-exit)
      (imoogi-persp-new                 transient--do-exit)
      (persp-switch-last                transient--do-exit)
      (persp-switch                     transient--do-exit)
