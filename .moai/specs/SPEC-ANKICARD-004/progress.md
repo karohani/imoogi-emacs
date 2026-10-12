@@ -233,6 +233,147 @@ empty source block (seen through the paired span). Each is a case in
   that rewrite left the `[user]` and `core.bare` values unchanged. The file was
   not edited by this run.
 
+### Rework after card review
+
+Source: `.moai/reports/t15/card-review.md` (four confirmed findings). Cycle:
+TDD, reproduction first. Worked in the isolated agent worktree
+`.claude/worktrees/agent-a496d6cfbd37ce242` (branch
+`worktree-agent-a496d6cfbd37ce242`, fast-forwarded to `2f1fd5a`) under the
+coordinator's explicit approval, for a fast-forward onto `WT-anki-swift-arrow`.
+Evidence files sit under `.moai/state/verify/t15-rework/` in that tree.
+
+Commit: `53745af` — `fix(anki): close the t15 card-review findings for swift
+arrow cards` (all four findings; one rework commit). This record follows it.
+
+**Finding 1 (high) — keyword attached to a suppressed result.** `constructEnd`
+now mirrors go-org v1.9.1 `parseKeyword` (`org/keyword.go`): `#+NAME:` attaches
+the next construct; a run of `#+CAPTION:`/`#+ATTR_HTML:` attaches the construct
+after the run, and any other keyword in the run leaves the first one standing
+alone; every other keyword (`#+ATTR_LATEX:` included) is one line. A blank line
+after the keyword opens a paragraph that runs on through the text below it.
+Seven mirror cases added to `swiftMirrorCases` (five-row keyword table plus two
+end-of-body converses). RED (`red-mirror.txt`, `red-agree.txt`), verbatim:
+
+```
+--- FAIL: TestSwiftMirroredRules/a_name_keyword_across_a_blank_joins_the_result (0.00s)
+    swift_test.go:322: arrow lines = [["도쿄" "일본"]], want 0
+--- FAIL: TestSwiftMirroredRules/a_caption_keyword_across_a_blank_joins_the_result (0.00s)
+    swift_test.go:322: arrow lines = [["도쿄" "일본"]], want 0
+--- FAIL: TestSwiftMirroredRules/a_name_then_a_caption_join_the_result (0.00s)
+    swift_test.go:322: arrow lines = [["도쿄" "일본"]], want 0
+--- FAIL: TestSwiftMirroredRules/an_attr_latex_keyword_is_the_whole_result (0.00s)
+    swift_test.go:322: arrow lines = [], want 1
+--- FAIL: TestSwiftScannerAgreesWithTheParser/a_name_keyword_across_a_blank_joins_the_result (0.00s)
+    swift_test.go:404: go-org renders "도쿄 :-> 일본" in place = false, scanner count = 1
+--- FAIL: TestSwiftScannerAgreesWithTheParser/an_attr_latex_keyword_is_the_whole_result (0.00s)
+    swift_test.go:404: go-org renders "도쿄 :-> 일본" in place = true, scanner count = 0
+```
+
+The `#+ATTR_LATEX:` row was a pre-existing over-exclusion (the paragraph
+fall-back swallowed the line after it); the oracle renders it in place, and it
+now agrees. `#+CAPTION:` then `#+NAME:` renders in place (count 1), as read from
+the source. The oracle agreed with the source reading on every row; no
+disagreement to record.
+
+**Finding 2 (high) — block nested in a list item.** `walkList` (shared with the
+multiline scan) now consumes a paired `#+BEGIN_` block or LaTeX environment
+opened on an item line whole, as one continuation, as go-org's `parseBlock` and
+`parseLatexBlock` do (their stop ignores the item's). Four mirror cases (the
+result-list body from the review, the same nest outside a result, a LaTeX
+environment in a list, and the unclosed-block converse) plus one multiline
+corpus row (`a_nested_block_with_a_shallow_line_stays_in_its_item`, item count
+only). RED, verbatim:
+
+```
+--- FAIL: TestSwiftMirroredRules/a_nested_block_in_a_result_list_is_consumed_whole (0.00s)
+    swift_test.go:322: arrow lines = [["도쿄" "일본"]], want 0
+--- FAIL: TestSwiftMirroredRules/a_nested_block_in_a_list_is_consumed_whole (0.00s)
+    swift_test.go:322: arrow lines = [["도쿄" "일본"]], want 0
+--- FAIL: TestSwiftMirroredRules/a_nested_environment_in_a_list_is_consumed_whole (0.00s)
+    swift_test.go:322: arrow lines = [["도쿄" "일본"]], want 0
+--- FAIL: TestSwiftScannerAgreesWithTheParser/a_nested_block_in_a_result_list_is_consumed_whole (0.00s)
+    swift_test.go:404: go-org renders "  도쿄 :-> 일본" in place = false, scanner count = 1
+--- FAIL: TestMultilineAnswerList/corpus/a_nested_block_with_a_shallow_line_stays_in_its_item (0.00s)
+    multiline_test.go:206: scanner counted 1 items, parse counted 2 (collapsed "- A\n  #+BEGIN_EXAMPLE\nx\n  #+END_EXAMPLE\n- B\n")
+```
+
+The multiline RED was captured against the `2f1fd5a` `multiline.go`, restored
+temporarily and then put back (`red-multiline.txt`). `TestMultilineGoldenCorpus`
+passes and `multiline-golden.json` is byte-identical (golden check below).
+
+**Finding 3 (medium) — swift ON path cleared options before refusing.** New
+non-writing predicate `imoogi-anki--cloze-type-acceptable-p` runs first on the ON
+path; `imoogi-anki--ensure-cloze-type` keeps its contract for every other caller
+(it now delegates its judgment to the predicate, then writes `imoogi-Cloze` only
+when the type is absent). New ERT case
+`imoogi-anki-toggle-swift-on-refuses-a-non-cloze-type-before-clearing-options`
+(imoogi-Basic + own `ANKI_DIRECTION: ->`, `yes-or-no-p` answering t). RED
+(`red-elisp.txt`), verbatim:
+
+```
+(ert-test-failed
+ ((should (equal (buffer-string) before)) :form
+  (equal
+   #("* 제목\n:PROPERTIES:\n:ANKI_NOTE_TYPE: imoogi-Basic\n:ANKI_DIRECTION: nil\n:END:\n\n도쿄 :-> 일본\n"
+```
+
+Known limitation 5 above is closed by this change.
+
+**Finding 4 (low) — numbering claim.** README "번호" paragraph and the
+`composeArrowLines` comment corrected: changing an arrow keeps every number;
+inserting or deleting an arrow line renumbers the arrow lines below it, and
+Anki's history follows the number. Prose only; no test.
+
+**GREEN, verbatim key output:**
+
+```
+$ go test ./internal/anki/... -count=1 -cover
+ok  	.../internal/anki/ankiconnect	2.666s	coverage: 86.2% of statements
+ok  	.../internal/anki/hashing	0.902s	coverage: 100.0% of statements
+ok  	.../internal/anki/media	1.606s	coverage: 91.3% of statements
+ok  	.../internal/anki/model	0.601s	coverage: 98.4% of statements
+ok  	.../internal/anki/orgdoc	1.270s	coverage: 100.0% of statements
+ok  	.../internal/anki/planner	2.004s	coverage: 92.9% of statements
+ok  	.../internal/anki/protocol	3.000s	coverage: [no statements]
+ok  	.../internal/anki/registry	2.336s	coverage: 87.8% of statements
+$ go test ./internal/anki/orgdoc -count=1 -v -run TestMultilineGoldenCorpus
+--- PASS: TestMultilineGoldenCorpus (0.00s)
+$ go test ./internal/anki/orgdoc -count=1 -v -run TestSwiftScannerAgreesWithTheParser
+--- PASS: TestSwiftScannerAgreesWithTheParser (0.00s)
+$ make test-elisp
+Ran 659 tests, 648 results as expected, 0 unexpected, 11 skipped
+$ make lint        -> exit 0
+$ make fmt-check   -> exit 0
+$ git diff --stat 2f1fd5a -- internal/anki/orgdoc/testdata internal/anki/hashing
+(empty)
+```
+
+The RED Elisp run also showed the two timing-dependent tests already recorded
+under "Observations outside scope"
+(`imoogi-project-notes-cli-cache-superseded-process-does-not-callback`,
+`imoogi-setup-test-ankiconnect-status-invalid-response-on-http-error`); both
+passed in the GREEN run. No swift golden rows were added: the new bodies are
+parser-agreement cases, which `swiftMirrorCases` holds; `swift-golden.json` is
+unchanged.
+
+**Known limitations added by the rework.**
+
+7. **A source block's result inside a list item across blank lines.** go-org's
+   `parseSrcBlockResult` skips any number of blank lines before `#+RESULTS:`,
+   while the item loop itself ends at a blank pair; the list walk ends at the
+   blank pair. A `#+RESULTS:` so attached inside an item is not mirrored. Out of
+   this rework's scope.
+8. **The multiline answer span over a nested block** follows the walk's existing
+   continuation rule: the span runs over the whole nested block, as it already
+   did for a fully indented one. Only the item count is pinned for the
+   shallow-interior shape.
+
+**Follow-up for the SPEC owner.** `spec.md` REQ-SW-003.3 reads as though
+positional numbering keeps numbers stable when a `:<-` line is inserted above
+another; positional numbering keeps them stable when a line's arrow changes,
+not when a line is inserted. Not edited here (spec.md body is out of this
+agent's scope).
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 ```yaml
