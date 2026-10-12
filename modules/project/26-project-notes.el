@@ -1329,10 +1329,18 @@ remain distinct through their `instance-id'."
               entries))
         (and buffer-file-name
              (imoogi-project-notes--find-entry-by-notes-file buffer-file-name entries))
-        (when-let* ((project (project-current nil)))
-          (imoogi-project-notes--find-entry-by-key
-           (imoogi-project-notes--identity-key (project-root project))
-           entries)))))
+        (if-let* ((project (project-current nil)))
+            (imoogi-project-notes--find-entry-by-key
+             (imoogi-project-notes--identity-key (project-root project))
+             entries)
+          ;; A buffer with no project of its own (scratch, help) follows the
+          ;; project its Perspective was opened for instead of prompting.  A
+          ;; buffer of an unregistered project never borrows another's notes.
+          (when-let* (((fboundp 'imoogi-project--perspective-root))
+                      (root (imoogi-project--perspective-root)))
+            (imoogi-project-notes--find-entry-by-key
+             (imoogi-project-notes--identity-key root)
+             entries))))))
 
 (defun imoogi-project-notes--current-source-root (&optional entry)
   "Return the source root that should be used for this command.
