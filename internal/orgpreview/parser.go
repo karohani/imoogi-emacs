@@ -33,6 +33,9 @@ var (
 	orgCheckboxRE = regexp.MustCompile(`^\[([ Xx-])\](?:[ \t]+|$)(.*)$`)
 	linkRE        = regexp.MustCompile(`\[\[((?:file:|id:|https?://)[^\]\n]+)\](?:\[([^\]\n]*)\])?\]|(https?://[^\s<>\[\]]+)`)
 	propertyRE    = regexp.MustCompile(`^:([[:alnum:]_@#%+.-]+):[[:space:]]*(.*)$`)
+	// Org keyword lines (#+TITLE:, #+CATEGORY:, #+CAPTION: ...) are document
+	// metadata, not body text, and are not rendered.
+	keywordRE = regexp.MustCompile(`^[ \t]*#\+[[:alnum:]_-]+:(?:[ \t]|$)`)
 )
 
 func (p FallbackParser) Parse(text string) (Document, error) {
@@ -42,7 +45,7 @@ func (p FallbackParser) Parse(text string) (Document, error) {
 	for i := 0; i < len(lines); {
 		line := lines[i]
 		trim := strings.TrimRight(line.Text, "\r\n")
-		if strings.TrimSpace(trim) == "" {
+		if strings.TrimSpace(trim) == "" || keywordRE.MatchString(trim) {
 			i++
 			continue
 		}
@@ -162,7 +165,7 @@ func (p FallbackParser) Parse(text string) (Document, error) {
 			current := strings.TrimRight(lines[i].Text, "\r\n")
 			currentTrim := strings.TrimSpace(current)
 			currentLower := strings.ToLower(currentTrim)
-			if currentTrim == "" || headingRE.MatchString(current) || strings.HasPrefix(currentTrim, "|") ||
+			if currentTrim == "" || keywordRE.MatchString(current) || headingRE.MatchString(current) || strings.HasPrefix(currentTrim, "|") ||
 				(strings.HasPrefix(currentLower, "#+begin_src") || strings.HasPrefix(currentLower, "#+begin_example")) ||
 				(listItemRE.MatchString(current) && !headingRE.MatchString(current)) {
 				break
