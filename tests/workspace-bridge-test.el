@@ -17,7 +17,7 @@
   (list 'transient (file-truename root)))
 
 (cl-defmethod project-root ((project (head transient)))
-  (cadr project))
+  (if (consp (cdr project)) (cadr project) (cdr project)))
 
 (defmacro imoogi-test--with-project-command-stubs (root &rest body)
   (declare (indent 1))
