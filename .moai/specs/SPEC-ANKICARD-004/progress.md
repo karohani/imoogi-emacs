@@ -240,10 +240,14 @@ TDD, reproduction first. Worked in the isolated agent worktree
 `.claude/worktrees/agent-a496d6cfbd37ce242` (branch
 `worktree-agent-a496d6cfbd37ce242`, fast-forwarded to `2f1fd5a`) under the
 coordinator's explicit approval, for a fast-forward onto `WT-anki-swift-arrow`.
-Evidence files sit under `.moai/state/verify/t15-rework/` in that tree.
+Evidence files sit under `.moai/state/verify/t15-rework/` in that tree, which
+is disposed with the agent worktree; the verbatim quotes below are the durable
+copy.
 
 Commit: `53745af` — `fix(anki): close the t15 card-review findings for swift
-arrow cards` (all four findings; one rework commit). This record follows it.
+arrow cards` (all four findings; one rework commit). This record was first
+committed in `f2076e2`; the two extra list rows and this record's corrections
+follow in one later commit.
 
 **Finding 1 (high) — keyword attached to a suppressed result.** `constructEnd`
 now mirrors go-org v1.9.1 `parseKeyword` (`org/keyword.go`): `#+NAME:` attaches
@@ -268,6 +272,11 @@ end-of-body converses). RED (`red-mirror.txt`, `red-agree.txt`), verbatim:
 --- FAIL: TestSwiftScannerAgreesWithTheParser/an_attr_latex_keyword_is_the_whole_result (0.00s)
     swift_test.go:404: go-org renders "도쿄 :-> 일본" in place = true, scanner count = 0
 ```
+
+The `swift_test.go` line numbers in both RED blocks are from the first RED run,
+before the two end-of-body converse rows were inserted above the test bodies;
+the same assertions sit at 324 and 406 in `53745af`, and at 326 and 408 after
+the two list rows added in the follow-up commit.
 
 The `#+ATTR_LATEX:` row was a pre-existing over-exclusion (the paragraph
 fall-back swallowed the line after it); the oracle renders it in place, and it
@@ -300,6 +309,19 @@ only). RED, verbatim:
 The multiline RED was captured against the `2f1fd5a` `multiline.go`, restored
 temporarily and then put back (`red-multiline.txt`). `TestMultilineGoldenCorpus`
 passes and `multiline-golden.json` is byte-identical (golden check below).
+
+Two further list rows were added after the rework commit, at review, to pin the
+order of the walk's checks; both agreed with go-org on the first run (no RED —
+they are converses, not reproductions): a sibling-shaped bullet inside the
+nested block opens no item (count 0), and a block opener shallower than the item
+ends the list before the nested-block rule is consulted (count 1).
+
+```
+--- PASS: TestSwiftScannerAgreesWithTheParser/a_sibling_bullet_inside_a_nested_block_opens_no_item (0.00s)
+--- PASS: TestSwiftScannerAgreesWithTheParser/a_shallow_block_opener_ends_the_list (0.00s)
+$ go test ./internal/anki/orgdoc -count=1 -cover
+ok  	github.com/karohani/imoogi-emacs/internal/anki/orgdoc	0.275s	coverage: 100.0% of statements
+```
 
 **Finding 3 (medium) — swift ON path cleared options before refusing.** New
 non-writing predicate `imoogi-anki--cloze-type-acceptable-p` runs first on the ON
@@ -342,8 +364,11 @@ $ go test ./internal/anki/orgdoc -count=1 -v -run TestSwiftScannerAgreesWithTheP
 --- PASS: TestSwiftScannerAgreesWithTheParser (0.00s)
 $ make test-elisp
 Ran 659 tests, 648 results as expected, 0 unexpected, 11 skipped
-$ make lint        -> exit 0
-$ make fmt-check   -> exit 0
+$ make lint        -> exit 0, no output
+$ make fmt-check   -> exit 0; its only output is two parse messages from
+                      vendored go-mode test fixtures, not project code:
+vendor/elpa/go-mode-1.6.0/test/testdata/indentation_tests/composite_literal_key.go:1:1: expected 'package', found 'func'
+vendor/elpa/go-mode-1.6.0/test/testdata/indentation_tests/multiline_struct.go:1:1: expected 'package', found 'func'
 $ git diff --stat 2f1fd5a -- internal/anki/orgdoc/testdata internal/anki/hashing
 (empty)
 ```

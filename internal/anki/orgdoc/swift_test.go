@@ -273,6 +273,8 @@ var swiftMirrorCases = []swiftMirrorCase{
 	{"a_nested_block_in_a_list_is_consumed_whole", "- item\n  #+BEGIN_EXAMPLE\nx\n  #+END_EXAMPLE\n  도쿄 :-> 일본", 0},
 	{"a_nested_environment_in_a_list_is_consumed_whole", "- item\n  \\begin{align}\nx\n  \\end{align}\n  도쿄 :-> 일본", 0},
 	{"an_unclosed_nested_block_ends_the_list_at_the_shallow_line", "- item\n  #+BEGIN_EXAMPLE\nx\n  도쿄 :-> 일본", 1},
+	{"a_sibling_bullet_inside_a_nested_block_opens_no_item", "- item\n  #+BEGIN_EXAMPLE\n- b\n  #+END_EXAMPLE\n  도쿄 :-> 일본", 0},
+	{"a_shallow_block_opener_ends_the_list", "- item\n#+BEGIN_EXAMPLE\nx\n#+END_EXAMPLE\n도쿄 :-> 일본", 1},
 
 	// The LaTeX environment.
 	{"uppercase_keywords_open_an_environment", "\\BEGIN{align}\n도쿄 :-> 일본\n\\END{align}", 0},
