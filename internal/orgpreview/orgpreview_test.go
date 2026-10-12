@@ -84,6 +84,25 @@ func TestPropertyDrawerRendersAsEscapedInformationTable(t *testing.T) {
 	}
 }
 
+func TestOrgKeywordLinesAreNotRenderedAsText(t *testing.T) {
+	source := "#+TITLE: Spec\n#+CATEGORY: imoogi-emacs\n* Heading\nBody\n#+caption: Figure\nAfter\n"
+	doc, err := FallbackParser{}.Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := Renderer{}.Render(doc)
+	for _, unwanted := range []string{"#+TITLE", "#+CATEGORY", "imoogi-emacs", "#+caption"} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("keyword line leaked %q:\n%s", unwanted, out)
+		}
+	}
+	for _, want := range []string{"Heading", "Body", "After"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("content %q disappeared:\n%s", want, out)
+		}
+	}
+}
+
 func TestMalformedPropertyDrawerRemainsPlainText(t *testing.T) {
 	source := "* Task\n:PROPERTIES:\nnot-a-property\n:END:\n"
 	doc, err := FallbackParser{}.Parse(source)
