@@ -771,8 +771,9 @@ func TestServerServesPreviewShellAndBrowserWebSocketQueryContract(t *testing.T) 
 		"function levelOf(el){return Number(el.dataset.orgLevel)",
 		"window.scrollTo(x, y)",
 		`<script src="/static/mermaid.min.js"></script>`,
+		`<script src="/static/mermaid-diagnostics.js"></script>`,
 		"mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'dark'})",
-		"await mermaid.run({nodes:nodes,suppressErrors:true})",
+		"await mermaidDiagnostics.render(root.querySelectorAll('.mermaid'), targetRevision)",
 		"/api/file-preview",
 		"if (linkedFileID) loadLinkedFile(); else connect();",
 		".org-properties",
@@ -962,5 +963,25 @@ func TestOrgWebURLsPreserveSchemeAndSlashes(t *testing.T) {
 	doc, _ := (FallbackParser{}).Parse("https://example.com/a/b and /italic/")
 	if !contains(flattenTypes(doc.Nodes), "emphasis") {
 		t.Fatal("ordinary emphasis lost")
+	}
+}
+
+func TestServerServesMermaidDiagnostics(t *testing.T) {
+	server, err := NewServer(ServerConfig{Token: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/static/mermaid-diagnostics.js", nil))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `globalThis.OrgMermaidVersion="12.0.0"`) || !strings.Contains(recorder.Body.String(), "runtime.parse(input)") {
+		t.Fatalf("diagnostics response status=%d version=%q", recorder.Code, bundledMermaidVersion())
+	}
+	if recorder.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatal("missing nosniff")
+	}
+	recorder = httptest.NewRecorder()
+	server.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/static/mermaid-diagnostics.js", nil))
+	if recorder.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST status=%d", recorder.Code)
 	}
 }
