@@ -16,7 +16,9 @@ import (
 
 	"github.com/karohani/imoogi-emacs/internal/config"
 	"github.com/karohani/imoogi-emacs/internal/lang"
+	"github.com/karohani/imoogi-emacs/internal/lang/clojure"
 	"github.com/karohani/imoogi-emacs/internal/lang/golang"
+	"github.com/karohani/imoogi-emacs/internal/lang/jvm"
 	"github.com/karohani/imoogi-emacs/internal/lang/typescript"
 )
 
@@ -508,6 +510,16 @@ func TestDefaultProviderFactoryClassifiesLanguageComponents(t *testing.T) {
 			want: []string{"go:gopls", "typescript:node,typescript,typescript-language-server"},
 		},
 		{
+			name: "jvm-hosted and native clojure servers get per-component providers",
+			components: []config.LockComponent{
+				providerComponent("gopls", "go-language-server"),
+				providerComponent("jdtls", "java-language-server"),
+				providerComponent("kotlin-language-server", "kotlin-language-server"),
+				providerComponent("clojure-lsp", "clojure-language-server"),
+			},
+			want: []string{"go:gopls", "jvm:jdtls", "jvm:kotlin-language-server", "clojure:clojure-lsp"},
+		},
+		{
 			name: "empty name classified by kind preserves processed-name behavior",
 			components: []config.LockComponent{
 				providerComponent("", "node-runtime"),
@@ -589,6 +601,10 @@ func describeProviders(t *testing.T, providers []lang.Provider) []string {
 		switch p := provider.(type) {
 		case golang.GoplsProvider:
 			out = append(out, "go:"+p.Component.Name)
+		case jvm.Provider:
+			out = append(out, "jvm:"+p.Component.Name)
+		case clojure.Provider:
+			out = append(out, "clojure:"+p.Component.Name)
 		case typescript.Provider:
 			names := make([]string, 0, len(p.Components))
 			for _, component := range p.Components {

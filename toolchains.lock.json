@@ -1,7 +1,7 @@
 {
   "schema": "imoogi-toolchains-lock/v1",
   "cli_version": "1.0.0",
-  "bundle": "2026.08.23.1",
+  "bundle": "2026.10.12.1",
   "target": {
     "os": "darwin",
     "arch": "arm64"
@@ -54,6 +54,45 @@
       }
     },
     {
+      "name": "clojure-lsp",
+      "kind": "clojure-language-server",
+      "source": "github.com/clojure-lsp/clojure-lsp",
+      "upstream_version": "2026.07.06-14.34.19",
+      "revision": "de66293956c057b6ef02601594f196d048684683",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "artifact": {
+        "path": "vendor/toolchains/clojure/clojure-lsp/2026.07.06-14.34.19/darwin-arm64/clojure-lsp-native-macos-aarch64.zip",
+        "size": 40569964,
+        "sha256": "dd9a8e36add53b8d8166bb3d7580c6e5563401aea87b62600786af2e7d37ccde",
+        "source_url": "https://github.com/clojure-lsp/clojure-lsp/releases/download/2026.07.06-14.34.19/clojure-lsp-native-macos-aarch64.zip",
+        "retrieved_at": "2026-10-12T10:13:31Z"
+      },
+      "license": {
+        "path": "vendor/toolchains/licenses/clojure-lsp-LICENSE"
+      },
+      "provenance": {
+        "builder": "darwin/arm64",
+        "toolchain": "go1.26.4",
+        "command": "curl -L https://github.com/clojure-lsp/clojure-lsp/releases/download/2026.07.06-14.34.19/clojure-lsp-native-macos-aarch64.zip"
+      },
+      "install": [
+        {
+          "path": "bin/clojure-lsp",
+          "mode": "executable"
+        }
+      ],
+      "runtime": {},
+      "probe": {
+        "command": "bin/clojure-lsp",
+        "args": [
+          "--version"
+        ]
+      }
+    },
+    {
       "name": "gopls",
       "kind": "go-language-server",
       "source": "golang.org/x/tools/gopls",
@@ -89,6 +128,93 @@
         "command": "bin/gopls",
         "args": [
           "version"
+        ]
+      }
+    },
+    {
+      "name": "jdtls",
+      "kind": "java-language-server",
+      "source": "download.eclipse.org/jdtls",
+      "upstream_version": "1.61.0-202609031315",
+      "revision": "08eafe6ff60c7159ef88571d47b6a9ef82fef94e",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "artifact": {
+        "path": "vendor/toolchains/java/jdtls/1.61.0-202609031315/darwin-arm64/jdt-language-server.tar.gz",
+        "size": 51037522,
+        "sha256": "338e7e73d61836651ba2453919a0d34fa763eb4e7c03342092309bffb8934c64",
+        "source_url": "https://download.eclipse.org/jdtls/milestones/1.61.0/jdt-language-server-1.61.0-202609031315.tar.gz",
+        "retrieved_at": "2026-10-12T10:13:21Z"
+      },
+      "license": {
+        "path": "vendor/toolchains/licenses/jdtls-LICENSE"
+      },
+      "provenance": {
+        "builder": "darwin/arm64",
+        "toolchain": "go1.26.4",
+        "command": "curl https://download.eclipse.org/jdtls/milestones/1.61.0/jdt-language-server-1.61.0-202609031315.tar.gz"
+      },
+      "install": [
+        {
+          "path": "bin/jdtls",
+          "mode": "executable"
+        },
+        {
+          "path": "lib/jdtls",
+          "mode": "directory"
+        }
+      ],
+      "runtime": {},
+      "probe": {
+        "command": "bin/jdtls",
+        "args": [
+          "--imoogi-probe"
+        ]
+      }
+    },
+    {
+      "name": "kotlin-language-server",
+      "kind": "kotlin-language-server",
+      "source": "github.com/fwcd/kotlin-language-server",
+      "upstream_version": "1.3.13",
+      "revision": "f532bcc9c6578f5a35009a8b5f281f93d4d131ba",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "artifact": {
+        "path": "vendor/toolchains/kotlin/kotlin-language-server/1.3.13/darwin-arm64/server.zip",
+        "size": 87291855,
+        "sha256": "4fe7d71d087b307c7869036171bd9d8c6a4284cd7c25b89098b0a24eb2d9b6d2",
+        "source_url": "https://github.com/fwcd/kotlin-language-server/releases/download/1.3.13/server.zip",
+        "retrieved_at": "2026-10-12T10:13:28Z"
+      },
+      "license": {
+        "path": "vendor/toolchains/licenses/kotlin-language-server-LICENSE",
+        "notice": "vendor/toolchains/licenses/kotlin-language-server-1.3.13-licenseReport.html"
+      },
+      "provenance": {
+        "builder": "darwin/arm64",
+        "toolchain": "go1.26.4",
+        "command": "curl -L https://github.com/fwcd/kotlin-language-server/releases/download/1.3.13/server.zip"
+      },
+      "install": [
+        {
+          "path": "bin/kotlin-language-server",
+          "mode": "executable"
+        },
+        {
+          "path": "lib/kotlin-language-server",
+          "mode": "directory"
+        }
+      ],
+      "runtime": {},
+      "probe": {
+        "command": "bin/kotlin-language-server",
+        "args": [
+          "--imoogi-probe"
         ]
       }
     },
