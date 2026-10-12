@@ -1,10 +1,10 @@
 ---
 id: SPEC-ANKICARD-004
 title: "Swift arrow card rendering"
-version: "0.1.2"
+version: "0.1.4"
 status: draft
 created: 2026-09-21
-updated: 2026-09-21
+updated: 2026-10-12
 author: jay
 priority: P2
 phase: "v0.2.0 target"
@@ -12,10 +12,153 @@ module: "internal/anki/orgdoc, internal/anki/planner, modules/org/anki"
 lifecycle: spec-anchored
 tags: "anki, org-mode, cloze, swift, arrow, rendering, card-options"
 tier: M
-depends_on: [SPEC-ANKICARD-003]
+depends_on: [SPEC-ANKICARD-003, SPEC-ANKICARD-005]
 ---
 
 ## HISTORY
+
+### v0.1.4 (2026-10-12)
+
+Closes plan audit iteration 3
+(`.moai/reports/plan-audit/SPEC-ANKICARD-004-plan-audit-r3.md`, **FAIL 0.75**,
+iteration cap reached). This revision is the targeted fix that the escalation's
+option 2 describes. The delta-only re-audit it names is still pending
+authorization. All four blocking findings are closed, and the optional one is
+taken. Counts are unchanged at 14 requirements and 15 criteria. The corpus
+grows from 38 rows to 42. Every new row and every rule restated below was
+measured against go-org v1.9.1 from the module cache, in a scratch module
+outside the checkout.
+
+- **R3-1 — closed.** REQ-SW-001.6 no longer says the context-dependent
+  constructs at v1.9.1 "are the three". The set is stated as derived by rule,
+  with an informative list. `plan.md` DD-4's "exactly" and M1's "the three"
+  are struck. The fourth construct the audit measured is now mirrored: the
+  **result attached to a source block**. go-org attaches the construct that
+  follows a `#+RESULTS:` line to a preceding `#+BEGIN_SRC` block, with only
+  blank lines allowed between them. Its writer then suppresses that construct
+  under `:exports code` or `:exports none`. The rule is written as the parser's
+  and the writer's own, including two edges measured here. A blank line
+  directly after `#+RESULTS:` does not protect the arrow line (the attached
+  paragraph starts on the blank line), while two blank lines do. A `:RESULTS:`
+  drawer is suppressed whole. The derivation claim is softened: the list was
+  read from the parser's dispatch, a case can govern lines beyond its own
+  delimiters, and that is how the earlier reading missed this one. Rows 39
+  (`:exports code` → 0) and 40 (default exports → 1).
+- **R3-2 — closed.** Three mirrored rules are restated as go-org's own rules.
+  (a) The **footnote definition**'s blank-pair end is tested only outside a
+  nested `#+BEGIN_` block or LaTeX environment, because those run to their own
+  close. The opening is ASCII-labelled, at column zero, and followed by
+  whitespace or the end of the line. One deliberate deviation from the audit's
+  wording is measured, not missed: the audit listed *lists* among the
+  constructs that carry the definition past a blank pair. Measured, a list does
+  not, and neither does an ordinary drawer: with a blank pair inside either,
+  the arrow line below renders in place. The code agrees, because `parseList`
+  and `parseDrawer` honour the definition's stop while `parseBlock` and
+  `parseLatexBlock` do not. Lists are therefore not named. (b) The **property
+  drawer** suppresses only when every interior line is a property line and a
+  closing `:END:` is reached with no blank line before it. Otherwise its lines
+  render normally. (c) The LaTeX environment's `\begin` and `\end` are
+  case-insensitive, as well as its name. § 5's "wholly nested shapes agree" is
+  narrowed to the nestings actually measured. Rows 41 (footnote, then a source
+  block holding a blank pair → 0) and 42 (a `:PROPERTIES:` drawer with a
+  non-property line → 1).
+- **R3-3 — closed.** REQ-SW-013.4's mirror conflict check binds the **on**
+  direction only, as sub-clause 3's note-type contract already did. Turning
+  swift off writes the falsy `ANKI_SWIFT` and touches no multiline option.
+  Mirrored in `plan.md` DD-10 and M5. AC-SW-014 gains the OFF case, unstubbed,
+  and its both-on case now states the ON direction.
+- **R3-4 — closed.** AC-SW-008's first clause no longer makes the
+  counterfactual claim about a field. It now observes the checked split
+  directly: its `extra` output carries the arrow line, and its `rest` output
+  carries none.
+- **O-2 — taken.** REQ-SW-001.6 now fixes how the mirrored rules compose. Block
+  and environment regions are computed first, over the whole body. The footnote
+  and source-block-result rules then run over those regions. The excluded set
+  is the union. This reuses `blockRegions` unchanged. § 5's interleaving entry
+  is restated for that composition: the two interleavings it previously
+  described as agreeing or not diverging now over-exclude, which withholds a
+  card and never composes a marker that is hidden. The quote-first interleaving
+  it previously disclosed as diverging now agrees.
+- UNCHANGED: the 14/15 counts, the tier, and every requirement's obligation
+  other than those named above.
+
+### v0.1.3 (2026-10-12)
+
+Completes the closure of plan audit iteration 2
+(`.moai/reports/plan-audit/SPEC-ANKICARD-004-plan-audit-r2.md`, **FAIL 0.75**)
+for audit iteration 3. v0.1.2 began that closure and was never audited; read
+against the six findings and against the tree at `7d98ec0`, it left a residue on
+four of them, contradicted itself across the four files on one rule, and
+predated SPEC-ANKICARD-005. This entry names the closure of each finding and what
+v0.1.3 changed to reach it. Counts unchanged at 14 requirements and 15 criteria;
+the corpus grows from 32 rows to 38.
+
+- **N1 — closed.** v0.1.2 struck the closed four-shape list and added the
+  fixed-width line and the footnote definition to REQ-SW-001.5's informative
+  list; both stand. Two residues are fixed here. REQ-SW-001.6 had kept a
+  `shall` on the per-line parse, which is one measured route rather than the
+  obligation; it now requires the classification to come from the parser's
+  **classification rules**, and the per-line parse is recorded in `plan.md`
+  DD-4 as one route. And the context-dependent half was itself a closed list of
+  three — the same defect one layer down. Measured at go-org v1.9.1, two more
+  constructs make a later line something other than in-place paragraph text: a
+  **footnote definition continues** across the lines below it until a second
+  consecutive blank line (`[fn:1] 메모`⏎`도쿄 :-> 일본` renders to nothing), and
+  a **`:PROPERTIES:` drawer written mid-body** suppresses its interior. Both are
+  now in the informative list, the context-dependent half is stated as a rule
+  (mirror the parser's opening-and-continuation rule for every such construct)
+  rather than as a set, and REQ-SW-001.5's head names the property the classes
+  share — a paragraph rendered **in place**.
+- **N1 — the LaTeX environment rule is corrected.** v0.1.2 said the
+  environment's interior "shall be identified from the parser's own whole-body
+  classification", which needs the source positions go-org's AST does not carry
+  (the route the audit said the SPEC must not imply), while its own HISTORY
+  entry and `plan.md` DD-4 said the pairing was widened. Measured, go-org's
+  rule is line-anchored (`\begin{NAME}` alone on a line, closed by the next
+  `\end{NAME}` with the same name compared case-insensitively, an unmatched
+  opening opening nothing) — the same shape as the `#+BEGIN_` rule the existing
+  scanner already mirrors. The scanner now mirrors it, and all four files say so.
+  One measured divergence is disclosed rather than claimed away: delimiters of
+  the two forms that **interleave** rather than nest.
+- **N2 — closed.** v0.1.2 added § 5's inline-construct exclusion and qualified
+  Constraint 7. Three wordings still promised more than the predicate delivers
+  and are corrected: REQ-SW-011.3's "Inline constructs carry no such risk",
+  REQ-SW-001.7's unqualified "element", and REQ-SW-005's head clause, which now
+  says the hand-written cloze marker is the one inline construct it protects. The
+  glossary's "Arrow line" carried the pre-N1 definition and is restated.
+- **N3 — closed.** v0.1.2 corrected all five stale container sites; § 8's
+  sentence was left broken by that edit and is repaired.
+- **N4 — closed.** v0.1.2 narrowed the claim to three evasions. The helper
+  docstring obligation in REQ-SW-012.4 now carries the narrowing as well as the
+  three legs, matching `plan.md` DD-5 and AC-SW-013.
+- **N5 — closed in `spec.md` by v0.1.2; closed in `acceptance.md` here.**
+  REQ-SW-013.3 binds the note-type contract to the ON direction, and the current
+  tree supports the choice: `card_option_needs_cloze`'s message in
+  `modules/org/anki/imoogi-error.el` tells the user to switch an inherited option
+  off by giving it `nil` in the heading's own drawer, which is exactly what the
+  OFF path writes. AC-SW-014 lacked the case the finding required — an
+  `imoogi-Basic` heading with an inherited swift-on — and gains it.
+- **N6 — closed** by v0.1.2's rows 27-29; unchanged.
+- CHANGED: **SPEC-ANKICARD-005 propagated.** It landed after this SPEC was
+  written: every cloze-style render now runs split, **check**, compose, gate,
+  render, and an unpaired `#+BEGIN_EXTRA` marker skips the entry with
+  `extra_block_unbalanced` before composition. REQ-SW-008, REQ-SW-010, § 4, § 5's
+  supplementary-marker exclusion, § 8, and the edge-case table all described
+  the pre-005 behavior and are corrected. It joins `depends_on`; it is
+  `completed`.
+- CHANGED: the baseline moves from `08f7504` to `7d98ec0`, re-measured rather
+  than carried (`plan.md` § A.2): Go coverage is unchanged, and the Elisp suite
+  is now 645 tests, so the `≥ 435` threshold was stale.
+- ADDED: corpus rows 33-38 — footnote continuation, a footnote ended by two
+  blank lines, an unclosed `\begin`, a mid-body property drawer, the one-line
+  `\begin{…} … \end{…}`, and an ordinary drawer. The last two were edge-case
+  assertions with no corpus body, the shape iteration 2's N6 named.
+- CHANGED: every `go test -run` pattern in `acceptance.md` is anchored
+  (`^Name$`, `^(A|B)$`). `moai spec lint` reported all fifteen as
+  `VacuousTestAssertion`, since an unanchored pattern also selects longer test
+  names; the eight pre-existing names were confirmed to exist exactly first.
+- UNCHANGED: the 14/15 counts, the tier, DD-3, every requirement's obligation
+  other than those named above.
 
 ### v0.1.2 (2026-09-21)
 
@@ -215,6 +358,7 @@ its arrow lines earn. The heading title stays unwrapped above them as context.
 ### 1.2 Scope
 
 In scope: recognizing the three in-body arrow forms `:->`, `:<-`, and `:<->`;
+the classification that decides which lines can carry them (§ 3.1);
 the per-line numbering rule; the arrow's emphasis; the `swift_arrow_missing`
 diagnostic; the inline line break between consecutive arrow lines; the arrow's
 own class and its stylesheet rule; extending the option-taking entry point's
@@ -222,7 +366,7 @@ dispatch; the editor command that writes
 `ANKI_SWIFT` and that property's completion candidacy.
 
 Out of scope: multiline card rendering, every option SPEC-ANKICARD-002 already
-validates, and the six exclusions § 5 records.
+validates, and the seven exclusions § 5 records.
 
 ### 1.3 Reading order
 
@@ -244,15 +388,19 @@ entry bearing only a multiline option is option-bearing but is not a swift
 entry, and an entry whose swift option is in its falsy spelling is neither.
 
 **Remaining body** — what is left of a heading's body after the supplementary
-`#+BEGIN_EXTRA` blocks have been removed (`internal/anki/orgdoc/extra.go`,
-unchanged here). Every rule below that reads "the body" reads the remaining
-body, exactly as SPEC-ANKICARD-003 REQ-ML-009.1 fixed it.
+`#+BEGIN_EXTRA` blocks have been removed by the **checked** split
+(`internal/anki/orgdoc/extra.go`, unchanged here), which SPEC-ANKICARD-005 made
+reject a split that leaves a marker unpaired. Every rule below that reads "the
+body" reads the remaining body, exactly as SPEC-ANKICARD-003 REQ-ML-009.1 fixed
+it.
 
 **Arrow token** — one of the three literal strings `:->`, `:<-`, `:<->`.
 
-**Arrow line** — a line of the remaining body that § 3.1 admits: outside every
-block interior, not read as a list item, and matching the arrow expression with
-a non-empty side on each flank.
+**Arrow line** — a line of the remaining body that § 3.1 admits: a line the
+renderer's parser reads as ordinary paragraph text rendered in place
+(REQ-SW-001.5), whose first arrow token lies outside every hand-written marker's
+span (REQ-SW-005.1), and which matches the arrow expression with a non-empty
+side on each flank (REQ-SW-001.1-.4).
 
 **Left side / right side** — the two spans an arrow line contributes, being the
 text before and after the arrow token, each with surrounding whitespace
@@ -338,10 +486,24 @@ Where an entry is a swift entry, the back end shall take its cards from the
    this clause an entry could compose a marker around a non-breaking space — a
    blank with no answer behind it.
 5. An arrow line shall be a line the renderer's own parser reads as **ordinary
-   paragraph text**. The obligation is **definitional, not an enumeration**:
-   the composer shall derive the classification from the parser's own rules for
-   the vendored parser version, and shall **not** determine it by matching a
-   list of known line shapes.
+   paragraph text rendered in place** — part of a paragraph the renderer emits
+   at the line's own position in the document, not one an enclosing construct
+   relocates, suppresses, or passes through raw. The obligation is
+   **definitional, not an enumeration**: the composer shall derive the
+   classification from the parser's own rules for the vendored parser version,
+   and shall **not** determine it by matching a list of known line shapes.
+
+   "Rendered in place" is what makes the definition decide the cases a bare
+   "paragraph" does not. go-org builds a paragraph node inside a footnote
+   definition and inside a list item too, so "the line is in a paragraph node"
+   would admit both; neither is emitted at the line's position. Conversely a
+   paragraph inside an ordinary drawer, or one carrying a `#+NAME:`,
+   `#+CAPTION:`, or `#+ATTR_HTML:` line above it, is emitted in place as a
+   `<p>` — measured — and is admitted. So is one under a **standalone**
+   `#+RESULTS:` line, and one under a `#+RESULTS:` attached to a source block
+   whose export setting lets the result render. Under `:exports code` or
+   `:exports none`, the same paragraph renders to nothing (the source-block
+   result bullet below).
 
    That framing is load-bearing, because the failure it prevents is not a
    rendering blemish but a structural change to the author's document, and the
@@ -356,7 +518,10 @@ Where an entry is a swift entry, the back end shall take its cards from the
      marker correctly, so the single `#+BEGIN_`/`#+END_` pairing rule
      SPEC-ANKICARD-003's scanner already implements costs the quoted case.
      Reusing that one rule rather than writing a narrower one is deliberate: a
-     second pairing rule in one package would diverge invisibly.
+     second pairing rule for the **same** `#+BEGIN_` delimiter in one package
+     would diverge invisibly. (One rule per delimiter, as the LaTeX
+     environment below receives, is not that hazard: no delimiter is then
+     paired by two rules that could disagree about it.)
 
      A `\begin{…}` / `\end{…}` environment is the **same hazard under a
      different delimiter**, and neither existing mechanism sees it. Measured, a
@@ -366,22 +531,23 @@ Where an entry is a swift entry, the back end shall take its cards from the
      interior line read **on its own** is ordinary paragraph text, so nothing
      line-local catches it either.
 
-     The interior shall therefore be identified **from the parser's own
-     whole-body classification of the environment**, not by widening the
-     existing `#+BEGIN_`/`#+END_` pairing. The two are not one rule with two
-     spellings: the existing pairing matches a captured block name and requires
-     the same name on the `#+END_` line, while a LaTeX environment uses
-     different delimiters, a different capture, and admits a starred form
-     (`\begin{align*}`). An implementer told to "widen the regex" finds the
-     capture groups do not line up. Parsing the body and taking the
-     environment's extent from the node the parser already produces is what
-     this SPEC's own probe measured, and it needs no second pairing grammar.
+     The parser's rule for the environment is line-anchored and has the same
+     shape as its `#+BEGIN_` rule: an environment opens on a line holding only
+     `\begin{NAME}` (surrounding whitespace allowed), closes at the next line
+     holding only `\end{NAME}` with the same name, and an opening with no
+     matching close opens nothing — the line renders as plain text. The whole
+     line is matched case-insensitively, the `\begin` and `\end` keywords as
+     well as the name: measured, `\BEGIN{align}` … `\END{align}` is a raw
+     environment. A starred name (`align*`) is a name like any other. The
+     interior shall be identified by **mirroring that rule** in the scanner, as
+     a second delimiter form beside the `#+BEGIN_` one, exactly as the existing
+     scanner mirrors the `#+BEGIN_` rule. That is not a second copy of the
+     `#+BEGIN_` rule — the delimiters and the name capture differ — and it needs
+     no source position from the parser's tree, which carries none.
 
      The one-line form `\begin{align} … \end{align}` is genuinely a paragraph
-     and is **not** excluded. A block delimiter nested inside a LaTeX
-     environment, or the reverse, is not handled by either mechanism and is out
-     of scope: no measured shape reaches it, and guessing at a nesting rule is
-     the kind of invention the last two iterations were spent removing.
+     and is **not** excluded: the anchored opening does not match a line that
+     carries anything after the brace.
    - **List content** — a bullet line, and every line the list-continuation
      rule attaches to one. A bullet line is excluded because its content begins
      at an offset the parser computes, which SPEC-ANKICARD-003 REQ-ML-001.3
@@ -400,6 +566,71 @@ Where an entry is a swift entry, the back end shall take its cards from the
      to write a container line at column zero, which measured **terminates the
      list**. REQ-SW-011.3 removed that mechanism, so the hazard no longer
      applies and is recorded here as history rather than as the reason.
+   - The **continuation of a footnote definition**. A footnote definition does
+     not end at its own line. It opens on a line that starts at column zero
+     with `[fn:LABEL]`, where LABEL is a run of ASCII letters, digits, `_`, or
+     `-`, followed by whitespace or by the end of the line. Measured, `[fn:메모]
+     노트` (a Korean label), `[fn:1]노트` (no space), and ` [fn:1] 노트`
+     (indented) are **not** definitions, and the line below each renders in
+     place. go-org continues a definition across the lines below it until the
+     second of two consecutive blank lines, a headline, or another
+     footnote-definition line. That end condition is tested only **between**
+     the constructs the definition holds, never inside a `#+BEGIN_` block or a
+     LaTeX environment nested in it, because each of those runs to its own
+     close whatever blank lines it contains. A list or an ordinary drawer
+     nested in it does not carry it past a blank pair.
+
+     Measured: `[fn:1] 메모` followed by `도쿄 :-> 일본` is one footnote
+     definition rendering to **nothing** (and, when something references the
+     footnote, relocating to the footnotes section at the document's end), even
+     with one blank line between the two; with two blank lines between them the
+     arrow line is an ordinary paragraph again. A `#+BEGIN_SRC`, a
+     `#+BEGIN_QUOTE`, or a `\begin{align}` holding two blank lines, nested
+     between the opening and the arrow line, still renders the arrow line to
+     nothing. A list or an ordinary drawer holding two blank lines in the same
+     position leaves it in place.
+   - The interior of a **property drawer**. A line holding only `:PROPERTIES:`
+     (name compared case-insensitively, surrounding whitespace allowed) opens a
+     property drawer **only when** every line after it, up to the next line
+     holding only `:END:` (also case-insensitive), is a property line — `:KEY:`
+     or `:KEY: value`, the key a run of non-whitespace characters — with no
+     blank line among them, and that `:END:` is reached. Such a drawer renders
+     nothing at all. Otherwise the `:PROPERTIES:` line is plain text, nothing
+     is suppressed, and every line below it renders by its own classification.
+     Measured: a non-property line inside, a blank line inside, or a missing
+     `:END:` each leaves `:X: 도쿄 :-> 일본` or `도쿄 :-> 일본` rendering as an
+     in-place paragraph. A `:PROPERTIES:` line inside another drawer opens
+     nothing either (measured: it renders as text, and so does the property
+     line below it). A drawer of any other name renders its interior as
+     in-place paragraphs and is admitted. The scan strips the heading's own
+     drawers before the body is read, so the property drawer is reachable only
+     when written mid-body — reachable all the same, and its interior line read
+     on its own is a paragraph.
+   - The **result attached to a source block**. When a `#+BEGIN_SRC` block
+     closes (the block rule above), go-org looks past any blank lines for a
+     line beginning `#+RESULTS:` (case-insensitive, leading whitespace
+     allowed). If the first non-blank line is one, the parser attaches it to
+     the block as the block's result, together with the **one** construct it
+     reads next, starting at the line immediately after `#+RESULTS:`. go-org's
+     HTML writer then emits that result only when the block's header does
+     **not** carry an `:exports` value of `code` or `none`. Under either value,
+     the attached construct renders to nothing, wherever it would otherwise
+     have been an in-place paragraph.
+
+     The rule is the parser's and the writer's, and its edges are measured
+     rather than assumed:
+     - A paragraph that begins on the blank line directly after `#+RESULTS:`
+       runs on through the text lines below it. So one blank line between
+       `#+RESULTS:` and the arrow line does not protect the arrow line. Two
+       blank lines do.
+     - A `:RESULTS:` drawer is the one construct, and it is suppressed whole.
+     - A non-blank line between `#+END_SRC` and `#+RESULTS:` detaches the
+       result, and so does any block kind other than `SRC`.
+     - The export value is read as go-org parses the header. `:exports CODE`,
+       `:EXPORTS code`, and a header with no language token
+       (`#+BEGIN_SRC :exports code`) each leave the result rendering in place.
+     - `:exports results`, `:exports both`, and an absent `:exports` render it
+       in place too.
    - Every **context-free** shape the parser classifies as something other
      than a paragraph. Measured at v1.9.1 these include a table row
      (`| A :-> B |`, whose cell delimiters the right side would swallow into a
@@ -409,49 +640,94 @@ Where an entry is a swift entry, the back end shall take its cards from the
      reached without a block), and a **footnote definition**
      (`[fn:1] A :-> B`, which renders to **nothing at all**).
 
-     The comment line and the footnote definition share the worst property:
-     they render nothing, so an arrow composed there produces a note whose only
-     markers are invisible, which Anki refuses as a cloze note with no
-     deletion — and nothing announces it. That two of the six behave this way,
-     and that the second was found only after the first list was written, is
+     The comment line, the footnote definition, the property drawer, and the
+     suppressed source-block result share the worst property: they render
+     nothing, so an arrow composed there produces a marker nobody sees — and
+     where it is the entry's only marker, a note Anki refuses as a cloze note
+     with no deletion, with nothing announcing it. Four shapes behave this way,
+     and each was found only after an earlier list had been written. That is
      the argument for the definitional rule rather than for a longer list.
-6. The classification of sub-clause 5 shall be derived from the scanning the
-   renderer already performs and from the parser's own node classification,
-   never from a list of named line shapes. This sub-clause is the
-   implementation half of sub-clause 5's obligation and shall not narrow it.
+6. The classification of sub-clause 5 shall be derived from the parser's own
+   classification rules for the vendored version, never from a list of named
+   line shapes. This sub-clause is the implementation half of sub-clause 5's
+   obligation and shall not narrow it: the two halves below are split by
+   whether the answer depends on the lines around it, and neither is a closed
+   set.
 
-   Two halves, split by whether the answer depends on the lines around it:
-
-   - **Context-dependent classes** — the block interior, the LaTeX
-     environment's interior, and list content. These cannot be decided from one
+   - **Context-dependent classes** — a line whose classification depends on a
+     construct opened on an earlier line. These cannot be decided from one
      line: measured, an indented arrow line reads as a paragraph on its own and
-     as list content after a bullet, and a line inside a source block reads as
-     a paragraph on its own. SPEC-ANKICARD-003's scanner already carries the
-     pairing, the bullet grammar, and the list-continuation rule. The LaTeX
-     environment is the one class none of the three covers, and sub-clause 5
-     fixes its extent as the parser's own whole-body classification rather than
-     as a second pairing grammar.
-   - **Context-free classes** — everything else. The composer shall obtain the
-     classification from the **parser's own node classification** for the line,
-     rather than by testing it against named shapes. Measured, this answers
-     correctly for every context-free shape sub-clause 5 lists, including the
-     two that no earlier list named.
+     as list content after a bullet, a line inside a source block reads as a
+     paragraph on its own, and so does a line inside a LaTeX environment, a
+     footnote definition's continuation, a property drawer, or a source
+     block's suppressed result. The scanner shall identify them by
+     **mirroring the parser's own opening-and-continuation rule — and, where
+     the renderer's writer decides whether a construct is emitted, the
+     writer's rule — for every construct that can make a later line something
+     other than in-place paragraph text**. SPEC-ANKICARD-003's scanner already
+     mirrors three such rules — the `#+BEGIN_` pairing, the bullet grammar,
+     and the list-continuation rule — and they are reused rather than copied.
+     The set is defined by that rule, not by a list. As read for this
+     revision, the constructs it reaches at go-org v1.9.1 beyond the reused
+     three **include** the four sub-clause 5 measures: the LaTeX environment,
+     the footnote definition, the property drawer, and the result attached to
+     a source block. That list is informative, and a construct the rule
+     reaches that it omits is still bound by the rule.
 
-   An earlier draft of this sub-clause enumerated four context-free shapes and
-   said "only" those were new. That enumeration is struck: it contradicted
-   sub-clause 5's prohibition in the same document, and it was measurably
-   incomplete — the fixed-width line and the footnote definition are both
-   outside it, and both produce a failure sub-clause 5 names as its reason for
-   existing. No replacement list is offered, and none should be: the search for
-   further shapes is not known to be exhaustive, which is precisely the
-   condition a definitional rule tolerates and a list does not.
+     The mirrored rules shall be composed in one fixed order. First, the
+     block regions (the reused `#+BEGIN_` pairing, unchanged) and the LaTeX
+     environment regions are each computed over the whole remaining body.
+     Next, the footnote-definition rule and the source-block-result rule run
+     over the body, reading those regions rather than the raw lines. The
+     property-drawer and list rules are computed on their own. A line is
+     excluded when **any** rule excludes it. § 5's interleaving entry states
+     its outcomes for this composition.
+   - **Context-free classes** — a line whose classification depends on that
+     line alone. The classification shall come from the parser's own
+     classification of the line, not from testing it against named shapes.
+     How the composer obtains it is the implementer's choice; `plan.md` DD-4
+     records one route measured to answer correctly for every context-free
+     shape sub-clause 5 lists, including the two no earlier list named. No
+     route that maps a node of the parser's tree back to a source line is
+     available, because no node carries a position.
+
+   Where the informative list comes from. A construct that governs **later**
+   lines is opened by a case of the parser's construct dispatch, which at
+   v1.9.1 is a switch of thirteen cases, and the list in sub-clause 5 was
+   **read** from that switch case by case rather than collected by probing.
+   The reading is not a proof that the list is complete. A case can govern
+   lines beyond its own delimiters, and whether those lines are emitted can
+   be decided by the writer rather than the parser. The block case does both:
+   it attaches a following `#+RESULTS:` to a source block, and the writer
+   suppresses it under `:exports code|none`. An earlier reading of the same
+   switch missed that. The obligation is therefore the rule above. A later
+   parser version, or a case read wrongly, is covered by the rule and not by
+   the list.
+
+   Three drafts of this sub-clause narrowed the obligation and are recorded so
+   the shape is not repeated. One enumerated four context-free shapes and said
+   "only" those were new; the fixed-width line and the footnote definition were
+   outside it. The next listed three context-dependent classes as the set and
+   located the LaTeX environment through the parser's tree, which carries no
+   positions; the footnote definition's continuation and the property drawer
+   were outside it. The third said the remaining context-dependent constructs
+   at v1.9.1 "are the three" and called its reading of the switch a
+   derivation; the source block's attached result was outside it.
 7. Content that is not an arrow line — a lead paragraph, a list, a block, a
    table, an ordinary sentence between two arrow lines — shall render as it
    does today, in document order, outside every generated marker. It is
    context, and dropping or restructuring it would be a content change the user
    did not ask for. The rule binds the content's **text, its document order,
-   and the element it renders inside**: composition shall write nothing that
-   changes which element a non-arrow line belongs to.
+   and the block-level element it renders inside**: composition shall write
+   nothing that changes which paragraph, list, block, or other block-level
+   element a non-arrow line belongs to.
+
+   The rule binds **non-arrow** lines, and it is stated at block level on
+   purpose. An arrow line's own inline constructs — a link, a code or verbatim
+   span, emphasis, an author's export snippet, an inline footnote — are split
+   by composition when the arrow sits inside one; that is § 5's
+   inline-construct exclusion, measured there, and no clause of this SPEC
+   promises otherwise.
 
 #### REQ-SW-002 [Where]
 Where a swift entry's remaining body yields no arrow line, the back end shall
@@ -462,9 +738,10 @@ reject that entry with the diagnostic code `swift_arrow_missing`:
    and the Org heading untouched — the same treatment every other skip
    diagnostic already receives.
 2. The obligation shall bind regardless of what the body does contain. A body
-   whose every arrow sits in list content, inside a block, in a table, on a
-   line with one empty side, or inside a hand-written marker's span yields no
-   arrow line and is rejected: a heading that asks for a swift card and
+   whose every arrow sits where REQ-SW-001.5 excludes it — in list content,
+   inside a block or a LaTeX environment, in a table, in a footnote
+   definition — or on a line with one empty side, or inside a hand-written
+   marker's span, yields no arrow line and is rejected: a heading that asks for a swift card and
    produces none is the case this diagnostic exists to report, and admitting it
    silently would leave the user with a note that reviews nothing.
 
@@ -496,7 +773,15 @@ generated marker:
 
 #### REQ-SW-005 [Ubiquitous — negated]
 Composition shall not disturb a hand-written marker already present in the
-title or the remaining body:
+title or the remaining body.
+
+The head clause binds the hand-written **cloze marker** and no other authored
+construct. The cloze marker is the one inline construct this SPEC protects,
+because it is the one composition already reads in its own vocabulary — the
+numbering base and the wrap decision both scan for it — so protecting it needs
+no second grammar. The other inline constructs an arrow can sit inside are § 5's
+exclusion, with their measured cost; reading this requirement as protecting them
+would promise what no sub-clause below delivers.
 
 1. A line whose first arrow token lies **inside a hand-written marker's span**
    shall **not be an arrow line**. This clause, not sub-clause 2, is what makes
@@ -590,13 +875,19 @@ shall be written as an Org **export snippet** rather than as raw HTML:
 ### 3.3 Pipeline placement
 
 #### REQ-SW-008 [Ubiquitous]
-Composition shall sit between the supplementary-content split and the
+Composition shall sit between the checked supplementary-content split and the
 cloze-marker gate, in the fixed order SPEC-ANKICARD-003 REQ-ML-009 established
-— split, compose, gate, render:
+and SPEC-ANKICARD-005 REQ-AKX-004 extended — split, check, compose, gate,
+render:
 
-1. Composition shall read the **remaining body**, so supplementary content can
-   never become an arrow line. An arrow inside a `#+BEGIN_EXTRA` block is
-   supplementary content and is not a card.
+1. Composition shall read the **remaining body** of the checked split, so
+   supplementary content can never become an arrow line. An arrow inside a
+   `#+BEGIN_EXTRA` block is supplementary content and is not a card. A split
+   that leaves an `#+BEGIN_EXTRA` or `#+END_EXTRA` line unpaired is rejected by
+   the check with `extra_block_unbalanced` before composition runs, so no
+   stray marker line ever reaches the arrow scan. The swift path shall take
+   that check from its existing single implementation, as the other two
+   cloze-style paths do, rather than calling the unchecked split.
 2. Composition shall **not** collapse blank-line runs. The collapse
    SPEC-ANKICARD-003 REQ-ML-009.2 requires exists to keep one authored answer
    **list** from being split in two by the gap a removed supplementary block
@@ -641,7 +932,12 @@ three codes for the one-diagnostic-per-entry slot. It is fifth by construction
 rather than by a fifth entry in the gate's fixed order: the gate runs before the
 render, and this condition is detectable only during composition. It can never
 co-occur with `multiline_answer_missing`, because the gate rejects an entry
-carrying swift beside a multiline option before either renderer runs.
+carrying swift beside a multiline option before either renderer runs. And it can
+never co-occur with `extra_block_unbalanced`, the render-time code
+SPEC-ANKICARD-005 added: that check runs on the split, before composition
+(REQ-SW-008), so an entry it rejects never reaches the arrow scan, and the
+reported code is `extra_block_unbalanced` even where the body also carries no
+arrow line.
 
 ### 3.4 Presentation, front end, and non-interference
 
@@ -680,8 +976,11 @@ carry a class the card stylesheet can target:
    list content, so that particular shape can no longer arise; this sub-clause
    is the second, independent guard, because the hazard belongs to the
    insertion mechanism rather than to the list, and the next multi-line
-   construct nobody thought of would meet it again. Inline constructs carry no
-   such risk: measured, the emphasis and the break leave a list item intact.
+   construct nobody thought of would meet it again. The emphasis and the break
+   carry no such risk **to a line's block-level element**: measured, they leave
+   a list item intact. They can still split an inline construct the arrow sits
+   inside, which is § 5's inline-construct exclusion and is not this
+   sub-clause's claim.
 
 #### REQ-SW-012 [Ubiquitous — negated]
 The back end shall not change what a **non**-swift entry renders to:
@@ -718,8 +1017,10 @@ The back end shall not change what a **non**-swift entry renders to:
    three together exclude the three evasions each leg is aimed at: the first
    excludes hashing the wire field, the second excludes ignoring the option
    entirely, and the third excludes introducing a new parameter for it. The
-   trio, not the pair, shall be what REQ-SW-012.2 is verified by, and the helper
-   docstring this sub-clause requires shall name all three legs.
+   trio, not the pair, shall be what REQ-SW-012.2 is verified by. The helper
+   docstring this sub-clause requires shall name all three legs **and** the
+   three evasions they exclude, stated as three rather than as every route, so
+   the narrowing is read where the probe is.
 
    The trio does **not** exclude every conceivable route, and the claim is
    pitched at that strength deliberately, because the looser form is the same
@@ -765,6 +1066,14 @@ completion candidates:
    onto a heading that carried no note type, as the consequence of *declining* a
    card option, would create a card marker the user did not ask for.
 
+   The current tree argues for this resolution rather than against it. The
+   message the front end shows for `card_option_needs_cloze`
+   (`modules/org/anki/imoogi-error.el`) tells the user, for an option inherited
+   from an ancestor or a file-level line, to switch it off for the heading alone
+   by giving it the value `nil` in its own drawer. That is exactly the write the
+   OFF path performs; binding the contract to the OFF path too would make the
+   command refuse the very fix the diagnostic prescribes.
+
    The ambiguity is inherited rather than introduced: the incremental toggle
    reaches the same helper on its own off path and has the same shape. This SPEC
    resolves it for the command it owns and changes nothing about the existing
@@ -785,20 +1094,39 @@ completion candidates:
 
    The note-type helper's own failure message shall stop naming multiline
    options, since it now reports for a swift heading too.
-4. Where the heading resolves **any** multiline option to an on value, the
-   command shall report the conflict and shall write nothing unless the user
-   confirms. On confirmation it shall clear **every** multiline option that is
-   on — writing the falsy spelling into the heading's own drawer for each,
-   never deleting the property — and the report shall name each of them. Both
-   `ANKI_DIRECTION` and `ANKI_INCREMENTAL` can be on at once, and the existing
-   swift-conflict check clears one property only because it has one to clear;
-   the mirror has two, so "clear it" would leave the heading in the very state
-   the check exists to prevent.
+4. The multiline conflict check shall bind the **on** direction only, as
+   sub-clause 3's note-type contract does. Where the command is turning the
+   option on and the heading resolves **any** multiline option to an on value,
+   the command shall report the conflict and shall write nothing unless the
+   user confirms. On confirmation it shall clear **every** multiline option
+   that is on — writing the falsy spelling into the heading's own drawer for
+   each, never deleting the property — and the report shall name each of
+   them. Both `ANKI_DIRECTION` and `ANKI_INCREMENTAL` can be on at once, and
+   the existing swift-conflict check clears one property only because it has
+   one to clear; the mirror has two, so "clear it" would leave the heading in
+   the very state the check exists to prevent.
 
    This is the **mirror** of the swift-conflict check the multiline commands
    already perform, and it exists for the same reason: writing swift beside an
    active direction would create exactly the entry SPEC-ANKICARD-002's conflict
    rule rejects, at the moment the user believed they had configured a card.
+
+   Where the command is turning the option **off**, the check shall not run.
+   The command shall write the falsy `ANKI_SWIFT` into the heading's own
+   drawer, shall fire no multiline-conflict prompt, and shall read, clear, or
+   write no multiline option. The heading the OFF path reaches with a
+   multiline option on is the one SPEC-ANKICARD-002's gate already rejects
+   with `card_option_conflict`. That code's message
+   (`modules/org/anki/imoogi-error.el`) tells the user to remove one of the
+   two, and to switch an inherited option off by giving it `nil` in the
+   heading's own drawer. Turning swift off **is** that resolution. Running the
+   check here would ask a user who wants to keep the multiline card whether to
+   clear it. Declining would write nothing, so the user could not opt out of
+   swift through the command, and confirming would clear the very option they
+   meant to keep. That is sub-clause 3's argument, applied to the second gate
+   on the same path. The existing `imoogi-anki--resolve-swift-conflict` runs
+   unconditionally, and mirroring its shape without this clause would
+   reintroduce the defect.
 5. `ANKI_SWIFT` shall join the property-name completion candidates, discharging
    the exclusion SPEC-ANKICARD-003 REQ-ML-013.5 recorded — that a property's
    candidacy travels with the command that writes it, and that this card owns
@@ -826,9 +1154,11 @@ consumed exactly as it left them at `08f7504`, and two of its deferrals are
 discharged:
 
 - **Consumed unchanged.** The option-taking entry point and its delegation to
-  the unwidened one (REQ-ML-010.1); the fixed pipeline order (REQ-ML-009); the
-  supplementary split it composes after; the block-interior pairing rule and
-  the bullet grammar its scanner carries; the brace-safety rule and its single
+  the unwidened one (REQ-ML-010.1); the fixed pipeline order (REQ-ML-009), as
+  SPEC-ANKICARD-005 since extended it with the unpaired-marker check; the
+  supplementary split it composes after, taken in that checked form; the
+  block-interior pairing rule, the bullet grammar, and the list-continuation
+  rule its scanner carries; the brace-safety rule and its single
   implementation (REQ-ML-007); the hand-written-marker conventions — not
   wrapping a marked span, and numbering above the highest marker (REQ-ML-006.1
   and REQ-ML-006.2). This SPEC defines no second copy of any of them.
@@ -912,6 +1242,42 @@ fold in, and states where it actually belongs.
   the exclusion to the verbatim block types would mean a second pairing rule in
   one package, whose divergence from the first would be invisible until a card
   rendered wrong.
+- Matching go-org where a `#+BEGIN_` block and a `\begin{…}` environment
+  **interleave** rather than nest — one construct's closing line falling
+  inside the other. The outcomes below are stated for the composition
+  REQ-SW-001.6 fixes: block and environment regions computed independently
+  over the whole body, with the excluded set taken as their union. The parser
+  side of each is measured. The scanner side is reasoned from that composition
+  and from `blockRegions`' code, because no scanner exists yet to measure.
+
+  Two nestings were measured and agree: an environment wholly inside a
+  `#+BEGIN_SRC`, and a `#+BEGIN_SRC` wholly inside an environment. go-org
+  renders each as one raw interior, and the union excludes each interior. That
+  claim is no wider than those two shapes. Where a footnote definition holds a
+  nested block or environment, agreement rests on REQ-SW-001.5's footnote rule
+  skipping those regions, which is what corpus row 41 pins.
+
+  Three interleavings, each of which ends with the arrow line `A :-> B`:
+  - **Environment first** (`\begin{align}`⏎`#+BEGIN_QUOTE`⏎`\end{align}`⏎`A :-> B`⏎`#+END_QUOTE`).
+    go-org renders the environment, then `A :-> B` as an in-place paragraph,
+    then the orphan `#+END_QUOTE` as text. The union pairs the quote across
+    the environment's close, so it **over-excludes** the arrow line.
+  - **Source block first** (`#+BEGIN_SRC go`⏎`\begin{align}`⏎`#+END_SRC`⏎`A :-> B`⏎`\end{align}`).
+    go-org copies the `\begin{align}` line into the source interior, renders
+    `A :-> B` in place, and renders the orphan `\end{align}` as text. The
+    independent environment scan opens on the line inside the source
+    interior, so the union **over-excludes** the arrow line here too.
+  - **Quote first** (`#+BEGIN_QUOTE`⏎`\begin{align}`⏎`#+END_QUOTE`⏎`A :-> B`⏎`\end{align}`).
+    go-org's environment scan runs past the quote's close, the quote fails and
+    renders as text, and the arrow line is raw environment interior. The union
+    excludes the arrow line through the environment region, so it **agrees**.
+
+  In each of these shapes, the composition's divergence from the parser is
+  over-exclusion: a withheld card, or `swift_arrow_missing` where the line was
+  the body's only arrow line. It never composes a marker the card hides.
+  Matching the parser exactly would mean modelling its failed-block
+  backtracking, a second parser in one package, for shapes no author writes on
+  purpose. The over-exclusion is accepted instead.
 
 ### Out of Scope — Arrows inside an inline construct
 
@@ -969,15 +1335,16 @@ fold in, and states where it actually belongs.
   per-line notes as the rejected alternative; a swift heading is one note
   carrying several cards, which is what Anki's cloze model already provides.
 
-### Out of Scope — The dangling supplementary marker
+### Out of Scope — Unpaired supplementary markers
 
-- Repairing what a nested or asymmetric `#+BEGIN_EXTRA` leaves in the remaining
-  body. That shape is backlog card **t16**, which owns the split's nesting
-  handling and the new diagnostic it needs. This SPEC inherits whatever the
-  split produces and treats a stray marker line as ordinary non-arrow content,
-  exactly as REQ-SW-001.7 says — which for swift is a smaller consequence than
-  it was for the multiline card, because swift reads independent lines and a
-  stray line between two arrow lines ends no list.
+- Detecting, reporting, or repairing a nested or asymmetric `#+BEGIN_EXTRA`.
+  SPEC-ANKICARD-005 (backlog card t16, `completed`) owns that: its check runs
+  on the split and skips the entry with `extra_block_unbalanced` before
+  composition. This SPEC adds no handling of its own and re-detects nothing; it
+  takes the checked split as REQ-SW-008.1 requires, so a stray marker line never
+  reaches the arrow scan. Earlier drafts of this entry, written before that SPEC
+  landed, said a stray marker would be read as ordinary non-arrow content; on
+  the current tree the entry is skipped instead.
 
 ## 6. Constraints
 
@@ -1021,8 +1388,14 @@ leaves alone despite sitting on the path.
 The arrow-line identification of § 3.1 and the composition rules of § 3.2, in a
 new file beside the existing multiline composition. Carries the typed
 arrow-missing error REQ-SW-002 names. Reuses the line splitter, the block-region
-pairing, the bullet grammar, the brace-safety helper, the marker predicate, and
-the highest-number scan from the multiline file rather than copying any of them.
+pairing, the bullet grammar, the list-continuation rule, the brace-safety
+helper, the marker predicate, and the highest-number scan from the multiline
+file, and the checked split from `extra.go`, rather than copying any of them.
+New here: the marker-extent scan, the mirrored rules for the context-dependent
+constructs REQ-SW-001.6 reaches (at v1.9.1 these include the LaTeX environment,
+the footnote definition, the property drawer, and the result attached to a
+source block), their fixed composition order, and the context-free line
+classification.
 
 ### [CHANGED] Renderer card options and entry point (`internal/anki/orgdoc`)
 
@@ -1040,7 +1413,9 @@ in either direction.
 ### [CHANGED] Planner (`internal/anki/planner`)
 
 The option reader maps the resolved swift value onto the renderer's carrier, and
-the render-error mapping gains the new code beside the two it already carries.
+the render-error mapping gains the new code beside the three it already carries
+(`cloze_marker_missing`, `multiline_answer_missing`, and SPEC-ANKICARD-005's
+`extra_block_unbalanced`).
 The validation gate, the field-resolution layer, the deck fallback, and the
 add / update / no-op partition are untouched.
 
@@ -1090,11 +1465,15 @@ yields.
 ## 8. Dependencies
 
 - **SPEC-ANKICARD-003** — landed on `main` at commit `08f7504`. Every surface
-  this SPEC consumes — the option-taking entry point, the pipeline order, the
-  scanner's block and bullet rules, the brace-safety helper, the
-  and the hand-written-marker conventions — is in that commit. The
-  container-attribute mechanism is present there too and is deliberately **not**
-  consumed (§ 4).
+  this SPEC consumes from it — the option-taking entry point, the pipeline
+  order, the scanner's block, bullet, and list-continuation rules, the
+  brace-safety helper, and the hand-written-marker conventions — is in that
+  commit. At `7d98ec0` all of them are unchanged except the pipeline order,
+  which SPEC-ANKICARD-005 extended with the unpaired-marker check
+  (`git diff 08f7504 7d98ec0 -- internal/anki/orgdoc/multiline.go` touches only
+  `composeMultiline`'s comment and `RenderWithOptions`). The
+  container-attribute mechanism is present there too and is deliberately
+  **not** consumed (§ 4).
 
   Its frontmatter reads `in-progress`, so the run-phase dependency pre-flight
   will find it unfulfilled. Proceeding is authorized on the same footing each
@@ -1108,8 +1487,11 @@ yields.
 - **SPEC-ANKICARD-002** — landed at `6f3ae6c`. The validation gate this SPEC's
   § 3 preamble relies on, the recognized value sets, and the wire fields are all
   in that commit.
-- **Backlog card t16** — not a dependency. It owns the dangling supplementary
-  marker; this SPEC neither waits for it nor repairs the shape (§ 5).
+- **SPEC-ANKICARD-005** (backlog card t16) — landed on `main`, frontmatter
+  `completed`, present at `7d98ec0`. It supplies the checked split and the
+  `extra_block_unbalanced` code this SPEC's pipeline runs through (REQ-SW-008,
+  REQ-SW-010). This SPEC consumes the check unchanged and repairs nothing it
+  owns (§ 5).
 - No new third-party dependency. The renderer keeps go-org at its current
   version; `plan.md` DD-1, DD-2, and DD-3 record the probes run against it.
 

@@ -8,15 +8,27 @@ and DD-9.
 DD-9 was added at plan audit iteration 1 and is placed next to the marker rules
 it belongs with rather than at the end, so § B's order is by topic and
 reversibility, not by number. DD-3 and DD-4 were rewritten in the same
-iteration; both now record the decision they replace.
+iteration; both now record the decision they replace. DD-4 was revised again
+for audit iteration 3 (spec.md v0.1.3): the LaTeX environment is located by
+mirroring the parser's line rule, and two further context-dependent constructs
+are named. It was revised once more for spec.md v0.1.4, after audit iteration 3:
+- the context-dependent set is stated by rule, not as a closed list;
+- a fourth construct, a source block's attached result, is mirrored;
+- the footnote-definition and property-drawer rules are restated as the
+  parser's own;
+- the composition order of the mirrored rules is fixed.
+
+DD-10 gained the OFF-path exemption for the mirror conflict check.
 
 ## § A Context
 
 ### A.1 What already exists
 
 Commit `08f7504` (SPEC-ANKICARD-003) landed the multiline renderer and, with it,
-every mechanism this SPEC needs except the arrow rule itself. This SPEC consumes
-it and adds no second copy of any of it:
+every mechanism this SPEC needs except the arrow rule itself. SPEC-ANKICARD-005
+then added the unpaired-marker check to the split; the tree this plan is
+measured against is `7d98ec0`, which carries both. This SPEC consumes them and
+adds no second copy of any of it:
 
 | Surface | Where | This SPEC's use |
 |---|---|---|
@@ -25,22 +37,31 @@ it and adds no second copy of any of it:
 | `splitLines`, `blockRegions`, `readBullet`, and `scanAnswerList`'s list-continuation rule | same | Reused for the line scan, the block exclusion, and the list-content exclusion. The continuation rule is what a line-local bullet test misses (DD-4). |
 | `clozeSafeText`, `hasClozeMarker`, `wrappable`, `highestClozeNumber` | same, and `orgdoc.go` | Reused verbatim for brace safety, the marker predicate, and the numbering base. |
 | `containerClassLine`'s mechanism (`#+ATTR_HTML: :class …`) | same | **NOT reused** — it is a column-zero insertion, which DD-3 measures terminates a list. The class rides the emphasis element instead. |
-| `splitExtraBlocks` | `internal/anki/orgdoc/extra.go` | Composition runs after it, on the remaining body. |
-| `readCardOptions`, `renderError` | `internal/anki/planner/multiline.go` | Extended: one field read, one error case. |
+| `splitExtraBlocksChecked` (SPEC-ANKICARD-005) | `internal/anki/orgdoc/extra.go` | Called by the swift branch exactly as `Render` and the multiline branch call it; composition runs after it, on the remaining body. An unpaired marker returns `*ExtraBlockUnbalancedError` before composition. The unchecked `splitExtraBlocks` is not called directly. |
+| `readCardOptions`, `renderError` | `internal/anki/planner/multiline.go` | Extended: one field read, one error case beside the three `renderError` already maps. |
 | `validateCardOptions`, `readBoolean`, `isClozeStyle` | `internal/anki/planner/card_options.go` | Relied on. Read-only; no rule added. |
 | `imoogi-anki--ensure-cloze-type` | `modules/org/24-anki.el` | Reused by the new command for the note-type contract. Its failure message is generalized to stop naming multiline options. |
 | `imoogi-anki--write-card-option` | same | **NOT reused** — it runs the swift-conflict check unconditionally, which is backwards for the swift toggle's OFF path (DD-10). Either the note-type step is factored out of it, or it gains a parameter naming which conflict check to run. |
 | `imoogi-props-resolve-{swift,direction,incremental}` | `modules/org/anki/imoogi-props.el` | Read by the new command. |
 | `render-golden.json`, `multiline-golden` corpus, `TestRenderSignatureIsUnchanged` | `internal/anki/orgdoc` | Left byte-identical. Extended by a third corpus. |
 
-### A.2 Baseline at `08f7504`
+### A.2 Baseline at `7d98ec0`
 
-Measured by the delegating session, not by this plan: `go test ./... -count=1`
-exit 0; coverage `orgdoc` 100.0%, `planner` 92.8%, `hashing` 100.0%, `model`
-98.4%; `make lint` 0; `make fmt-check` 0; `make ci-local` 0; `make test-elisp`
-exit 0 reporting `Ran 435 tests, 433 results as expected, 0 unexpected, 2
-skipped`. `acceptance.md`'s **Quality Gate Criteria** table carries the
-non-regression thresholds over this baseline.
+Re-measured for spec.md v0.1.3 in the `t15` worktree at `7d98ec0`, a clean
+tree, because the earlier `08f7504` figures predate SPEC-ANKICARD-005:
+
+- `go test -count=1 -cover ./internal/anki/...` — every package `ok`; coverage
+  `orgdoc` 100.0%, `planner` 92.8%, `hashing` 100.0%, `model` 98.4%. Unchanged
+  from `08f7504`.
+- `make lint` exit 0; `make fmt-check` exit 0.
+- `make test-elisp` exit 0 reporting `Ran 645 tests, 634 results as expected, 0
+  unexpected, 11 skipped`. The `08f7504` figure was 435; the suite has grown
+  since, so the old count is no longer a non-regression floor.
+
+Not re-measured at `7d98ec0`: `go test ./... -count=1` over the whole module,
+`make ci-local`, and the Windows cross-build. The pre-flight in § C runs them
+before any code change. `acceptance.md`'s **Quality Gate Criteria** table
+carries the non-regression thresholds over this baseline.
 
 ### A.3 PRESERVE list
 
@@ -61,8 +82,10 @@ Do not modify, on any milestone:
 - `modules/org/anki/imoogi-{props,scan,process}.el` — resolution, scan, and
   serialization are complete as SPEC-ANKICARD-002 left them.
 - `.moai/specs/SPEC-ANKICARD-001/`, `-002/`, `-003/`.
-- **Another actor's files in this checkout**, named explicitly because they are
-  modified in the working tree and are not this SPEC's:
+- **Files another actor was editing in the shared checkout** when this plan was
+  first written at `08f7504`. They are tracked, and unmodified in the `t15`
+  worktree at `7d98ec0`; they stay on this list because they are not this
+  SPEC's, wherever the run phase happens to execute:
   `modules/org/29-org-roam.el`, `tests/org-roam-test.el`,
   `modules/general/05-transient.el`, `tests/module-layout-test.el`,
   `modules/project/04-projects.el`, `tests/workspace-bridge-test.el`,
@@ -175,9 +198,10 @@ escaped form because the snippet's output is raw HTML.
 renders to **nothing at all** — `@@latex:<b>x</b>@@` produces `<p>Tokyo  Japan</p>`
 — so a typo in the backend name would delete the arrow silently. More
 seriously, the snippet bypasses escaping entirely, so any user text placed
-inside one reaches the card as markup. REQ-SW-007.3 bounds the construct to the
-three fixed tokens for both reasons; the emitted snippet is a constant chosen
-from a three-element table, never assembled from the line's text.
+inside one reaches the card as markup. REQ-SW-007.3 bounds the construct to a
+fixed table for both reasons; the emitted snippet is a constant chosen from that
+table's four entries — the three arrow tokens and the line break DD-3 adds —
+never assembled from the line's text.
 
 **Interaction with the block exclusion, checked.** An `@@html:` snippet written
 inside a `#+BEGIN_SRC` or `#+BEGIN_EXAMPLE` block would show on the card as
@@ -342,27 +366,164 @@ parser's own node classification answers correctly for every context-free shape:
 "[fn:1] A :-> B" -> org.FootnoteDefinition
 ```
 
-Recorded as **one route measured to work**, not as the mandated implementation.
-go-org's public AST carries no source positions, so a position-mapped route is
-not available and the SPEC does not ask for one.
+Recorded as **one route measured to work**, not as the mandated implementation;
+`spec.md` REQ-SW-001.6 requires the parser's classification, not this route.
+go-org's public AST carries no source positions (`org.Paragraph` is
+`struct{ Children []Node }`; the token slice is unexported), so a route that
+maps a node back to a source line is not available and the SPEC does not ask
+for one.
 
-**The route has a hole, and it is not in the audit's account of it.** The
-per-line parse is context-blind, which is why the scanner is still needed for
-the context-dependent classes — and there are **three**, not two. Measured:
+**The route is context-blind, so the scanner carries the context-dependent
+classes.** Measured at v1.9.1 — the interior line reads as a paragraph alone and
+as something else in context:
 
 ```
-"  도쿄 :-> 일본"  alone -> org.Paragraph ;  after "- 수도"      -> org.List
-"x :-> y"          alone -> org.Paragraph ;  inside #+BEGIN_SRC -> org.Block
-"A :-> B"          alone -> org.Paragraph ;  inside \begin{align} -> (LatexBlock interior)
+"  도쿄 :-> 일본"  alone -> org.Paragraph ; after "- 수도"          -> org.List
+"x :-> y"          alone -> org.Paragraph ; inside #+BEGIN_SRC      -> org.Block
+"A :-> B"          alone -> org.Paragraph ; inside \begin{align}    -> org.LatexBlock, raw
+"A :-> B"          alone -> org.Paragraph ; after "[fn:1] note"     -> org.FootnoteDefinition, ""
+":X: A :-> B"      alone -> org.Paragraph ; inside :PROPERTIES:…:END: -> org.PropertyDrawer, ""
+"도쿄 :-> 일본"    alone -> org.Paragraph ; after #+BEGIN_SRC sh :exports code … #+END_SRC, #+RESULTS: -> Block.Result, ""
 ```
 
-A multi-line `\begin{align}` environment is `org.LatexBlock`, and go-org passes
-its interior through **raw** — measured, a snippet composed there shows as
-literal characters exactly as in a source-block interior. The existing pairing
-rule matches `#+BEGIN_`/`#+END_` only, so it does not see this delimiter, and
-the per-line parse calls the interior line a paragraph. REQ-SW-001.5 therefore
-widens the pairing to the `\begin{…}` form. The one-line
-`\begin{align} … \end{align}` is genuinely a paragraph and stays admitted.
+The list was read, not collected by probing. A construct that governs later
+lines is opened by a case of `parseOne` (`org/document.go`), a switch of
+thirteen cases at v1.9.1. Read case by case, the cases whose later lines can
+fail to render in place as paragraphs **include**:
+- the block — its verbatim kinds, plus the quote kind, which does render in
+  place and is excluded only by the one-rule cost below;
+- the list;
+- the LaTeX environment;
+- the footnote definition;
+- the property drawer;
+- a source block's attached result.
+
+The earlier revision said "exactly" the first five. The audit then measured the
+sixth, which sits inside the **block** case. `parseBlock` calls
+`parseSrcBlockResult` (`org/block.go`), which skips blank lines and attaches a
+following `#+RESULTS:` and the one construct after it to the block. The writer
+then drops that result under `:exports code|none` (`org/html_writer.go`,
+`WriteBlock`). That is a case governing lines beyond its own delimiters, with
+the emission decided by the writer rather than the parser. A case-by-case
+reading of the switch did not see it, so the reading is recorded as a reading,
+not a proof. `spec.md` REQ-SW-001.6 makes the rule the obligation and this list
+informative.
+
+Some other cases consume a following line and still render it as an in-place
+`<p>`, measured: an ordinary drawer, a standalone `#+RESULTS:`, `#+NAME:`,
+`#+CAPTION:`, `#+ATTR_HTML:`, and a `#+RESULTS:` attached under any export
+value but `code` or `none`. A headline consumes the lines below it, but cannot
+occur inside a body the scan has cut at the next headline. A table row or a
+fixed-width line is classified by its own text.
+
+**How each new one is mirrored.** The scanner already mirrors the block and
+the list. For the others it mirrors go-org's own rule, the same way
+`blockRegions` mirrors the `#+BEGIN_` rule ("The pairing rule is go-org's own",
+`multiline.go`). Each rule below is the parser's or the writer's as written in
+v1.9.1, not a paraphrase of what one probe showed:
+
+- **LaTeX environment** (`org/block.go`, `beginLatexBlockRegexp`
+  `(?i)^(\s*)\\begin{([^}]+)}(\s*)$`): opens on a line holding only
+  `\begin{NAME}`, and closes at the next line holding only `\end{NAME}` with the
+  same name. The whole line is matched case-insensitively, keywords included.
+  An opening with no matching close opens nothing and renders as text.
+  Measured:
+  - `\end{ALIGN}` closes `\begin{align}`, and `\end{equation}` does not;
+  - `\BEGIN{align}` … `\END{align}` is a raw environment;
+  - `align*` behaves as any other name;
+  - the one-line `\begin{align} … \end{align}` is a paragraph, because the
+    anchored opening does not match it.
+- **Footnote definition** (`org/footnote.go`): opens on a line matching
+  `^\[fn:[\w-]+\](\s+.+|\s*$)`. That is column zero, an ASCII label (Go's `\w`),
+  then whitespace or the end of the line. It continues until the second of two
+  consecutive blank lines, a headline, or another footnote-definition line.
+  That end condition is the stop function `parseFootnoteDefinition` hands to
+  `parseMany`, so it is tested **between** the definition's children.
+  `parseBlock` and `parseLatexBlock` ignore the parent's stop and run to their
+  own close, so a blank pair inside a nested `#+BEGIN_` block or environment
+  does not end the definition. `parseList` and `parseDrawer` honour the
+  parent's stop, so a blank pair inside a nested list or ordinary drawer does
+  end it. The scanner mirrors this by reading the block and environment regions
+  and suspending every end condition (a blank pair or a footnote-definition
+  line) inside them, and opening no definition inside them (plan-audit r4,
+  R4-1). Measured:
+  - one blank line between the definition and the arrow line does not end it,
+    and two do;
+  - a `#+BEGIN_SRC`, a `#+BEGIN_QUOTE`, or a `\begin{align}` holding a blank
+    pair, nested between the opening and the arrow line, renders the arrow
+    line to nothing;
+  - a list or a `:NOTES:` drawer holding a blank pair in the same position
+    leaves it in place;
+  - `[fn:메모] 노트`, `[fn:1]노트`, and ` [fn:1] 노트` are not definitions;
+  - `[fn:a-b_1]` alone on its line is a definition.
+
+  (The audit's required-fix wording listed lists among the constructs that
+  carry the definition past a blank pair. The measurement and the code above
+  say otherwise, so lists are not named.)
+- **Property drawer** (`org/drawer.go`, `parsePropertyDrawer`): a line matching
+  `^\s*:PROPERTIES:\s*$`, with the name compared case-insensitively, opens a
+  property drawer only when two conditions hold:
+  - every following line up to an `:END:` line (`(?i)^\s*:END:\s*$`) matches
+    the property pattern `^\s*:\S+:(\s+.*|)$`, so a blank line fails it;
+  - that `:END:` line is reached.
+
+  Otherwise the function returns `0, nil`, the `:PROPERTIES:` line falls back to
+  plain text, and nothing is suppressed. Measured:
+  - a non-property line inside, a blank line inside, or a missing `:END:` each
+    leaves the arrow line in place;
+  - `:properties:` … `:end:` around property lines is suppressed;
+  - `:PROPERTIES:` inside a `:NOTES:` drawer opens nothing.
+
+  Any drawer of another name renders its interior in place and is admitted.
+- **Source block's attached result** (`org/block.go` `parseSrcBlockResult`,
+  `org/html_writer.go` `WriteBlock`): this rule runs after a `#+BEGIN_SRC`
+  block's matched close. It skips blank lines only. If the next line matches
+  `(?i)^\s*#\+RESULTS:`, the `#+RESULTS:` line and the **one** construct
+  `parseOne` reads from the very next line form the result. For a paragraph,
+  that runs to the next blank line or the next line not lexed as plain text,
+  and a paragraph whose first line is blank runs on through the text below it.
+  The writer emits the result unless the block's parsed `:exports` value is
+  exactly `code` or `none`. Measured:
+  - `:exports code` and `:exports none` suppress the result, with or without
+    blank lines before `#+RESULTS:`, and lowercase `#+begin_src`/`#+results:`
+    behave the same;
+  - one blank line between `#+RESULTS:` and the arrow line still suppresses
+    it, and two do not;
+  - a `:RESULTS:` drawer is suppressed whole;
+  - `:exports results`, `both`, `CODE`, `:EXPORTS code`, a header with no
+    language token, an absent `:exports`, a non-blank line before
+    `#+RESULTS:`, and an `#+BEGIN_EXAMPLE` block in place of the source block
+    each leave the arrow line in place.
+
+An earlier revision of this decision widened the `#+BEGIN_` pairing for the
+LaTeX form, and `spec.md` v0.1.2 then said to take the environment's extent
+from the parser's tree instead. Both are superseded by the mirrored rule above:
+the first misdescribes a second delimiter as one rule, and the second needs the
+positions the tree does not carry.
+
+**The composition is fixed, and its divergences are disclosed** (audit iteration
+3, O-2). `blockRegions` is a whole-body function that pairs `#+BEGIN_` lines
+without regard to anything else, and it is reused unchanged. So the rules
+compose as `spec.md` REQ-SW-001.6 states:
+1. Block regions and environment regions are each computed independently over
+   the whole remaining body.
+2. The footnote-definition and source-block-result rules then run over the
+   body, reading those regions.
+3. The property-drawer and list rules are computed on their own.
+4. The excluded set is the union of all of them.
+
+A sequential single pass would be a different scanner with different outcomes,
+and the earlier text described one without saying so. Under the union,
+reasoning from the code (no scanner exists yet), against the measured parser
+output:
+- the two measured nestings agree (environment in source, source in
+  environment);
+- an environment-first interleaving over-excludes;
+- a source-first interleaving over-excludes;
+- a quote-first interleaving agrees.
+
+So every divergence in those shapes withholds a card rather than composing a
+hidden marker. `spec.md` § 5 records the three under the block exclusion.
 
 **Why list content is excluded at all.** A bullet line's content begins at an
 offset the parser computes, which REQ-ML-001.3 makes definitional and entangles
@@ -572,7 +733,30 @@ otherwise a heading carrying `imoogi-Basic` with an inherited swift-on could
 never opt out through the command, which is the heading the validation gate is
 already rejecting and telling the user to fix. The shape is inherited — the
 incremental toggle's off path runs the same route — so this SPEC resolves it for
-its own command and leaves the existing ones alone.
+its own command and leaves the existing ones alone. The current tree supports
+the choice: `card_option_needs_cloze`'s message in
+`modules/org/anki/imoogi-error.el` tells the user to switch an inherited option
+off by giving it `nil` in the heading's own drawer — the exact write the OFF
+path performs.
+
+**The OFF path also escapes the mirror conflict check** (audit iteration 3,
+R3-3). The note-type gate was the first gate on the OFF path. The multiline
+conflict check of `spec.md` REQ-SW-013.4 is the second, and it binds the ON
+direction only in the same way. Turning swift off writes the falsy `ANKI_SWIFT`,
+fires no multiline-conflict prompt, and reads, clears, or writes no multiline
+option.
+
+The heading this decides is the one the gate rejects with `card_option_conflict`:
+swift on, typically inherited, beside an on `ANKI_DIRECTION` or
+`ANKI_INCREMENTAL`. That code's message tells the user to remove one of the two,
+giving an inherited option `nil` in the heading's own drawer. A user who keeps
+the multiline card does exactly that by toggling swift off. Running the mirror
+check there would ask whether to clear `ANKI_DIRECTION`. Declining would write
+nothing, and confirming would clear the option the user meant to keep.
+
+`imoogi-anki--resolve-swift-conflict` runs unconditionally, because the
+multiline commands only ever write a multiline option. The mirror must not copy
+that shape: it is guarded by the direction the toggle is about to write.
 
 **Two smaller corrections ride along.** The note-type helper's failure message
 reads "멀티라인 옵션을 달 수 없습니다", which is wrong for a swift heading and is
@@ -612,7 +796,8 @@ space is already in use and the plan is wrong before it starts.
 5. Add no rule to `validateCardOptions`. The gate's fixed order is
    SPEC-ANKICARD-002's, and REQ-SW-010 places the new code outside it.
 6. Add no parameter to `hashing.Hash` and no second renderer entry point.
-7. Place nothing inside an Org export snippet but the three fixed arrow tokens.
+7. Place nothing inside an Org export snippet but the fixed table's four
+   values: the three arrow tokens and the line break (`spec.md` REQ-SW-007.3).
 8. Match each file's existing comment language: the Go packages are commented in
    English, `modules/org/24-anki.el` and `tests/anki-*.el` in Korean.
 9. Insert no line into a body during composition. Every construct written is
@@ -638,7 +823,7 @@ verbatim output, and the HEAD the evidence was captured against.
 - **E5** — lint and format status, NEW issues distinguished from the A.2
   baseline.
 - **E6** — `make test-elisp`, with the test count compared against the A.2
-  baseline of 435.
+  baseline of 645 at `7d98ec0`.
 - **E7** — the RED failing output captured **before** each GREEN, verbatim.
 - **E8** — any blocker, as a structured report. Never a question to the user.
 
@@ -652,9 +837,17 @@ Priority-ordered, decisions first. Each milestone is one commit.
 side selection, the marker rules including the extent scan, the emphasis, and
 the typed arrow-missing error. Reuses `splitLines`, `blockRegions`,
 `readBullet`, `scanAnswerList`'s list-continuation rule, `clozeSafeText`,
-`wrappable`, and `highestClozeNumber` from `multiline.go` without copying them;
-the marker-extent scan, and the table / heading / keyword / comment line
-classification, are the only genuinely new pieces.
+`wrappable`, and `highestClozeNumber` from `multiline.go` without copying them.
+The genuinely new pieces are:
+- the marker-extent scan (DD-9);
+- the mirrored rules for the context-dependent constructs REQ-SW-001.6's rule
+  reaches. As read at v1.9.1 these include the LaTeX environment, the footnote
+  definition, the property drawer, and a source block's attached result, each
+  in the parser's own form that DD-4 records. The rule is the obligation, and
+  this list is informative;
+- the fixed composition order of those rules (DD-4);
+- the context-free line classification derived from the parser's own
+  classification, by whatever route the implementer picks.
 
 Covers REQ-SW-001 through REQ-SW-007, REQ-SW-008.2.
 
@@ -689,10 +882,11 @@ Covers REQ-SW-011.2.
 `modules/org/anki/imoogi-error.el` gains the message; `tests/anki-error-test.el`
 gains the code on both sides of its pairing, including the hard-coded back-end
 list; `modules/org/24-anki.el` gains the toggle, its binding, its transient
-entry, the mirror conflict check that clears every on multiline option, the
-generalized note-type failure message, and the completion candidate; ERT
-coverage for each, including an OFF-path case that does **not** stub the
-confirmation prompt (DD-10).
+entry, the mirror conflict check that clears every on multiline option and runs
+on the ON path only, the generalized note-type failure message, and the
+completion candidate; ERT coverage for each, including OFF-path cases that do
+**not** stub the confirmation prompt — one for the swift-conflict prompt and one
+for the mirror check on a heading carrying its own `ANKI_DIRECTION` (DD-10).
 
 Covers REQ-SW-013, REQ-SW-014.
 
@@ -724,7 +918,11 @@ one, the three tokens, the numbering, and how many cards a heading yields.
     The description term's `::` claims the same line, and a continuation line
     carries no bullet to test.
 12. **Enumerating line shapes instead of classifying as paragraph text.** DD-4.
-    The enumeration missed four shapes on its first pass.
+    Every enumeration this SPEC has written was incomplete. The first missed
+    four context-free shapes and the second missed two more. The
+    context-dependent list missed two constructs after that, and its next
+    version, presented as derived from the parser's switch, missed a source
+    block's attached result. A list, however it was obtained, is informative.
 13. **Inserting a line at column zero to attach a class.** DD-3, REQ-SW-011.3.
     It terminates a list.
 14. **Deciding "inside a marker" with the presence predicate.** DD-9. It
@@ -741,8 +939,17 @@ one, the three tokens, the numbering, and how many cards a heading yields.
 - `acceptance.md` — the Given-When-Then criteria and the corpus.
 - `.moai/specs/SPEC-ANKICARD-003/{spec,plan,acceptance}.md` — the mechanisms
   § A.1 reuses, and the go-org evidence DD-1 and DD-4 build on.
+- `.moai/specs/SPEC-ANKICARD-005/spec.md` — the checked split and
+  `extra_block_unbalanced`, which the swift branch runs through.
+- `go-org v1.9.1` source in the module cache — `org/document.go` (`parseOne`),
+  `org/block.go` (including `parseSrcBlockResult`), `org/footnote.go`,
+  `org/drawer.go`, `org/paragraph.go`, and `org/html_writer.go` (`WriteBlock`'s
+  `:exports` test): the rules DD-4 mirrors.
 - `.moai/reports/anki-card-types-plan-20260920.md` § 2.2 and § 2.3 — the
   user-confirmed generation rules and decision C.
+- `.moai/reports/plan-audit/SPEC-ANKICARD-004-plan-audit{,-r2,-r3}.md` — this
+  SPEC's three audit iterations; r3's R3-1..R3-4 and O-2 are closed by
+  `spec.md` v0.1.4.
 - `.moai/reports/plan-audit/SPEC-ANKICARD-003-plan-audit{,-r2,-r3}.md` — the
   three audit iterations whose measured go-org findings this plan does not
   re-derive.
