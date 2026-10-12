@@ -99,6 +99,7 @@
      (imoogi-project-notes-list        transient--do-exit)
      (imoogi-project-notes-create-artifact transient--do-exit)
      (imoogi-project-notes-add-document transient--do-exit)
+     (imoogi-project-notes-promote-artifact transient--do-exit)
      (imoogi-notes-scratch             transient--do-exit)
      (imoogi-project-notes-link-transient transient--do-stack)
      (imoogi-project-notes-setup-transient transient--do-stack)

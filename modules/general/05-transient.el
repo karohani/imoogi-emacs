@@ -403,6 +403,7 @@ Window parameters stay in place, so Treemacs side-window layouts remain valid."
    ["문서·산출물"
     ("r" "TODO 산출물 생성" imoogi-project-notes-create-artifact)
     ("d" "개발 문서 추가" imoogi-project-notes-add-document)
+    ("p" "산출물→개발 문서" imoogi-project-notes-promote-artifact)
     ("n" "영속 Scratch" imoogi-notes-scratch)
     ("L" "문서 연결" imoogi-project-notes-link-transient)]
    ["관리"
