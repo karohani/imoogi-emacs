@@ -1,7 +1,7 @@
 ---
 id: SPEC-PERSPPIN-001
 title: "Pin a project Perspective fully to its project"
-version: "0.1.2"
+version: "0.1.3"
 status: draft
 created: 2026-10-13
 updated: 2026-10-13
@@ -16,6 +16,30 @@ related_specs: [SPEC-TRANSIENT-001]
 ---
 
 ## HISTORY
+
+### v0.1.3 (2026-10-13)
+- AUDIT r2 FIX (plan-audit FAIL, harmonic 0.832, D4 unresolved;
+  `.moai/reports/plan-audit/SPEC-PERSPPIN-001-plan-audit-r2.md`). Decided
+  (lane-3, 2026-10-13):
+  - R2-D1 route (a): `f` resolves PROJECT as
+    `(or (project-current nil) (and CONTEXT-ROOT (cons 'transient CONTEXT-ROOT)) (project-current t))`,
+    and the fallback is gated on a non-nil context root. `s`/`d` share
+    `f`'s helper (`imoogi-project-context-call`, `04-projects.el:111-121`), so
+    they get the same resolution through the finder's context-call clause.
+    `f`/`s`/`d` therefore do not prompt whenever a context root exists
+    (REQ-PIN-013.1, plan.md D-2/D-4).
+  - R2-D2: a third permitted test edit, E3, makes the `project-root` override
+    at `workspace-bridge-test.el:19-20` shape-tolerant. Exactly E1-E3 are
+    named in plan.md A.4/§ E, § 7 below, and acceptance.md AC-PIN-015/DoD.
+  - R2-D3: the "no longer prompt" claims are scoped to the buffers where they
+    hold. The study-note consequence now lists every command that still
+    prompts (§ 5), and plan.md D-6 is corrected.
+- Optional findings O-a..O-h taken: duplicate plan heading removed (O-a);
+  § 7 names both workspace-bridge tests (O-b); `f` must not bind
+  `project-files-relative-names` (O-c); unmount row descriptor (O-d); new
+  AC-PIN-018 pins the memo (O-e); memo thrash with two frames recorded under
+  Residual Risk (O-f); AC-PIN-003 setup sequence (O-g); `file-remote-p`
+  checked first in guard 3 (O-h).
 
 ### v0.1.2 (2026-10-13)
 - AUDIT r1 FIX (plan-audit FAIL 0.792,
@@ -136,7 +160,9 @@ phase.
 While `persp-mode` is active and the current Perspective is mapped to a root
 that is an existing local directory, when an implicit lookup is made for a
 projectless buffer, the Perspective finder shall resolve the lookup to the
-project that `project.el` resolves for the mapped root:
+project that `project.el` resolves for the mapped root — reusing that resolved
+project, without repeating the VC search, for repeated lookups until the next
+Perspective switch or a change of the mapping (plan.md D-8):
 
 1. a VC project rooted at the mapped root when the root is under VC;
 2. a `transient` project rooted at the mapped root when it is not (study-note
@@ -193,8 +219,12 @@ because `project--find-in-directory` only absorbs `permission-denied` and an
 escaping error would break every `project-current` caller.
 
 #### REQ-PIN-008 [Ubiquitous — negated]
-The Perspective finder shall not claim a lookup for a notes-context buffer;
-such buffers keep the resolution they have before this SPEC (and the
+The Perspective finder shall not claim a lookup for a notes-context buffer,
+with one exception: a lookup of the context root made while
+`imoogi-project-context-call` runs `f`/`s`/`d` (REQ-PIN-013.1; plan.md D-2
+context-call clause). That exception is scoped to those commands, which never
+call `imoogi-project-notes--current-source-root`. Outside it, such buffers keep
+the resolution they have before this SPEC (and the
 project-notes commands keep resolving them through their own entry), so
 `imoogi-project-notes--current-source-root` and journal resume sections are not
 redirected to the Perspective's root. The notes-context determination shall not
@@ -253,9 +283,14 @@ The remaining `C-c h p` entries shall keep their current resolution:
    the buffer's own project (implemented and documented in its docstring,
    `04-projects.el:93`; the workspace-bridge tests pin that `f` follows the
    context root across a Perspective switch and falls back to `project.el`
-   when unmapped). One consequence changes: for a mapped root that is not
-   under VC, these commands no longer prompt, because the finder answers the
-   `default-directory` that `imoogi-project-context-call` let-binds;
+   when unmapped). One consequence changes. Today they prompt when the context
+   root is not under VC. After this SPEC, **whenever a context root exists**,
+   they do not prompt, from any buffer — projectless, notes-context, or a
+   buffer of another project — because they resolve the context root, falling
+   back to `(transient . CONTEXT-ROOT)` (decided lane-3, 2026-10-13; plan.md
+   D-4 route (a) for `f`, D-2's context-call clause for `s`/`d`, which share
+   `f`'s helper). When no context root exists (unmapped Perspective and no own
+   project), they prompt exactly as before (REQ-PIN-003);
 2. `p` (switch project) and `F` (forget project) keep prompting, because both
    are explicit selections and `F` is destructive;
 3. `m` (project notes) keeps the t34 entry resolution. One consequence
@@ -291,9 +326,9 @@ the project-only lists and no error shall be shown.
 | Key | Command | Resolution today | Needs beyond the finder |
 |-----|---------|------------------|-------------------------|
 | `p` | `imoogi-project-switch-perspective` | prompts (explicit) | must stay a prompt; selection must bypass the finder (REQ-PIN-004) |
-| `f` | `imoogi-project-find-file` | Perspective-first context; prompts for a non-VC mapped root | notes files in the candidate list (REQ-PIN-011); the finder removes the non-VC prompt |
-| `s` | `imoogi-project-find-regexp` | Perspective-first context; prompts for a non-VC mapped root | none — notes are not searched (REQ-PIN-012); the finder removes the non-VC prompt |
-| `d` | `imoogi-project-dired` | Perspective-first context; prompts for a non-VC mapped root | none; the finder removes the non-VC prompt |
+| `f` | `imoogi-project-find-file` | Perspective-first context; prompts when the context root is not under VC | notes files in the candidate list (REQ-PIN-011); route (a) resolution — no prompt whenever a context root exists, from any buffer |
+| `s` | `imoogi-project-find-regexp` | Perspective-first context; prompts when the context root is not under VC | notes are not searched (REQ-PIN-012); context-call clause — no prompt whenever a context root exists, from any buffer |
+| `d` | `imoogi-project-dired` | Perspective-first context; prompts when the context root is not under VC | context-call clause — no prompt whenever a context root exists, from any buffer |
 | `b` | `project-switch-to-buffer` | `project-current t` → prompts when projectless | finder removes the prompt; notes buffers need a union the generic command cannot express (REQ-PIN-010) |
 | `m` | `imoogi-project-notes-transient` | t34 fallback | none (REQ-PIN-014) |
 | `c` | `project-compile` | `project-current t` | finder alone suffices |
@@ -324,18 +359,24 @@ the project-only lists and no error shall be shown.
 - Study-note Perspectives: `imoogi-project-notes--open-study-workspace`
   (`26-project-notes.el:2615`) maps a study Perspective to the notes directory
   itself. Every file of a study project is therefore a notes-context buffer,
-  and `C-c h p c` / `k` prompt from **every** note file of that project, not
-  only from separate notes buffers (only projectless buffers such as scratch
-  are pinned there). This consequence of D-6 is accepted. Changing it would
-  need a new lane decision.
+  and the finder declines for all of them. From **every** note file of that
+  project, these still prompt: `C-c h p c`, `C-c h p k`, and every generic
+  `project.el` command outside `C-c h p` that resolves with
+  `(project-current t)` (for example `C-x p c`, `C-x p k`, `C-x p f`,
+  `C-x p g`, `C-x p d`, `C-x p b`). From the same files, `C-c h p b`, `f`, `s`
+  and `d` do not prompt (plan.md D-3, D-4). `p` and `F` prompt everywhere by
+  design. Only projectless buffers such as scratch are pinned there for every
+  command. This consequence of D-6 is accepted (decided lane-3, 2026-10-13).
+  Changing it would need a new lane decision.
 - Making a notes directory a project, or adding notes to `project-files` /
   `project-buffers` / `project-external-roots`.
 
 ### Out of Scope — Reverting incidental behaviour changes
 These changes follow from the finder and are accepted. Undoing them is out of
 scope:
-- `f`/`s`/`d` stop prompting for a mapped root that is not under VC
-  (REQ-PIN-013.1).
+- `f`/`s`/`d` stop prompting when the context root is not under VC — from any
+  buffer, as long as a context root exists. With no context root they still
+  prompt (REQ-PIN-013.1).
 - `C-c h p m s p` (project-notes setup) from a projectless buffer in a mapped
   Perspective uses the mapped root instead of prompting for the source folder
   (REQ-PIN-013.3).
@@ -389,6 +430,11 @@ explicit selection.
 `imoogi-project-switch-perspective` resolves the selected root with the finder
 inhibited.
 
+### [CHANGED] Context call (`modules/project/04-projects.el:111-136`)
+`imoogi-project-context-call` exposes its context root to the finder for the
+duration of the call (context-call clause). `imoogi-project-find-file`
+resolves PROJECT by route (a) and calls `project-find-file-in` (plan.md D-4).
+
 ### [CHANGED] Project transient (`modules/general/05-transient.el`)
 `b` invokes an Imoogi buffer command (REQ-PIN-010); `f` keeps
 `imoogi-project-find-file`, whose candidate list gains the notes files.
@@ -401,9 +447,14 @@ root. `--current-entry` is unchanged in behaviour (REQ-PIN-014).
 No method, advice, or hook on these.
 
 ### [NEW / CHANGED] Tests
-New `tests/project-perspective-pin-test.el`; amended row in
-`tests/transient-menu-test.el` (`b`) and amended `project-find-file` stub in
-`tests/workspace-bridge-test.el:141` (`f`); see plan.md § A.4.
+New `tests/project-perspective-pin-test.el`. Existing tests receive exactly
+three edits (plan.md § A.4), and no others:
+- **E1** — `tests/transient-menu-test.el:80`: the `b` row.
+- **E2** — `tests/workspace-bridge-test.el:141` and `:160`: the
+  `project-find-file` stub moves to `project-find-file-in`; assertions
+  unchanged.
+- **E3** — `tests/workspace-bridge-test.el:19-20`: the transient `project-root`
+  override becomes `(if (consp (cdr project)) (cadr project) (cdr project))`.
 
 ## 8. Dependencies
 
@@ -430,3 +481,4 @@ New `tests/project-perspective-pin-test.el`; amended row in
 | AC-PIN-015 | REQ-PIN-013 |
 | AC-PIN-016 | REQ-PIN-014 |
 | AC-PIN-017 | REQ-PIN-015 |
+| AC-PIN-018 | REQ-PIN-001 |

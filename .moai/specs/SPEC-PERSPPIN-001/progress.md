@@ -8,15 +8,16 @@ Pin a project Perspective fully to its project. Tier M, card t35.
 plan_status: audit-ready
 plan_complete_at: 2026-10-13
 spec_id: SPEC-PERSPPIN-001
-spec_version: "0.1.2"
+spec_version: "0.1.3"
 tier: M
 artifacts: [spec.md, plan.md, acceptance.md, progress.md]
 requirements: 15
-acceptance_criteria: 17
+acceptance_criteria: 18
 baseline_head: 6feee71
-open_clarifications: 0  # D-1, D-6 decided by lane-3 2026-10-13; D-7 refresh points fixed
-answers_audit: .moai/reports/plan-audit/SPEC-PERSPPIN-001-plan-audit.md  # r1 FAIL 0.792; D1-D8 fixed in v0.1.2
-next_audit_scope: delta-only (D1-D8)
+open_clarifications: 0  # D-1, D-6, R2-D1..D3 decided by lane-3 2026-10-13; D-7 refresh points fixed
+answers_audit: .moai/reports/plan-audit/SPEC-PERSPPIN-001-plan-audit-r2.md  # r2 FAIL 0.832 (D4 unresolved); R2-D1..D3 + O-a..O-h fixed in v0.1.3
+next_audit_iteration: 3  # last under the 3-iteration cap
+next_audit_scope: delta-only (R2-D1..R2-D3, O-a..O-h)
 ```
 
 ## §E.2 Run-phase Evidence

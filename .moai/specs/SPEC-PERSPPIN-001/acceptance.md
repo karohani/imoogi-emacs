@@ -1,6 +1,6 @@
 # Acceptance Criteria — SPEC-PERSPPIN-001
 
-Seventeen criteria, `AC-PIN-001`..`AC-PIN-017`, contiguous. Every requirement in
+Eighteen criteria, `AC-PIN-001`..`AC-PIN-018`, contiguous. Every requirement in
 `spec.md` § 3 is covered by at least one, and each criterion names the ERT test
 that decides it. All tests live in `tests/project-perspective-pin-test.el`
 unless stated otherwise and run through:
@@ -56,8 +56,10 @@ finder inhibited, and its car is `vc`.
 Test: `imoogi-persppin-vc-root-resolves-vc-project` (`skip-unless (executable-find "git")`).
 
 ### AC-PIN-003 — The finder sorts after every depth ≤ 90 member (REQ-PIN-002)
-**Given** a fake finder F0 added with `add-hook … t` (APPEND, depth 90)
-**before** the installer runs, then the installer (depth 95), then a fake F1
+**Given** — unlike the other tests, which take the list the Sandbox builds —
+this test re-binds `project-find-functions` to `(project-try-vc)`, then adds a
+fake finder F0 with `add-hook … t` (APPEND, depth 90), **then** calls the
+installer (depth 95), then adds a fake F1
 added with plain `add-hook` (depth 0) and a fake F2 added with `add-hook … t`
 (APPEND, depth 90), each fake returning `(transient . OTHER)` only for its own
 directory,
@@ -151,7 +153,7 @@ stubbed:
 | 2 | `imoogi-project-notes--write-mounted-state` with a valid state | sandbox mounted-roots file |
 | 3 | `imoogi-project-notes-mounted-root-refresh` | `message` stubbed |
 | 4 | `imoogi-project-notes-detach` with a mounted entry argument | none (memory only) |
-| 5 | `imoogi-project-notes-unmount-device` on a sandbox root | `imoogi-project-notes-unmount-preflight-function` / `-executor-function` bound to stubs returning a supported descriptor / t; `y-or-n-p` → t |
+| 5 | `imoogi-project-notes-unmount-device` on a sandbox root | `imoogi-project-notes-unmount-preflight-function` bound to a stub returning a descriptor with **both** `:supported t` and `:mount-point` set to an existing sandbox directory (the command calls `--buffers-under-directory` → `file-truename` on it, `26-project-notes.el:3929`, :3890-3898); `-executor-function` → t; `y-or-n-p` → t |
 | 6 | the named D-7 `persp-switch-hook` function, **called directly** (not via `run-hooks`, so the Treemacs hook members do not run) | none |
 
 **Then** each row increments the spy count by at least 1. After row 1, and
@@ -199,8 +201,9 @@ directory N with `project.org`, `tasks.org`, and a `.git/config`; a second
 project S with its own notes directory,
 **When** `f` runs with `project-read-file-name-function` let-bound to a stub
 that records its ALL-FILES argument and returns the absolute path
-`N/project.org`. ALL-FILES is absolute when `project-find-file-in` receives
-several dirs. Each recorded element is passed through `expand-file-name`
+`N/project.org`. ALL-FILES is absolute for any number of dirs, because `f` does
+not bind `project-files-relative-names` (plan.md D-4; project.el L395-399).
+Each recorded element is passed through `expand-file-name`
 against R, which leaves an absolute name unchanged, so the comparison is on
 absolute names and does not depend on how the reader displays candidates.
 **Then** the recorded set is exactly {`R/a.txt`, `R/sub/b.txt`,
@@ -223,16 +226,32 @@ Test: `imoogi-persppin-notes-not-project-members`.
 **Then** `p`, `f`, `s`, `d`, `m`, `c`, `k`, `F` and the Perspective entries are
 bound to the same commands as in `6feee71` (only `b` changes).
 `tests/workspace-bridge-test.el`
-`imoogi-project-context-root-follows-perspective-mapping` and
-`imoogi-project-context-falls-back-to-project-el` pass with only the plan.md
-A.4 stub move (`project-find-file` → `project-find-file-in`) and unchanged
-assertions. `project-forget-project` invoked interactively reaches the
-prompter.
+`imoogi-project-context-root-follows-perspective-mapping` (:141) and
+`imoogi-project-context-falls-back-to-project-el` (:160) pass after exactly the
+plan.md A.4 edits E2 (stub move `project-find-file` → `project-find-file-in`
+in both tests) and E3 (shape-tolerant `project-root` override at :19-20), with
+unchanged assertions. Existing tests receive no edit beyond E1-E3.
+`project-forget-project` invoked interactively reaches the prompter.
 
-**And** given R not under VC, mapped and current, two incidental changes hold
-(REQ-PIN-013.1, .3):
-- `imoogi-project-dired` from a projectless buffer reaches no prompter, with
-  `project-dired`'s `dired` stubbed to record its directory, which is R.
+**And** given R not under VC, mapped and current, the incidental changes hold
+exactly as scoped (REQ-PIN-013.1, .3):
+- `imoogi-project-dired` from a projectless buffer reaches no prompter; with
+  `dired` stubbed to record its directory, the recorded directory is R.
+- From a **notes-context** buffer of R's notes directory, all of the
+  following reach no prompter and use R (the context-call clause and route
+  (a)):
+  - `imoogi-project-dired`, with `dired` stubbed;
+  - `imoogi-project-find-regexp`, with `project--read-regexp` stubbed to
+    return a fixed regexp (its interactive spec would otherwise call
+    `read-regexp`) and `xref-show-xrefs` stubbed to record its call, with
+    `project-files` stubbed to return `(R/a.txt)` so no grep or find process
+    runs; R is checked from the project passed to `project-files`;
+  - `imoogi-project-find-file`, with the AC-PIN-013 stub on
+    `project-read-file-name-function`.
+- With **no** context root (current Perspective "main" unmapped, projectless
+  buffer), both `imoogi-project-find-file` and `imoogi-project-dired` reach
+  the prompter (the `"prompted"` error), so the fallback is gated for the
+  route (a) path and the context-call path alike (REQ-PIN-003).
 - `(imoogi-project-notes--project-root)` from a projectless buffer returns R
   without calling the `read-directory-name` stub.
 Tests: `imoogi-persppin-transient-other-entries-unchanged`,
@@ -259,6 +278,23 @@ message or error is emitted; and with the notes identity-key function stubbed
 to signal `user-error` (the remote refusal), the same holds.
 Test: `imoogi-persppin-no-notes-entry-project-only`.
 
+### AC-PIN-018 — The finder memoizes per pinned root (REQ-PIN-001, plan.md D-8)
+**Given** R not under VC, mapped to "src", "src" current, and `project-try-vc`
+wrapped with a spy that calls the original and counts calls whose argument
+satisfies `(file-equal-p ARG R)`. The finder passes a canonical root (truename
+with a trailing slash), so the spy must not compare strings. Lookups of the
+projectless buffer's own directory are not counted.
+**When** `(project-current nil)` runs twice in a projectless buffer,
+**Then** both return the same project rooted at R and the R-count is 1 (the
+second lookup is a memo hit and does not search again).
+**And when** the D-8 clear function on `persp-switch-hook` is called directly
+and `(project-current nil)` runs again, **Then** the R-count is 2 (miss after
+clear).
+**And when** the alist entry for "src" is changed to a second non-VC root R2
+(no Perspective switch) and `(project-current nil)` runs, **Then** the result
+is rooted at R2 (implicit invalidation by key).
+Test: `imoogi-persppin-finder-memo`.
+
 ## Edge Cases
 
 - `~/notes` becomes a git repository: scratch then has an own project and the
@@ -283,12 +319,15 @@ Test: `imoogi-persppin-no-notes-entry-project-only`.
 
 ## Definition of Done
 
-- All seventeen ACs pass with their named tests.
+- All eighteen ACs pass with their named tests.
 - The four t34 tests pass unmodified.
-- Edits to existing tests are exactly these two, per plan.md § A.4: the `b` row
-  in `tests/transient-menu-test.el`, and the `project-find-file` →
-  `project-find-file-in` stub move in the two `tests/workspace-bridge-test.el`
-  context tests, with their assertions unchanged.
+- Edits to existing tests are exactly these three, per plan.md § A.4, and no
+  others:
+  - E1: the `b` row in `tests/transient-menu-test.el:80`;
+  - E2: the `project-find-file` → `project-find-file-in` stub move in
+    `tests/workspace-bridge-test.el:141` and `:160`, assertions unchanged;
+  - E3: the shape-tolerant transient `project-root` override at
+    `tests/workspace-bridge-test.el:19-20`.
 - `progress.md` §E.2/§E.3 populated by the run phase with the commands and
   exit codes above.
 
@@ -302,10 +341,18 @@ Test: `imoogi-persppin-no-notes-entry-project-only`.
   each side as it stands.
 - Study-note Perspectives (consequence of D-6, accepted; spec.md § 5): the
   Perspective is mapped to the notes directory itself, so every note file of a
-  study project is a notes-context buffer, and `C-c h p c` / `k` prompt from all
-  of them. Only projectless buffers (scratch, help) are pinned there.
+  study project is a notes-context buffer. From every one of them,
+  `C-c h p c`, `C-c h p k`, and the generic `project.el` commands outside
+  `C-c h p` that resolve with `(project-current t)` (e.g. `C-x p c/k/f/g/d/b`)
+  still prompt. `C-c h p b`, `f`, `s`, `d` do not. Only projectless buffers
+  (scratch, help) are pinned there for every command.
 - Finder memo (plan.md D-8): `git init` inside a pinned non-VC root keeps the
   transient project until the next Perspective switch.
+- Finder memo thrash (O-f, accepted): with two frames showing different pinned
+  Perspectives, alternating tab-bar redisplays alternate the memo key, so the
+  one-slot memo misses on every alternation and repeats the VC search for a
+  non-VC root. This costs time only, never correctness. A small alist keyed the
+  same way is a run-phase option.
 - Interactive driving of the real `C-c h p` key sequence is not automated; the
   ACs call the bound commands directly.
 - `imoogi-tab-name` and `imoogi-org-preview--allowed-roots` change for
