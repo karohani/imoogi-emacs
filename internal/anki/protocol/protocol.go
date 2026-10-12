@@ -112,6 +112,18 @@ const (
 	// question and the supplementary content and can itself be the cause of a
 	// missing marker or a missing answer list (REQ-AKX-004).
 	CodeExtraBlockUnbalanced = "extra_block_unbalanced"
+
+	// CodeSwiftArrowMissing reports a swift entry whose remaining body yields
+	// no arrow line (SPEC-ANKICARD-004 REQ-SW-002).
+	//
+	// Like the two codes above it is decided during the render, so it never
+	// competes with the gate's three codes for the one-diagnostic slot: it is
+	// fifth by construction rather than by placement (REQ-SW-010). It cannot
+	// co-occur with CodeMultilineAnswerMissing — the gate rejects swift beside
+	// a multiline option before either renderer runs — nor with
+	// CodeExtraBlockUnbalanced, whose check runs on the split, before
+	// composition.
+	CodeSwiftArrowMissing = "swift_arrow_missing"
 )
 
 // Request is the document the front end writes to the binary's stdin.

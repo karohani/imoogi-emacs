@@ -297,6 +297,51 @@ func TestHashIsUnchangedByCardOptions(t *testing.T) {
 	}
 }
 
+// TestHashChangesThroughRenderedValue is the probe's sibling (SPEC-ANKICARD-004
+// REQ-SW-012.4, AC-SW-013): an option that is ON does change the recorded hash
+// — through the rendered field value, one of the four hash inputs, and only
+// through it. Together with TestHashIsUnchangedByCardOptions and
+// TestHashCallSiteTakesFourArguments it is the trio applyHashProbeOptions
+// documents.
+func TestHashChangesThroughRenderedValue(t *testing.T) {
+	run := func(swift *string) (string, map[string]string) {
+		reg := newTestRegistry(t)
+		client := newFakeClient()
+		client.decks["Inbox"] = true
+
+		entry := protocol.Entry{
+			Key: "h.org::0", NoteID: nil, NoteType: "imoogi-Cloze", SourcePath: "h.org",
+			Deck: nil, Tags: []string{"z", "a"},
+			Title: "A {{c1::cloze}} heading", Body: "도쿄 :-> 일본",
+			Swift: swift,
+		}
+		results, errs := Run(context.Background(), protocol.Request{
+			Config:  baseConfig(),
+			Entries: []protocol.Entry{entry},
+		}, reg, client)
+		if len(errs) != 0 || len(results) != 1 || results[0].Action != protocol.ActionAdded {
+			t.Fatalf("swift=%v: results = %+v, errs = %+v, want one added", swift, results, errs)
+		}
+		rec, _ := reg.Lookup(*results[0].NoteID)
+		return rec.ContentHash, client.addCalls[0].fields
+	}
+
+	absentHash, absentFields := run(nil)
+	onHash, onFields := run(strPtr("t"))
+	if absentFields["Text"] == onFields["Text"] {
+		t.Fatalf("the swift option left the Text field unchanged: %q", onFields["Text"])
+	}
+	if absentHash == onHash {
+		t.Errorf("the recorded hash is unchanged with swift on, want it changed through the rendered value")
+	}
+	// Through the rendered value and ONLY through it: the hash of the fields
+	// the run sent is exactly the hash it recorded.
+	want := hashing.Hash("imoogi-Cloze", onFields, "Inbox", []string{"z", "a"})
+	if onHash != want {
+		t.Errorf("recorded hash %s, want the hash of the rendered fields %s", onHash, want)
+	}
+}
+
 // TestHashCallSiteTakesFourArguments is AC-OPT-012b's first half: a compiled
 // call site invoking hashing.Hash with exactly the four existing arguments.
 // A parameter added for a card option makes this fail to compile, which IS
@@ -310,39 +355,50 @@ func TestHashCallSiteTakesFourArguments(t *testing.T) {
 // wants them, and is the ONE place TestHashIsUnchangedByCardOptions needs to
 // change as the wire contract grows.
 //
-// The option set here is deliberately VALID and non-conflicting, so the entry
+// The options set here are deliberately VALID and non-conflicting, so the entry
 // passes the gate and reaches the add branch: the probe is about the hash the
 // registry records, and a rejected entry records none.
 //
-// It must ALSO be an option with no RENDERING meaning, and that is the
-// requirement SPEC-ANKICARD-003 introduced. The probe's claim is that setting a
-// card option leaves the recorded hash alone; an option that changes the
-// rendered field value changes the hash through it, because the rendered value
-// is one of the four hash inputs and always was.
+// WHAT IT NO LONGER COVERS, AND WHY. Until SPEC-ANKICARD-004 the probe set one
+// option with no rendering meaning to ON, and so also implied that an option
+// being on leaves the hash alone. That SPEC gave swift — the last such option —
+// its rendering meaning (backlog card t15), so no card option is
+// rendering-free any more, and the implication is now false by design: an on
+// option changes the rendered field value, which is one of the four hash
+// inputs and always was. The probe therefore changed SHAPE rather than option.
+// It sets all three option fields in their FALSY spelling: present on the wire
+// — a non-nil pointer to "nil" — and resolved off, so the entry renders exactly
+// as with no option at all. An implementation that fed an option FIELD to the
+// hash would hash a nil pointer and a pointer to "nil" differently, so the
+// probe stays discriminating.
 //
-// `direction` and `incremental` can no longer serve. That SPEC made them
-// render: they wrap the heading's title and its answer list in cloze markers,
-// so the Text field genuinely differs and the hash differs with it — correctly,
-// since a note whose options changed SHOULD be reported as updated. Worse for
-// this probe, REQ-ML-002 rejects a multiline entry whose body carries no answer
-// list, and this entry's body is a bare sentence, so the run never reached the
-// add branch at all.
+// THE CONTRACT IS A TRIO, and each leg excludes one evasion:
 //
-// `swift` is the remaining option with no rendering meaning: backlog card t15
-// owns the card kind it selects, and until that lands the validation gate reads
-// its value and nothing else consumes it. WHEN t15 GIVES SWIFT A RENDERING
-// MEANING, THIS PROBE NEEDS THE SAME TREATMENT AGAIN — and at that point no
-// card option will be rendering-free, so the probe will need a different shape
-// rather than a different option.
+//  1. this probe — falsy versus absent hash alike — excludes hashing the wire
+//     field;
+//  2. TestHashChangesThroughRenderedValue — an on option over an arrow-bearing
+//     body hashes differently, through the rendered value — excludes ignoring
+//     the option entirely;
+//  3. TestHashCallSiteTakesFourArguments — the call site compiles with exactly
+//     the four existing arguments — excludes introducing a new parameter for
+//     it.
 //
-// What the probe still asserts is unchanged and still discriminating: a
-// card-option field carried on the entry does not reach `hashing.Hash` as an
-// input of its own. Its compile-time half, TestHashCallSiteTakesFourArguments
-// above, holds the same claim from the other side.
+// The first two alone admit an implementation that hashes the RESOLVED boolean
+// while ignoring the wire field: both sides of leg 1 resolve off and hash
+// alike, and leg 2 expects a difference. Leg 3 is what excludes that.
+//
+// The trio excludes those THREE evasions, not every route an option could take
+// to the hash. Folding the resolved value into one of the four EXISTING
+// arguments — appending it to the sorted tags, say — passes all three legs
+// while SPEC-ANKICARD-004 REQ-SW-012.2 forbids it. That route is
+// low-reachability, the hashing package being left unchanged by that SPEC, so
+// it is recorded here rather than guarded against.
 func applyHashProbeOptions(entry *protocol.Entry, withOptions bool) {
 	if !withOptions {
 		return
 	}
-	swift := "t"
-	entry.Swift = &swift
+	falsy := "nil"
+	entry.Direction = &falsy
+	entry.Incremental = &falsy
+	entry.Swift = &falsy
 }

@@ -47,13 +47,17 @@ const (
 	DirectionBoth
 )
 
-// CardOptions carries the resolved multiline pair. It deliberately does NOT
-// carry ANKI_SWIFT: swift selects a different card kind, and an entry bearing
-// swift beside a multiline option is rejected by the planner's validation gate
-// before it can reach composition (spec.md § 3 preamble).
+// CardOptions carries the resolved card options: the multiline pair, and the
+// swift option SPEC-ANKICARD-004 gives a rendering meaning (REQ-SW-009.1).
+//
+// Swift and the multiline pair select different card kinds, and an entry
+// bearing swift beside a multiline option is rejected by the planner's
+// validation gate before it can reach composition. RenderWithOptions still
+// answers that combination — as swift — so its dispatch is total.
 type CardOptions struct {
 	Direction   Direction
 	Incremental bool
+	Swift       bool
 }
 
 // multiline reports whether at least one multiline option is ON — the
@@ -650,11 +654,17 @@ func wrappable(span string) bool {
 // rejects a split that left a supplementary marker unpaired, before any other
 // render-time diagnostic can fire on the damage it causes (SPEC-ANKICARD-005
 // REQ-AKX-004). Composition reads the REMAINING body, so supplementary content
-// can never become an answer item; and it runs BEFORE the marker gate, so a
-// multiline entry carrying no hand-written marker is satisfied by the markers
-// composition generated rather than skipped as unmarked (spec.md REQ-ML-009).
+// can never become an answer item or an arrow line; and it runs BEFORE the
+// marker gate, so an entry carrying no hand-written marker is satisfied by the
+// markers composition generated rather than skipped as unmarked (spec.md
+// REQ-ML-009, SPEC-ANKICARD-004 REQ-SW-008).
+//
+// The dispatch on card kind is TOTAL (SPEC-ANKICARD-004 REQ-SW-009.3): swift
+// is tested first, so the unreachable swift-beside-multiline entry composes as
+// swift; an entry with neither option on, or on a note type that is not
+// cloze-style, delegates to Render.
 func RenderWithOptions(noteType, title, body string, opts CardOptions) (map[string]string, error) {
-	if !opts.multiline() || noteType != NoteTypeCloze {
+	if !(opts.Swift || opts.multiline()) || noteType != NoteTypeCloze {
 		return Render(noteType, title, body)
 	}
 
@@ -662,7 +672,12 @@ func RenderWithOptions(noteType, title, body string, opts CardOptions) (map[stri
 	if err != nil {
 		return nil, err
 	}
-	composedTitle, composedRest, err := composeMultiline(title, rest, opts)
+	composedTitle, composedRest := title, ""
+	if opts.Swift {
+		composedRest, err = composeSwift(title, rest)
+	} else {
+		composedTitle, composedRest, err = composeMultiline(title, rest, opts)
+	}
 	if err != nil {
 		return nil, err
 	}
