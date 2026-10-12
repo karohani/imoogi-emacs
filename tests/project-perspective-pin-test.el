@@ -607,13 +607,165 @@ The stub answers with the first offered buffer."
         (imoogi-persppin-test--capturing-buffers candidates
           (call-interactively (imoogi-persppin-test--suffix "b")))
         (should (equal candidates (list p1)))
-        ;; `b' when the identity key refuses the root (as for a remote root).
+        ;; `f' with no notes entry.
+        (with-temp-buffer
+          (setq default-directory elsewhere)
+          (should (equal (imoogi-persppin-test--find-file-candidates
+                          root (expand-file-name "a.txt" root))
+                         (list (expand-file-name "a.txt" root)))))
+        ;; `b' and `f' when the identity key refuses the root (as for a
+        ;; remote root).
         (cl-letf (((symbol-function 'imoogi-project-notes--identity-key)
                    (lambda (&rest _) (user-error "Remote project"))))
           (setq candidates nil)
           (imoogi-persppin-test--capturing-buffers candidates
             (call-interactively (imoogi-persppin-test--suffix "b")))
-          (should (equal candidates (list p1)))))
+          (should (equal candidates (list p1)))
+          (with-temp-buffer
+            (setq default-directory elsewhere)
+            (should (equal (imoogi-persppin-test--find-file-candidates
+                            root (expand-file-name "a.txt" root))
+                           (list (expand-file-name "a.txt" root)))))))
       (should-not messages))))
+
+;;; M4 — `f' adds the notes files; route (a) and the context-call clause
+
+(defun imoogi-persppin-test--find-file-candidates (root answer)
+  "Run the project transient's `f' and return its candidates.
+Candidates are expanded against ROOT, sorted; the reader answers ANSWER."
+  (let ((recorded nil))
+    (let ((project-read-file-name-function
+           (lambda (_prompt all-files &rest _)
+             (setq recorded all-files)
+             answer)))
+      (call-interactively (imoogi-persppin-test--suffix "f")))
+    (sort (mapcar (lambda (file) (expand-file-name file root)) recorded)
+          #'string<)))
+
+(defun imoogi-persppin-test--regular-files (directory)
+  "Return the regular files below DIRECTORY, VCS metadata excluded."
+  (cl-remove-if (lambda (file) (string-match-p "/\\.git/" file))
+                (directory-files-recursively directory "" nil)))
+
+(ert-deftest imoogi-persppin-find-file-candidates ()
+  "AC-PIN-013: `f' offers the project's files plus its own notes files."
+  (imoogi-persppin-test--isolated
+    (let* ((other-root (file-name-as-directory
+                        (expand-file-name "other-source/" sandbox)))
+           (directory (file-name-as-directory (imoogi-project-notes-setup root)))
+           (other-directory (progn (make-directory other-root t)
+                                   (imoogi-project-notes-setup other-root)))
+           (answer (expand-file-name "project.org" directory)))
+      (dolist (file '("a.txt" "sub/b.txt"))
+        (imoogi-persppin-test--visit (expand-file-name file root)))
+      (imoogi-persppin-test--visit (expand-file-name "tasks.org" directory))
+      (imoogi-persppin-test--visit (expand-file-name ".git/config" directory))
+      (imoogi-persppin-test--kill-sandbox-buffers sandbox)
+      (push (cons (imoogi-persppin-test--canonical root) "src")
+            imoogi-project-perspective-alist)
+      (push (cons (imoogi-persppin-test--canonical other-root) "s")
+            imoogi-project-perspective-alist)
+      (setq current-perspective "src")
+      (let ((files (imoogi-persppin-test--find-file-candidates root answer)))
+        (dolist (file (list (expand-file-name "a.txt" root)
+                            (expand-file-name "sub/b.txt" root)
+                            answer
+                            (expand-file-name "tasks.org" directory)))
+          (should (member file files)))
+        (should (equal files
+                       (sort (append
+                              (list (expand-file-name "a.txt" root)
+                                    (expand-file-name "sub/b.txt" root))
+                              (imoogi-persppin-test--regular-files directory))
+                             #'string<)))
+        (should-not (cl-some (lambda (file) (string-match-p "/\\.git/" file))
+                             files))
+        (should-not (cl-some (lambda (file) (file-in-directory-p file other-directory))
+                             files)))
+      (should (file-equal-p buffer-file-name answer))
+      (with-temp-buffer
+        (setq default-directory elsewhere)
+        (setq current-perspective "s")
+        (let ((files (imoogi-persppin-test--find-file-candidates
+                      other-root
+                      (expand-file-name "project.org" other-directory))))
+          (should files)
+          (should-not (cl-some (lambda (file) (file-in-directory-p file directory))
+                               files)))))))
+
+(ert-deftest imoogi-persppin-incidental-prompt-removals ()
+  "AC-PIN-015: `f'/`s'/`d' stop prompting whenever a context root exists."
+  (imoogi-persppin-test--isolated
+    (let ((directory (imoogi-project-notes-setup root))
+          (dired-at nil)
+          (searched nil)
+          (searched-project nil))
+      (imoogi-persppin-test--visit (expand-file-name "a.txt" root))
+      (push (cons (imoogi-persppin-test--canonical root) "src")
+            imoogi-project-perspective-alist)
+      (setq current-perspective "src")
+      (cl-letf (((symbol-function 'dired)
+                 (lambda (dir &rest _) (setq dired-at dir))))
+        ;; `d' from a projectless buffer.
+        (imoogi-project-dired)
+        (should (file-equal-p dired-at root))
+        ;; `d', `s' and `f' from a notes-context buffer of R's notes.
+        (setq dired-at nil)
+        (with-current-buffer
+            (imoogi-persppin-test--visit (expand-file-name "project.org" directory))
+          (should (imoogi-project-notes--context-buffer-p))
+          (should-not (project-current nil))
+          (imoogi-project-dired)
+          (should (file-equal-p dired-at root))
+          (cl-letf (((symbol-function 'project--read-regexp) (lambda () "needle"))
+                    ((symbol-function 'project-files)
+                     (lambda (project &rest _)
+                       (setq searched-project project)
+                       (list (expand-file-name "a.txt" root))))
+                    ((symbol-function 'xref-show-xrefs)
+                     (lambda (&rest _) (setq searched t))))
+            (imoogi-project-find-regexp))
+          (should searched)
+          (should (file-equal-p (project-root searched-project) root))
+          (should (member (expand-file-name "a.txt" root)
+                          (imoogi-persppin-test--find-file-candidates
+                           root (expand-file-name "a.txt" root)))))
+        ;; No context root: the unmapped Perspective still prompts.
+        (with-temp-buffer
+          (setq default-directory elsewhere)
+          (setq current-perspective "main")
+          (imoogi-persppin-test--prompted (imoogi-project-find-file))
+          (imoogi-persppin-test--prompted (imoogi-project-dired))))
+      ;; Project-notes setup from scratch uses the mapped root.
+      (with-temp-buffer
+        (setq default-directory elsewhere)
+        (setq current-perspective "src")
+        (should (file-equal-p (imoogi-project-notes--project-root) root))))))
+
+(ert-deftest imoogi-persppin-find-file-remote-context-root-prompts ()
+  "O3-d: `f' builds no transient project for a remote context root.
+Like `s' and `d', it falls through to the prompt, with no file I/O on the
+remote name (REQ-PIN-006)."
+  (imoogi-persppin-test--isolated
+    (let* ((io nil)
+           (guard (lambda (original)
+                    (lambda (file &rest args)
+                      (if (and (stringp file) (file-remote-p file))
+                          (progn (push file io) (error "Remote file I/O: %s" file))
+                        (apply original file args)))))
+           (project-find-functions nil))
+      (imoogi-project-install-perspective-finder)
+      (cl-letf (((symbol-function 'imoogi-project-context-root)
+                 (lambda () "/ssh:host:/srv/app/"))
+                ((symbol-function 'project-find-file-in)
+                 (lambda (&rest _) (error "Remote project was searched")))
+                ((symbol-function 'file-directory-p)
+                 (funcall guard (symbol-function 'file-directory-p)))
+                ((symbol-function 'file-truename)
+                 (funcall guard (symbol-function 'file-truename)))
+                ((symbol-function 'file-exists-p)
+                 (funcall guard (symbol-function 'file-exists-p))))
+        (imoogi-persppin-test--prompted (imoogi-project-find-file)))
+      (should-not io))))
 
 ;;; project-perspective-pin-test.el ends here
