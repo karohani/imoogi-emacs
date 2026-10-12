@@ -1184,9 +1184,10 @@ function renderRevision(msg){
   root.innerHTML = msg.html;
   decorateDocument();
   rebuildSidebars();
+  // Restore the old viewport first, then let the active block pull it into view.
+  window.scrollTo(x, y);
   restoreActive();
   renderMermaid(revision);
-  requestAnimationFrame(() => window.scrollTo(x, y));
 }
 async function renderMermaid(targetRevision){
   await mermaidDiagnostics.render(root.querySelectorAll('.mermaid'), targetRevision);
@@ -1197,12 +1198,14 @@ function markFromMessage(msg){
   if (typeof msg.revision === 'number' && msg.revision < revision) return;
   const byID = msg.element_id ? root.querySelector('[data-org-id="'+CSS.escape(msg.element_id)+'"]') : null;
   const byRange = msg.range ? root.querySelector('[data-org-range-start="'+Number(msg.range.start||0)+'"][data-org-range-end="'+Number(msg.range.end||0)+'"]') : null;
-  markElement(byID || byRange);
+  markElement(byID || byRange, msg.origin === 'emacs');
 }
-function markElement(el){
+// reveal: follow the Emacs cursor; 'nearest' leaves a visible block in place.
+function markElement(el, reveal){
   el = blockFor(el);
   if (!el) return;
-  activeTarget = {id:el.dataset.orgId,start:el.dataset.orgRangeStart,end:el.dataset.orgRangeEnd};
+  if (reveal) el.scrollIntoView({block:'nearest',behavior:'smooth'});
+  activeTarget = {id:el.dataset.orgId,start:el.dataset.orgRangeStart,end:el.dataset.orgRangeEnd,reveal:!!reveal};
   root.querySelectorAll('.active-block').forEach(n => n.classList.remove('active-block'));
   document.querySelectorAll('.toc-item.active,.overview-item.active').forEach(n => n.classList.remove('active'));
   el.classList.add('active-block');
@@ -1211,8 +1214,9 @@ function markElement(el){
 }
 function restoreActive(){
   if (!activeTarget) return;
-  const el = root.querySelector('[data-org-id="'+CSS.escape(activeTarget.id)+'"]') || root.querySelector('[data-org-range-start="'+CSS.escape(activeTarget.start)+'"][data-org-range-end="'+CSS.escape(activeTarget.end)+'"]');
-  markElement(el);
+  const reveal = activeTarget.reveal;
+  const el =root.querySelector('[data-org-id="'+CSS.escape(activeTarget.id)+'"]') || root.querySelector('[data-org-range-start="'+CSS.escape(activeTarget.start)+'"][data-org-range-end="'+CSS.escape(activeTarget.end)+'"]');
+  markElement(el, reveal);
 }
 function blockFor(el){
   while (el && el !== root) {

@@ -48,7 +48,8 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
   :type 'number)
 
 (defcustom imoogi-org-preview-highlight-current t
-  "When non-nil, highlight the current paragraph in the browser without scrolling."
+  "When non-nil, highlight the current paragraph in the browser and keep it in view.
+The preview scrolls only when that paragraph is off screen."
   :type 'boolean)
 
 (defcustom imoogi-org-preview-navigation-sync nil

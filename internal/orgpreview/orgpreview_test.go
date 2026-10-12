@@ -824,6 +824,41 @@ func getFilePreview(t *testing.T, handler http.Handler, target string) filePrevi
 	return response
 }
 
+// Structural guard for the embedded browser script (it has no JS harness):
+// Emacs cursor navigation must bring the active block into view, without
+// centering it and without scrolling the pane on the browser's own clicks.
+func TestBrowserShellKeepsEmacsCursorBlockInView(t *testing.T) {
+	body := functionBody(t, browserShell, "function markElement(")
+	if !strings.Contains(body, "scrollIntoView({block:'nearest'") {
+		t.Fatalf("markElement must reveal the active block with block:'nearest':\n%s", body)
+	}
+	if !strings.Contains(functionBody(t, browserShell, "function markFromMessage("), "msg.origin === 'emacs'") {
+		t.Fatal("only Emacs-originated navigation may scroll the preview")
+	}
+	if !strings.Contains(body, "reveal:!!reveal") ||
+		!strings.Contains(functionBody(t, browserShell, "function restoreActive("), "markElement(el, reveal)") {
+		t.Fatal("a re-render must keep an Emacs-followed block in view and leave browser-selected ones alone")
+	}
+	render := functionBody(t, browserShell, "function renderRevision(")
+	restore, reveal := strings.Index(render, "window.scrollTo(x, y)"), strings.Index(render, "restoreActive()")
+	if restore < 0 || reveal < 0 || restore > reveal || strings.Contains(render, "requestAnimationFrame(() => window.scrollTo") {
+		t.Fatalf("renderRevision must restore the old viewport before revealing the active block:\n%s", render)
+	}
+}
+
+func functionBody(t *testing.T, source, header string) string {
+	t.Helper()
+	start := strings.Index(source, header)
+	if start < 0 {
+		t.Fatalf("%q not found", header)
+	}
+	end := strings.Index(source[start:], "\n}\n")
+	if end < 0 {
+		t.Fatalf("end of %q not found", header)
+	}
+	return source[start : start+end]
+}
+
 func TestServerServesPreviewShellAndBrowserWebSocketQueryContract(t *testing.T) {
 	server, err := NewServer(ServerConfig{Token: "test-token"})
 	if err != nil {
