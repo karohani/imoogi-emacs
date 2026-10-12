@@ -122,6 +122,7 @@ dropped key."
 (require 'imoogi-process)
 (require 'imoogi-config)
 (require 'imoogi-error)
+(require 'imoogi-orgid)
 
 ;;;###autoload
 (defun imoogi-anki-open-log ()
@@ -191,6 +192,11 @@ failing entry's :key."
   (seq-filter (lambda (err) (null (plist-get err :key)))
               (plist-get response :errors)))
 
+(defvar imoogi--orgid-sent nil
+  "Org IDs sent during the current `imoogi-sync', as (ID . FILE) pairs.
+Bound by `imoogi-sync'; registered and saved once when it ends
+\(SPEC-ANKISRC-001 REQ-ASRC-005).")
+
 (defun imoogi--sync-scan (binary root registry-path scan &optional registered duplicate-ids)
   "Sync SCAN under ROOT with BINARY and REGISTRY-PATH.
 REGISTERED protects host-registered cards from orphan deletion.
@@ -199,6 +205,7 @@ DUPLICATE-IDS names identifiers claimed across multiple target groups."
          (duplicates (seq-filter
                       (lambda (entry) (memq (plist-get entry :note-id) duplicate-ids))
                       entries))
+         (sent (seq-difference entries duplicates #'equal))
          (config (list :default-deck imoogi-default-deck
                        :anki-connect-url imoogi-anki-connect-url
                        :registry-path registry-path
@@ -217,7 +224,11 @@ DUPLICATE-IDS names identifiers claimed across multiple target groups."
                     (seq-remove (lambda (entry)
                                   (memq (plist-get entry :note-id) duplicate-ids))
                                 (plist-get scan :census))
-                    (seq-difference entries duplicates #'equal))))
+                    sent))
+         (_ (dolist (entry sent)
+              (when-let* ((org-id (plist-get entry :org-id)))
+                (push (cons org-id (expand-file-name (plist-get entry :source-path) root))
+                      imoogi--orgid-sent)))))
     (if (null response)
         "imoogi: sync run failed -- no response from binary"
       (when (eq (plist-get response :ok) t)
@@ -274,6 +285,86 @@ DUPLICATE-IDS names identifiers claimed across multiple target groups."
     (maphash (lambda (id count) (when (> count 1) (push id duplicates))) counts)
     duplicates))
 
+(defun imoogi--orgid-missing-files (groups)
+  "Return absolute files in GROUPS holding a sync target without an Org ID."
+  (let (files)
+    (dolist (group groups)
+      (let ((root (plist-get group :root)))
+        (dolist (entry (plist-get (plist-get group :scan) :entries))
+          (unless (plist-get entry :org-id)
+            (push (expand-file-name (plist-get entry :source-path) root) files)))))
+    (delete-dups (nreverse files))))
+
+(defun imoogi--orgid-claims (groups)
+  "Return (ID . FILE) for every entry in GROUPS that carries an Org ID."
+  (let (claims)
+    (dolist (group groups)
+      (let ((root (plist-get group :root)))
+        (dolist (entry (plist-get (plist-get group :scan) :entries))
+          (when-let* ((id (plist-get entry :org-id)))
+            (push (cons id (expand-file-name (plist-get entry :source-path) root))
+                  claims)))))
+    (nreverse claims)))
+
+(defun imoogi--orgid-prepare (scan-fn)
+  "Scan with SCAN-FN, give ID-less targets an Org ID, and settle duplicates.
+
+SCAN-FN returns groups shaped like `imoogi-target-scan's.  The ID pass
+\(SPEC-ANKISRC-001 REQ-ASRC-001) runs over the files in which the first
+scan found an ID-less target; when it wrote any file, SCAN-FN runs again
+so the request reflects the disk.  IDs claimed by two or more headings
+are then removed from those entries (REQ-ASRC-004) -- the entries
+themselves are still sent, otherwise unchanged.
+
+Return (:groups GROUPS :pass PASS :duplicates DUPLICATES)."
+  (let* ((groups (funcall scan-fn))
+         (missing (imoogi--orgid-missing-files groups))
+         (pass (and missing (imoogi-orgid-ensure missing))))
+    (when (plist-get pass :saved)
+      (setq groups (funcall scan-fn)))
+    (let* ((duplicates (imoogi-orgid-duplicates (imoogi--orgid-claims groups)))
+           (ids (mapcar #'car duplicates)))
+      (when ids
+        (dolist (group groups)
+          (let ((scan (plist-get group :scan)))
+            (plist-put scan :entries
+                       (mapcar (lambda (entry)
+                                 (if (member (plist-get entry :org-id) ids)
+                                     (plist-put (copy-sequence entry) :org-id nil)
+                                   entry))
+                               (plist-get scan :entries))))))
+      (list :groups groups :pass pass :duplicates duplicates))))
+
+(defun imoogi--orgid-report (prepared)
+  "Return the report lines for PREPARED's ID pass and duplicate IDs."
+  (let ((pass (plist-get prepared :pass))
+        (duplicates (plist-get prepared :duplicates)))
+    (concat
+     (when duplicates
+       (concat "\n" (imoogi-error-message "org_id_duplicated")
+               (mapconcat (lambda (duplicate)
+                            (format "\n  %s: %s" (car duplicate)
+                                    (mapconcat #'abbreviate-file-name (cdr duplicate) ", ")))
+                          duplicates "")))
+     (when (plist-get pass :failed)
+       (concat "\n" (imoogi-error-message "org_id_create_failed")
+               (mapconcat (lambda (failure)
+                            (format "\n  %s: %s" (abbreviate-file-name (car failure))
+                                    (cdr failure)))
+                          (plist-get pass :failed) "")))
+     (when (plist-get pass :needs-save)
+       (format "\nOrg ID 저장 필요(저장한 뒤 다시 동기화하면 원본 열기 링크가 붙습니다): %s"
+               (mapconcat #'abbreviate-file-name (plist-get pass :needs-save) ", "))))))
+
+(defun imoogi--orgid-save-sent (sent)
+  "Register every (ID . FILE) in SENT, then save the location cache once."
+  (let ((registered nil))
+    (dolist (pair (reverse sent))
+      (when (imoogi-orgid-register (car pair) (cdr pair))
+        (setq registered t)))
+    (when registered
+      (imoogi-orgid-save))))
+
 ;;;###autoload
 (defun imoogi-sync ()
   "Sync the legacy root and every host-registered folder or Org file.
@@ -283,6 +374,7 @@ Anki cards.  With no registrations, retain the legacy root workflow."
   (interactive)
   (let* ((binary (executable-find imoogi-anki-binary-path))
          (targets (imoogi-targets-load))
+         (imoogi--orgid-sent nil)
          (report
           (cond
            ((null binary) (imoogi-error-message "binary_not_found"))
@@ -290,24 +382,38 @@ Anki cards.  With no registrations, retain the legacy root workflow."
             (concat (imoogi-error-message "sync_root_unset")
                     " Or register a folder/file with imoogi-anki-register-directory/file."))
            ((null targets)
-            (imoogi--sync-scan binary imoogi-sync-root
-                               (imoogi--registry-path imoogi-sync-root)
-                               (imoogi-scan-root imoogi-sync-root imoogi-exclude-patterns)))
+            (let* ((root imoogi-sync-root)
+                   (prepared (imoogi--orgid-prepare
+                              (lambda ()
+                                (list (list :root root :legacy t
+                                            :scan (imoogi-scan-root
+                                                   root imoogi-exclude-patterns)))))))
+              (concat (imoogi--sync-scan binary root (imoogi--registry-path root)
+                                         (plist-get (car (plist-get prepared :groups)) :scan))
+                      (imoogi--orgid-report prepared))))
            (t
-            (let* ((groups (imoogi-target-scan imoogi-sync-root targets
-                                               imoogi-exclude-patterns))
+            (let* ((prepared (imoogi--orgid-prepare
+                              (lambda ()
+                                (imoogi-target-scan imoogi-sync-root targets
+                                                    imoogi-exclude-patterns))))
+                   (groups (plist-get prepared :groups))
                    (duplicates (imoogi--target-duplicate-ids groups)))
-              (mapconcat
-               (lambda (group)
-                 (let* ((root (plist-get group :root))
-                        (legacy (plist-get group :legacy))
-                        (registry (if legacy (imoogi--registry-path root)
-                                    (imoogi--target-registry-path root))))
-                   (concat root "\n"
-                           (imoogi--sync-scan binary root registry
-                                              (plist-get group :scan)
-                                              (not legacy) duplicates))))
-               groups "\n"))))))
+              (concat
+               (mapconcat
+                (lambda (group)
+                  (let* ((root (plist-get group :root))
+                         (legacy (plist-get group :legacy))
+                         (registry (if legacy (imoogi--registry-path root)
+                                     (imoogi--target-registry-path root))))
+                    (concat root "\n"
+                            (imoogi--sync-scan binary root registry
+                                               (plist-get group :scan)
+                                               (not legacy) duplicates))))
+                groups "\n")
+               (imoogi--orgid-report prepared)))))))
+    ;; REQ-ASRC-005: every sent ID is registered first, then the cache is
+    ;; written once -- after the last group, never from the ID pass.
+    (imoogi--orgid-save-sent imoogi--orgid-sent)
     (message "%s" report)
     report))
 

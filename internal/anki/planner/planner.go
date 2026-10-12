@@ -12,6 +12,7 @@ package planner
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -96,6 +97,17 @@ func Run(ctx context.Context, req protocol.Request, reg *registry.Registry, clie
 			results = append(results, *res)
 		}
 		errs = append(errs, entryErrs...)
+		// REQ-ASRC-006.3: an org_id outside the shared character set gets
+		// no link (appendSourceLink skips it) and this advisory code; the
+		// note itself is processed exactly as above.
+		if entry.OrgID != "" && !protocol.ValidOrgID(entry.OrgID) {
+			key := entry.Key
+			errs = append(errs, protocol.Error{
+				Code:    protocol.CodeOrgIDInvalid,
+				Message: fmt.Sprintf("org_id %q is outside [A-Za-z0-9._:@-]{1,128}; synced without the source link", entry.OrgID),
+				Key:     &key,
+			})
+		}
 	}
 
 	// design.md §3 step 10a: refresh recorded source paths from the census,
@@ -321,6 +333,13 @@ func (r *runner) processEntry(entry protocol.Entry) (*protocol.Result, []protoco
 			[]protocol.Error{{Code: protocol.CodeMediaFileNotFound, Message: mediaErr.Error(), Key: &key}}
 	}
 
+	// The source link is appended HERE — after the render and the media
+	// pass, before the hash (SPEC-ANKISRC-001 REQ-ASRC-006, REQ-ASRC-007).
+	// The link is therefore part of the field text the registry hash
+	// covers, so the orphan-confirmation rehash of what Anki stores matches,
+	// and a note synced before links existed is updated once, in place.
+	fields = appendSourceLink(renderType(entry.NoteType), entry.OrgID, fields)
+
 	contentHash := hashing.Hash(entry.NoteType, fields, resolvedDeck, entry.Tags)
 
 	if entry.NoteID == nil {
@@ -369,6 +388,38 @@ func (r *runner) processEntry(entry protocol.Entry) (*protocol.Result, []protoco
 		return &protocol.Result{Key: &key, Action: protocol.ActionFailed, NoteID: &noteID}, []protocol.Error{*fieldErr}
 	}
 	return r.updateNote(entry, resolved, resolvedDeck, contentHash, key, noteID, regEntry, uploads)
+}
+
+// sourceLinkFormat is the anchor appended to the back field (DD-2). It is ONE
+// constant on purpose: every byte of it is hashed, so changing it re-updates
+// every linked note once (plan.md R-1). The %s is the percent-encoded Org ID.
+const sourceLinkFormat = `<div class="imoogi-src"><a href="imoogi-anki://open?id=%s">Emacs에서 원본 열기</a></div>`
+
+// sourceLinkField names the back field each rendered shape carries.
+var sourceLinkField = map[string]string{
+	orgdoc.NoteTypeBasic: "Back",
+	orgdoc.NoteTypeCloze: "Back Extra",
+}
+
+// appendSourceLink returns fields with the open-source link appended to the
+// back field of the rendered shape. Only the Org ID enters the link — never a
+// file path (REQ-ASRC-005.2). An empty or invalid orgID, or a shape with no
+// back field, returns fields unchanged, which keeps an entry without org_id
+// byte-identical to the pre-link baseline (REQ-ASRC-006.2).
+func appendSourceLink(shape, orgID string, fields map[string]string) map[string]string {
+	name, ok := sourceLinkField[shape]
+	if !ok || orgID == "" || !protocol.ValidOrgID(orgID) {
+		return fields
+	}
+	if _, present := fields[name]; !present {
+		return fields
+	}
+	linked := make(map[string]string, len(fields))
+	for k, v := range fields {
+		linked[k] = v
+	}
+	linked[name] += fmt.Sprintf(sourceLinkFormat, url.QueryEscape(orgID))
+	return linked
 }
 
 // renderType maps a declared note type onto the name orgdoc.Render
