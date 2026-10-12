@@ -51,6 +51,10 @@
     (load (expand-file-name "imoogi.el" imoogi-anki-lisp-dir) nil t)
     (load (expand-file-name "imoogi-process.el" imoogi-anki-lisp-dir) nil t)))
 (require 'imoogi-setup)
+;; Anki 카드 뒷면의 "Emacs에서 원본 열기" 링크가 emacsclient 로 부르는 수신
+;; 함수(`imoogi-anki-open-id').  위와 같은 이유로 autoload 에 기대지 않고
+;; 모듈과 함께 올린다 (SPEC-ANKISRC-001 REQ-ASRC-011.7).
+(require 'imoogi-open)
 
 ;;; 프로퍼티 자동완성
 

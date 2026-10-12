@@ -89,7 +89,19 @@ stylesheet exists; the key is never dropped."
         (cons 'source_path (plist-get entry :source-path))))
 
 (defun imoogi-process--entry-alist (entry)
-  "Serialize one scan-produced entry plist ENTRY into a wire-shape alist."
+  "Serialize one scan-produced entry plist ENTRY into a wire-shape alist.
+
+`org_id' is the one key emitted only when it has a value
+(SPEC-ANKISRC-001 REQ-ASRC-003.1): an entry without an Org ID serializes
+byte-identically to the pre-link wire document, and the back end reads
+an absent key as \"no link\"."
+  (append
+   (imoogi-process--entry-base-alist entry)
+   (when-let* ((org-id (plist-get entry :org-id)))
+     (list (cons 'org_id org-id)))))
+
+(defun imoogi-process--entry-base-alist (entry)
+  "Serialize ENTRY's always-present wire keys into an alist."
   (list (cons 'key (plist-get entry :key))
         (cons 'note_id (or (plist-get entry :note-id) :null))
         (cons 'note_type (plist-get entry :note-type))

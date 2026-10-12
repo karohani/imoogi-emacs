@@ -29,7 +29,8 @@
     "card_option_conflict"
     "card_option_needs_cloze"
     "multiline_answer_missing"
-    "extra_block_unbalanced")
+    "extra_block_unbalanced"
+    "org_id_invalid")
   "The `Code...' string constants internal/anki/protocol/protocol.go
 declares today -- hardcoded here because this suite has no Go parser
 available.  Each later SPEC appends its own codes here in the order
@@ -88,7 +89,8 @@ Go-source parse proves awkward from Elisp."
                         (sort (copy-sequence imoogi-error-test--go-emitted-codes) #'string<)))))))
 
 (defconst imoogi-error-test--elisp-only-codes
-  '("binary_not_found" "sync_root_unset" "note_id_unknown")
+  '("binary_not_found" "sync_root_unset" "note_id_unknown"
+    "org_id_duplicated" "org_id_create_failed")
   "Table entries that legitimately have no `protocol.Code*' constant.
 
 The first two are Elisp-side preconditions (plan.md D-5): `imoogi-sync'
@@ -97,7 +99,10 @@ them and never should.  `note_id_unknown' is D-5's Go-origin code that
 the binary does not currently emit (REQ-012 reconciles the case as an
 ordinary add) -- it stays in the table because D-5 names it, and it
 stays here because the Go side declaring it would be a change, not a
-fix.  Everything NOT on this list must be paired with a Go constant.")
+fix.  `org_id_duplicated' and `org_id_create_failed' are SPEC-ANKISRC-001
+DD-4's front-end-only reports: the ID pass and the duplicate check run in
+Elisp before the request is built, so no Go code exists for either.
+Everything NOT on this list must be paired with a Go constant.")
 
 (ert-deftest imoogi-error-test-table-entries-are-all-paired-with-a-go-constant ()
   "AC-C-021c (REQ-C-023), the reverse direction: an entry added to the
