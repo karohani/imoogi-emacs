@@ -326,4 +326,190 @@ Prompting signals \"prompted\", and `compile' records its directory in
               (list (cons (imoogi-persppin-test--canonical second) "src")))
         (should (file-equal-p (project-root (project-current nil)) second))))))
 
+;;; M2 — notes-context exclusion and t34 compatibility
+
+(defun imoogi-persppin-test--visit (file &optional contents)
+  "Create FILE with CONTENTS when missing and return a buffer visiting it."
+  (make-directory (file-name-directory file) t)
+  (unless (file-exists-p file)
+    (with-temp-file file (insert (or contents ""))))
+  (find-file-noselect file))
+
+(defun imoogi-persppin-test--write-metadata (directory key study-id)
+  "Write minimal study metadata for KEY and STUDY-ID in DIRECTORY."
+  (make-directory directory t)
+  (with-temp-file (expand-file-name ".imoogi-project.json" directory)
+    (insert (json-encode
+             `((schema_version . 1) (type . "study") (key . ,key) (name . ,key)
+               (study_id . ,study-id)
+               (overview . "study.org") (tasks . "tasks.org")
+               (journal . "journal.org") (todo_storage . "project")))
+            "\n")))
+
+(defmacro imoogi-persppin-test--recording (functions log &rest body)
+  "Run BODY with each of FUNCTIONS stubbed to push its name on LOG and signal."
+  (declare (indent 2) (debug t))
+  `(cl-letf ,(mapcar (lambda (function)
+                       `((symbol-function ',function)
+                         (lambda (&rest _)
+                           (push ',function ,log)
+                           (error "Hot path called %s" ',function))))
+                     functions)
+     ,@body))
+
+(ert-deftest imoogi-persppin-notes-buffer-declined ()
+  "AC-PIN-010: a notes buffer keeps the resolution it had before the finder."
+  (imoogi-persppin-test--isolated
+    (let ((directory (imoogi-project-notes-setup root)))
+      (push (cons (imoogi-persppin-test--canonical root) "src")
+            imoogi-project-perspective-alist)
+      (setq current-perspective "src")
+      (with-current-buffer
+          (imoogi-persppin-test--visit (expand-file-name "project.org" directory))
+        (let ((entry (imoogi-project-notes--current-entry)))
+          (should entry)
+          (should-not (project-current nil))
+          (should (equal (imoogi-project-notes--current-source-root entry)
+                         (let ((project-find-functions
+                                (remq #'imoogi-project-perspective-find
+                                      project-find-functions)))
+                           (imoogi-project-notes--current-source-root entry)))))))))
+
+(ert-deftest imoogi-persppin-notes-check-reads-no-registry ()
+  "AC-PIN-010: the notes-context check reads no registry or metadata."
+  (imoogi-persppin-test--isolated
+    (let ((directory (imoogi-project-notes-setup root))
+          (log nil))
+      (push (cons (imoogi-persppin-test--canonical root) "src")
+            imoogi-project-perspective-alist)
+      (setq current-perspective "src")
+      (imoogi-project-notes--rebuild-context-directories)
+      (let ((notes (imoogi-persppin-test--visit
+                    (expand-file-name "project.org" directory)))
+            (plain (imoogi-persppin-test--visit
+                    (expand-file-name "plain.txt" elsewhere))))
+        (imoogi-persppin-test--recording
+            (imoogi-project-notes--all-entries
+             imoogi-project-notes--read-registry
+             imoogi-project-notes--find-metadata-file)
+            log
+          (with-current-buffer notes
+            (should-not (project-current nil)))
+          (with-current-buffer plain
+            (should (equal (project-root (project-current nil))
+                           (imoogi-persppin-test--canonical root))))))
+      (should-not log))))
+
+(ert-deftest imoogi-persppin-notes-list-refresh-triggers ()
+  "AC-PIN-010: each plan D-7 trigger rebuilds the notes-directory list."
+  (imoogi-persppin-test--isolated
+    (let* ((rebuilds 0)
+           (log nil)
+           (original (symbol-function
+                      'imoogi-project-notes--rebuild-context-directories))
+           (second-root (file-name-as-directory
+                         (expand-file-name "second-source/" sandbox)))
+           ;; Outside `imoogi-project-notes-directory', so only the rebuilt
+           ;; list (not the pre-build prefix fallback) can recognise it.
+           (second-notes (file-name-as-directory
+                          (expand-file-name "loose-notes/second/" sandbox)))
+           (drive (file-name-as-directory (expand-file-name "drive/" sandbox)))
+           (mounted-notes (expand-file-name "study/" drive))
+           (imoogi-project-notes--detached-instance-ids nil)
+           (claimed-p (lambda (buffer)
+                        (with-current-buffer buffer
+                          (project-current nil))))
+           (rebuilt-p (lambda (trigger)
+                        (let ((before rebuilds))
+                          (funcall trigger)
+                          (> rebuilds before)))))
+      (make-directory second-root t)
+      (make-directory drive t)
+      (push (cons (imoogi-persppin-test--canonical root) "src")
+            imoogi-project-perspective-alist)
+      (setq current-perspective "src")
+      (imoogi-project-notes-setup second-root second-notes)
+      (cl-letf (((symbol-function
+                  'imoogi-project-notes--rebuild-context-directories)
+                 (lambda (&rest args)
+                   (setq rebuilds (1+ rebuilds))
+                   (apply original args)))
+                ((symbol-function 'message) #'ignore))
+        ;; Row 1: a registry write.  Forget N2 first so the row is not vacuous.
+        (setq imoogi-project-notes--context-directories nil)
+        (let ((probe (imoogi-persppin-test--visit
+                      (expand-file-name "probe.txt" second-notes))))
+          (should (funcall claimed-p probe))
+          (should (funcall rebuilt-p
+                           (lambda ()
+                             (imoogi-project-notes--write-registry
+                              (imoogi-project-notes--read-registry)))))
+          (imoogi-persppin-test--recording (imoogi-project-notes--read-registry) log
+            (should-not (funcall claimed-p probe))))
+        ;; Row 2: a mounted-state write.
+        (let ((canonical (imoogi-project-notes--canonical-directory drive)))
+          (should (funcall rebuilt-p
+                           (lambda ()
+                             (imoogi-project-notes--write-mounted-state
+                              `((version . 1)
+                                (roots . (((id . ,(imoogi-project-notes--mounted-root-id
+                                                   canonical))
+                                           (path . ,canonical) (label . "Drive")
+                                           (enabled . t))))
+                                (source-overrides . nil)))))))
+        ;; Row 3: an explicit rescan of mounted roots.
+        (should (funcall rebuilt-p #'imoogi-project-notes-mounted-root-refresh))
+        ;; Row 4: a session detach (memory only).
+        (should (funcall rebuilt-p
+                         (lambda ()
+                           (imoogi-project-notes-detach
+                            '((origin . mounted)
+                              (instance-id . "persppin-not-a-real-instance"))))))
+        ;; Row 5: an unmount.
+        (let ((imoogi-project-notes-unmount-preflight-function
+               (lambda (_root) (list :supported t :mount-point drive)))
+              (imoogi-project-notes-unmount-executor-function (lambda (_) t)))
+          (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
+            (should (funcall rebuilt-p
+                             (lambda ()
+                               (imoogi-project-notes-unmount-device
+                                `((path . ,drive) (id . "drive")
+                                  (label . "Drive"))))))))
+        ;; Row 6: a Perspective switch picks up notes created outside Emacs.
+        (imoogi-persppin-test--write-metadata mounted-notes "study:26.99" "26.99")
+        (let ((probe (imoogi-persppin-test--visit
+                      (expand-file-name "probe.txt" mounted-notes))))
+          (should (funcall claimed-p probe))
+          (should (funcall rebuilt-p
+                           #'imoogi-project-notes--refresh-context-directories))
+          (imoogi-persppin-test--recording (imoogi-project-notes--read-registry) log
+            (should-not (funcall claimed-p probe)))))
+      (should (memq #'imoogi-project-notes--refresh-context-directories
+                    (default-value 'persp-switch-hook)))
+      (should-not log))))
+
+(ert-deftest imoogi-persppin-notes-list-startup-registered ()
+  "AC-PIN-010: the startup rebuild runs after the Perspective state restore."
+  (let* ((hook (default-value 'emacs-startup-hook))
+         (restore (cl-position #'imoogi-perspective-state-restore hook))
+         (rebuild (cl-position #'imoogi-project-notes--rebuild-context-directories
+                               hook)))
+    (should restore)
+    (should rebuild)
+    (should (< restore rebuild))))
+
+(ert-deftest imoogi-persppin-t34-fallback-retained ()
+  "AC-PIN-016: with the finder inhibited, the t34 fallback still answers."
+  (imoogi-persppin-test--isolated
+    (let ((directory (imoogi-project-notes-setup root)))
+      (push (cons (imoogi-persppin-test--canonical root) "src")
+            imoogi-project-perspective-alist)
+      (setq current-perspective "src")
+      (imoogi-notes-scratch)
+      (let ((imoogi-project--perspective-finder-inhibit t))
+        (should-not (project-current nil))
+        (let ((entry (imoogi-project-notes--current-entry)))
+          (should entry)
+          (should (file-equal-p (alist-get 'notes-dir entry) directory)))))))
+
 ;;; project-perspective-pin-test.el ends here
