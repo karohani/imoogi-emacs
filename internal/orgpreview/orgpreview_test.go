@@ -84,6 +84,89 @@ func TestPropertyDrawerRendersAsEscapedInformationTable(t *testing.T) {
 	}
 }
 
+func TestOrgIDLinkRendersDescriptionNotSource(t *testing.T) {
+	source := "- [[id:E17712CF-ECC8-436F-9E49-C920A209BA52][bug <preview> note]]\n"
+	doc, err := FallbackParser{}.Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := Renderer{}.Render(doc)
+	for _, unwanted := range []string{"[[", "]]", "id:E17712CF"} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("id link leaked %q:\n%s", unwanted, out)
+		}
+	}
+	for _, want := range []string{
+		`data-org-kind="link"`,
+		`data-org-link-id="E17712CF-ECC8-436F-9E49-C920A209BA52"`,
+		`>bug &lt;preview&gt; note</a>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("id link missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "href=") {
+		t.Fatalf("id link must not carry an href until it is resolvable:\n%s", out)
+	}
+}
+
+func TestOrgKeywordLinesAreNotRenderedAsText(t *testing.T) {
+	source := "#+TITLE: Spec\n#+CATEGORY: imoogi-emacs\n* Heading\nBody\n#+caption: Figure\nAfter\n"
+	doc, err := FallbackParser{}.Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := Renderer{}.Render(doc)
+	for _, unwanted := range []string{"#+TITLE", "#+CATEGORY", "imoogi-emacs", "#+caption"} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("keyword line leaked %q:\n%s", unwanted, out)
+		}
+	}
+	for _, want := range []string{"Heading", "Body", "After"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("content %q disappeared:\n%s", want, out)
+		}
+	}
+}
+
+func TestOrgColorLinkRendersResolvedColor(t *testing.T) {
+	source := "[[color:blue1][파란 <글>]] [[color:#3498db][hex]] [[color:nope][plain]] [[color:red;x:y][evil]]\n"
+	doc, err := FallbackParser{}.Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := Renderer{ColorMap: map[string]string{"blue1": "#0000ff", "red;x:y": "red;x:y"}}.Render(doc)
+	for _, unwanted := range []string{"[[", "]]", "color:blue1", "href=", "x:y"} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("color link leaked %q:\n%s", unwanted, out)
+		}
+	}
+	for _, want := range []string{
+		`style="color:#0000ff">파란 &lt;글&gt;</span>`,
+		`style="color:#3498db">hex</span>`,
+		`>plain</span>`,
+		`>evil</span>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("color link missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Count(out, "style=") != 2 {
+		t.Fatalf("only resolved hex colors may carry a style:\n%s", out)
+	}
+}
+
+func TestOrgColorLinkWithoutDescriptionShowsColorName(t *testing.T) {
+	doc, err := FallbackParser{}.Parse("[[color:blue1]]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := Renderer{ColorMap: map[string]string{"blue1": "#0000ff"}}.Render(doc)
+	if !strings.Contains(out, `style="color:#0000ff">blue1</span>`) || strings.Contains(out, ">color:blue1<") {
+		t.Fatalf("undescribed color link must show the bare color name:\n%s", out)
+	}
+}
+
 func TestMalformedPropertyDrawerRemainsPlainText(t *testing.T) {
 	source := "* Task\n:PROPERTIES:\nnot-a-property\n:END:\n"
 	doc, err := FallbackParser{}.Parse(source)
@@ -739,6 +822,41 @@ func getFilePreview(t *testing.T, handler http.Handler, target string) filePrevi
 		t.Fatal(err)
 	}
 	return response
+}
+
+// Structural guard for the embedded browser script (it has no JS harness):
+// Emacs cursor navigation must bring the active block into view, without
+// centering it and without scrolling the pane on the browser's own clicks.
+func TestBrowserShellKeepsEmacsCursorBlockInView(t *testing.T) {
+	body := functionBody(t, browserShell, "function markElement(")
+	if !strings.Contains(body, "scrollIntoView({block:'nearest'") {
+		t.Fatalf("markElement must reveal the active block with block:'nearest':\n%s", body)
+	}
+	if !strings.Contains(functionBody(t, browserShell, "function markFromMessage("), "msg.origin === 'emacs'") {
+		t.Fatal("only Emacs-originated navigation may scroll the preview")
+	}
+	if !strings.Contains(body, "reveal:!!reveal") ||
+		!strings.Contains(functionBody(t, browserShell, "function restoreActive("), "markElement(el, reveal)") {
+		t.Fatal("a re-render must keep an Emacs-followed block in view and leave browser-selected ones alone")
+	}
+	render := functionBody(t, browserShell, "function renderRevision(")
+	restore, reveal := strings.Index(render, "window.scrollTo(x, y)"), strings.Index(render, "restoreActive()")
+	if restore < 0 || reveal < 0 || restore > reveal || strings.Contains(render, "requestAnimationFrame(() => window.scrollTo") {
+		t.Fatalf("renderRevision must restore the old viewport before revealing the active block:\n%s", render)
+	}
+}
+
+func functionBody(t *testing.T, source, header string) string {
+	t.Helper()
+	start := strings.Index(source, header)
+	if start < 0 {
+		t.Fatalf("%q not found", header)
+	}
+	end := strings.Index(source[start:], "\n}\n")
+	if end < 0 {
+		t.Fatalf("end of %q not found", header)
+	}
+	return source[start : start+end]
 }
 
 func TestServerServesPreviewShellAndBrowserWebSocketQueryContract(t *testing.T) {

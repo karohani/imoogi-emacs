@@ -522,7 +522,122 @@ suppresses `text-scale-mode-hook', so local fitting alone is too early."
 
 (add-hook 'org-mode-hook #'imoogi-org--enable-block-completion)
 
+(defun imoogi-org-color--face (color)
+  "Return a foreground face for valid COLOR, or the normal link face."
+  (if (color-defined-p color) (list :foreground color) 'org-link))
+
+(defun imoogi-org-color-hex (color)
+  "Return COLOR as #rrggbb, or nil when it is not a known color.
+Uses the standard color table, so the result is the same in batch export,
+a terminal, or a GUI frame.  Export and the live preview share it."
+  ;; The standard table only knows lowercase, spaceless names ("lightblue").
+  (when-let* ((values (and (stringp color)
+                           (tty-color-standard-values
+                            (downcase (replace-regexp-in-string " " "" color))))))
+    (apply #'format "#%02x%02x%02x"
+           (mapcar (lambda (value) (/ value 257)) values))))
+
+(declare-function org-export-derived-backend-p "ox")
+(declare-function org-html-encode-plain-text "ox-html")
+
+(defun imoogi-org-color--export (color description backend _info)
+  "Export a color link: a colored span in HTML backends, plain text elsewhere.
+DESCRIPTION arrives already exported; a bare COLOR is raw link text and is
+escaped for HTML."
+  (let* ((html (org-export-derived-backend-p backend 'html))
+         (text (cond (description)
+                     (html (org-html-encode-plain-text color))
+                     (t color)))
+         (hex (imoogi-org-color-hex color)))
+    (if (and hex html)
+        (format "<span style=\"color:%s\">%s</span>" hex text)
+      text)))
+
+(defun imoogi-org-color-preview-map ()
+  "Return (NAME . #rrggbb) pairs for color links in the current buffer."
+  (let (mapping)
+    (save-excursion
+      (goto-char (point-min))
+      (while (re-search-forward "\\[\\[color:\\([^]\n]+\\)\\]" nil t)
+        (let ((name (match-string-no-properties 1)))
+          (unless (assoc name mapping)
+            (when-let* ((hex (imoogi-org-color-hex name)))
+              (push (cons name hex) mapping))))))
+    (nreverse mapping)))
+
+(with-eval-after-load 'org
+  (org-link-set-parameters "color"
+                           :face #'imoogi-org-color--face
+                           :export #'imoogi-org-color--export))
+
+(defun imoogi-org-color--link ()
+  "Return the color link at point, if any."
+  (let ((element (org-element-context)))
+    (when (and (eq (org-element-type element) 'link)
+               (equal (org-element-property :type element) "color"))
+      element)))
+
+(defun imoogi-org-color-apply (color)
+  "Apply COLOR to the active region, or change the color link at point.
+Without either, prompt for text to insert.  COLOR is a color name or hex code."
+  ;; Empty/unspecified colors have no RGB values for contrast calculation.
+  ;; Show candidate foregrounds directly and require a nonempty color.
+  (interactive (list (read-color "문장 색상: " nil nil nil t)))
+  (unless (derived-mode-p 'org-mode) (user-error "Org 버퍼에서 사용하세요"))
+  (unless (color-defined-p color) (user-error "유효하지 않은 색상: %s" color))
+  (let* ((link (and (not (use-region-p)) (imoogi-org-color--link)))
+         (beg (cond ((use-region-p) (region-beginning))
+                    (link (org-element-property :begin link))
+                    (t (point))))
+         (end (cond ((use-region-p) (region-end))
+                    (link (- (org-element-property :end link)
+                             (org-element-property :post-blank link)))
+                    (t (point))))
+         (text (cond
+                ((use-region-p) (buffer-substring-no-properties beg end))
+                (link (if (org-element-property :contents-begin link)
+                          (buffer-substring-no-properties
+                           (org-element-property :contents-begin link)
+                           (org-element-property :contents-end link))
+                        (org-element-property :path link)))
+                (t (read-string "색을 입힐 문장: ")))))
+    ;; A description containing brackets could create nested/broken Org links.
+    (when (or (string-empty-p text) (string-match-p "[][]" text))
+      (user-error "대괄호나 링크가 없는 문장을 선택하세요"))
+    (atomic-change-group
+      (delete-region beg end)
+      (goto-char beg)
+      (insert (org-link-make-string (concat "color:" color) text)))
+    (deactivate-mark)
+    (font-lock-flush)))
+
+(defun imoogi-org-color-remove ()
+  "Replace the color link at point with its plain text."
+  (interactive)
+  (unless (derived-mode-p 'org-mode) (user-error "Org 버퍼에서 사용하세요"))
+  (let ((link (imoogi-org-color--link)))
+    (unless link (user-error "색상 링크 위에 커서를 놓으세요"))
+    (let ((beg (org-element-property :begin link))
+          (end (- (org-element-property :end link)
+                  (org-element-property :post-blank link)))
+          (text (if (org-element-property :contents-begin link)
+                    (buffer-substring-no-properties
+                     (org-element-property :contents-begin link)
+                     (org-element-property :contents-end link))
+                  (org-element-property :path link))))
+      (atomic-change-group
+        (delete-region beg end)
+        (goto-char beg)
+        (insert text))
+      (font-lock-flush))))
+
 (with-eval-after-load 'imoogi-transient
+  (transient-define-prefix imoogi-org-color-transient ()
+    "Color text in the current Org buffer."
+    [["문장 색상"
+      ("c" "색상 적용·변경" imoogi-org-color-apply)
+      ("r" "색상 제거" imoogi-org-color-remove)
+      ("q" "종료" transient-quit-one)]])
   (transient-define-prefix imoogi-org-block-transient ()
     "Org source and example block insertion."
     :column-widths '(22 22)
@@ -539,7 +654,8 @@ suppresses `text-scale-mode-hook', so local fitting alone is too early."
       ("a" "일정 보기" imoogi-org-agenda-overview)
       ("t" "전체 TODO" org-todo-list)
       ("m" "Agenda 메뉴" imoogi-org-agenda)
-      ("b" "Org 블록" imoogi-org-block-transient)]
+      ("b" "Org 블록" imoogi-org-block-transient)
+      ("C" "문장 색상" imoogi-org-color-transient :inapt-if-not (lambda () (derived-mode-p 'org-mode)))]
      ["현재 제목 ---------"
       ("s" "일정 지정" org-schedule :inapt-if-not imoogi-org-agenda-heading-p)
       ("d" "마감일 지정" org-deadline :inapt-if-not imoogi-org-agenda-heading-p)
