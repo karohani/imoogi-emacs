@@ -27,7 +27,16 @@ const clozeBody = "A {{c1::cloze}} body."
 // multiline_answer_missing before the assertion under test is reached. The
 // list restores the fixture's original purpose rather than relaxing anything —
 // every assertion these tests make is unchanged.
-const multilineBody = "A {{c1::cloze}} body.\n\n- an answer\n"
+//
+// The arrow line is SPEC-ANKICARD-004's move, made for the same reason: that
+// SPEC gives the swift value a rendering meaning, and REQ-SW-002 rejects a
+// swift entry whose body yields no arrow line, so every row setting swift on
+// would report swift_arrow_missing before its assertion is reached
+// (REQ-SW-012.5). It sits after the list, past a blank line and at column zero,
+// so it is no answer item, and under a multiline option it is plain context.
+// It is the last such extension the series needs: every card option now has a
+// rendering meaning, and the fixture satisfies all of them.
+const multilineBody = "A {{c1::cloze}} body.\n\n- an answer\n\nTokyo :-> Japan\n"
 
 // runOne drives one entry through an ordinary sync run and returns what the
 // run reported for it, plus the client so a caller can assert on the request

@@ -283,3 +283,24 @@ func TestBaseStylesheetCarriesTheChildrenListRule(t *testing.T) {
 	// inside the scope of. Nothing is re-asserted here; the pointer records
 	// that the coverage is deliberate rather than incidental.
 }
+
+// SPEC-ANKICARD-004 AC-SW-011 (REQ-SW-011.2): the stylesheet carries a rule
+// for the class the swift card's arrow emphasis carries. The class rides the
+// <b> element composition writes, never a container, because composition
+// inserts no line of its own (REQ-SW-011.3) — so the rule is written against
+// the class, and styles the arrow without being needed for the card's layout:
+// the inline break carries that.
+//
+// The negative half — no network-hosted resource, nothing derived from a deck
+// name — is asserted over the WHOLE file by
+// TestBaseStylesheetReachesNoNetworkResource and
+// TestBaseStylesheetCarriesNoPerDeckRule, whose scope this rule is inside.
+func TestBaseStylesheetCarriesTheSwiftArrowRule(t *testing.T) {
+	css := model.BaseCSS()
+	if !strings.Contains(css, ".card .swift-arrow") {
+		t.Fatal("base stylesheet carries no rule naming `.card .swift-arrow`")
+	}
+	if !declaredUnder(css, ".swift-arrow", "color: var(--imoogi-emphasis-fg)") {
+		t.Error("the swift-arrow rule does not take the emphasis ink token")
+	}
+}

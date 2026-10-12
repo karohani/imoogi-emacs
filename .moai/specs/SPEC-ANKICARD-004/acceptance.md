@@ -13,9 +13,10 @@ as a check.
 ## Corpus
 
 The composition corpus is one table exercised by the arrow-identification and
-composition tests. Thirty-two rows; every one is reachable from a body a user
-could write. Rows 18 through 24 were added at plan audit iteration 1 and rows 25
-through 32 at iteration 2; each pins a measured defect or a rule that would
+composition tests. Forty-two rows; every one is reachable from a body a user
+could write. Rows 18 through 24 were added at plan audit iteration 1, rows 25
+through 32 at iteration 2, rows 33 through 38 for iteration 3, and rows 39
+through 42 for iteration 4; each pins a measured defect or a rule that would
 otherwise be untested. The project's notes are Korean, so the corpus carries multi-byte
 rows rather than testing only the case this repository does not have.
 
@@ -53,6 +54,16 @@ rows rather than testing only the case this repository does not have.
 | 30 | `\begin{align}`⏎`A :-> B`⏎`\end{align}` | 0 | LaTeX environment interior; raw passthrough, context-dependent |
 | 31 | `~도쿄 :-> 일본~` | 1 | **not repaired** — inline code span; composes and breaks (N2) |
 | 32 | `[fn::도쿄 :-> 일본]` | 1 | **not repaired** — inline footnote; Anki refuses the note (N2) |
+| 33 | `[fn:1] 메모`⏎`도쿄 :-> 일본` | 0 | footnote definition's continuation; renders to nothing |
+| 34 | `[fn:1] 메모`⏎⏎⏎`도쿄 :-> 일본` | 1 | two blank lines end the definition; the arrow line is a paragraph again |
+| 35 | `\begin{align}`⏎`도쿄 :-> 일본` | 1 | unclosed environment opens nothing, as in the parser; renders as text |
+| 36 | `문맥`⏎`:PROPERTIES:`⏎`:X: 도쿄 :-> 일본`⏎`:END:` | 0 | mid-body property drawer; its interior renders to nothing |
+| 37 | `\begin{align} A :-> B \end{align}` | 1 | one-line environment; the anchored opening does not match, so it is a paragraph |
+| 38 | `:NOTES:`⏎`A :-> B`⏎`:END:` | 1 | ordinary drawer; its interior renders as an in-place `<p>` |
+| 39 | `#+BEGIN_SRC sh :exports code`⏎`echo`⏎`#+END_SRC`⏎⏎`#+RESULTS:`⏎`도쿄 :-> 일본` | 0 | the source block's attached result, suppressed under `:exports code`; renders to nothing (R3-1) |
+| 40 | `#+BEGIN_SRC sh`⏎`echo`⏎`#+END_SRC`⏎`#+RESULTS:`⏎`도쿄 :-> 일본` | 1 | the same result under the default export; renders as an in-place `<p>` (R3-1) |
+| 41 | `[fn:1] 메모`⏎`#+BEGIN_SRC go`⏎⏎⏎`#+END_SRC`⏎`도쿄 :-> 일본` | 0 | the blank pair is inside the nested block, so the footnote definition continues; renders to nothing (R3-2) |
+| 42 | `문맥`⏎`:PROPERTIES:`⏎`도쿄 :-> 일본`⏎`:END:` | 1 | a non-property line inside, so `:PROPERTIES:` opens nothing and the arrow line is an in-place `<p>` (R3-2) |
 
 ## AC Matrix
 
@@ -88,15 +99,33 @@ Sub-criteria, each decided by its corpus rows:
   inside `<pre class="example">`; rows 26 and 29 render to nothing at all,
   which is the pair that matters most — a marker composed there would be
   invisible and Anki would refuse the note with no deletion.
-- **e3** (REQ-SW-001.5, the LaTeX environment) Row 30: zero arrow lines,
-  **and** the composed body is byte-identical to the input — no snippet, no
-  marker, no break. Both halves are required: a scanner that found zero arrow
-  lines for the wrong reason would satisfy a count-only assertion, and the
-  byte-identity half is what catches it. This row is context-dependent rather
-  than context-free: measured, the interior line reads as an ordinary paragraph
-  **on its own**, and only the enclosing environment makes it otherwise, so it
-  is the row that fails if the environment's extent is not taken from the
-  parser's whole-body classification.
+- **e3** (REQ-SW-001.5, REQ-SW-001.6, the context-dependent constructs beyond
+  blocks and lists) Rows 30, 33, 36, 39, and 41: zero arrow lines each, **and**
+  the composed body is byte-identical to the input — no snippet, no marker, no
+  break. Both halves are required: a scanner that found zero arrow lines for the
+  wrong reason would satisfy a count-only assertion, and the byte-identity half
+  is what catches it. Each arrow line here reads as an ordinary paragraph **on
+  its own** and is excluded only by a construct opened on an earlier line — a
+  LaTeX environment, a footnote definition, a property drawer, a source block's
+  suppressed result — so these are the rows that fail if the scanner does not
+  mirror that construct's rule. Row 41 fails a footnote rule that ends the
+  definition at a blank pair **inside** a nested block; row 39 fails a scanner
+  that does not mirror the source block's attached result.
+
+  Rows 34, 35, 37, 38, 40, and 42 are their converses, each **one** arrow line,
+  and they are what fail an implementation that excludes more than the parser
+  does:
+  - Row 34: two blank lines end a footnote definition. It fails an
+    implementation that excludes every line after a `[fn:` line.
+  - Row 35: an environment with no matching `\end{…}` opens nothing. It fails
+    one that excludes every line after a `\begin{…}`.
+  - Row 37: a one-line `\begin{…} … \end{…}` is not an opening at all.
+  - Row 38: a drawer of any name but `PROPERTIES` renders its interior in
+    place. It fails one that excludes every drawer interior.
+  - Row 40: a source block's result under the default export renders in place.
+    It fails one that excludes every result attached to a source block.
+  - Row 42: a `:PROPERTIES:` line followed by a non-property line opens
+    nothing. It fails one that suppresses a property drawer by its name alone.
 - **f** (REQ-SW-001.7) Rows 14 and 17: the prose line renders unchanged, outside
   every generated marker, above the composed arrow line; and the arrow-free list
   below one renders as an ordinary list, carrying no generated marker and no
@@ -119,14 +148,14 @@ Sub-criteria, each decided by its corpus rows:
   that repairs the class will change these two rows deliberately.
 
 ```bash
-go test -run 'TestSwiftArrowLines' ./internal/anki/orgdoc -v
+go test -run '^TestSwiftArrowLines$' ./internal/anki/orgdoc -v
 ```
 
 ### AC-SW-002 — An entry with no arrow line is skipped with the new code (REQ-SW-002, REQ-SW-010)
 
 **Given** a cloze-style entry carrying `ANKI_SWIFT: t` and a body drawn from any
 corpus row whose arrow-line count is zero — rows 7 through 13, 18 through 22,
-and 24 through 30,
+24 through 30, 33, 36, 39, and 41,
 **When** the entry is synchronized,
 **Then** it is reported skipped with exactly one error carrying the code
 `swift_arrow_missing`; the entry's existing note identifier is carried on the
@@ -142,7 +171,7 @@ precisely what a multiline entry takes as its answers: those two bodies compose
 successfully under a multiline option and are not a cross-check at all.
 
 ```bash
-go test -run 'TestSwiftArrowMissing' ./internal/anki/planner -v
+go test -run '^TestSwiftArrowMissing$' ./internal/anki/planner -v
 ```
 
 ### AC-SW-003 — Numbering is positional and restarts per entry (REQ-SW-003)
@@ -161,7 +190,7 @@ nowhere.
 over arrow lines only, not over body lines.
 
 ```bash
-go test -run 'TestSwiftNumbering' ./internal/anki/orgdoc -v
+go test -run '^TestSwiftNumbering$' ./internal/anki/orgdoc -v
 ```
 
 ### AC-SW-004 — The token selects which sides are wrapped (REQ-SW-004)
@@ -175,7 +204,7 @@ left and leaves the right bare; `:<->` wraps both.
 `Text` field yields two cards rather than one.
 
 ```bash
-go test -run 'TestSwiftDirectionTable' ./internal/anki/orgdoc -v
+go test -run '^TestSwiftDirectionTable$' ./internal/anki/orgdoc -v
 ```
 
 ### AC-SW-005 — Generated numbers do not collide with a hand-written marker (REQ-SW-005)
@@ -220,7 +249,7 @@ hand-written marker,
 field carries the author's markers unchanged.
 
 ```bash
-go test -run 'TestSwiftHandWrittenMarker' ./internal/anki/orgdoc -v
+go test -run '^TestSwiftHandWrittenMarker$' ./internal/anki/orgdoc -v
 ```
 
 ### AC-SW-006 — A generated marker cannot close early (REQ-SW-006)
@@ -235,7 +264,7 @@ for the shared fixture the two implementations are compared against, so the two
 copies of the rule cannot drift.
 
 ```bash
-go test -run 'TestSwiftBraceSafety' ./internal/anki/orgdoc -v
+go test -run '^TestSwiftBraceSafety$' ./internal/anki/orgdoc -v
 make test-elisp 2>&1 | grep -i 'cloze-safe'
 ```
 
@@ -257,18 +286,28 @@ check was mechanical while leaving variable-versus-constant to a reader's
 judgment, and that claim is withdrawn:
 
 ```bash
-go test -run 'TestSwiftArrowEmphasis|TestSwiftSnippetBound' ./internal/anki/orgdoc -v
+go test -run '^(TestSwiftArrowEmphasis|TestSwiftSnippetBound)$' ./internal/anki/orgdoc -v
 grep -n '@@html:' internal/anki/orgdoc/*.go | grep -v '_test.go'
 ```
 
-### AC-SW-008 — The pipeline order is split, compose, gate, render (REQ-SW-008)
+### AC-SW-008 — The pipeline order is split, check, compose, gate, render (REQ-SW-008)
 
 **Given** a swift entry whose only arrow line sits inside a `#+BEGIN_EXTRA`
 block,
 **When** it is rendered,
 **Then** it is skipped with `swift_arrow_missing` — the split ran first, so
-supplementary content never became an arrow line — and the `Back Extra` field
-would have carried that content had the entry rendered.
+supplementary content never became an arrow line — and the checked split
+called on that body directly returns a nil error, an `extra` output that
+carries the arrow line, and a `rest` output that carries none.
+
+**And** given a swift entry whose body is `도쿄 :-> 일본`⏎`#+END_EXTRA`⏎`서울 :-> 한국`
+— an orphan closing marker between two arrow lines,
+**Then** it is skipped with `extra_block_unbalanced`, the swift branch having
+called the checked split: no arrow line is composed and no AnkiConnect write is
+issued. An earlier draft's edge-case table expected this body to compose two
+arrow lines with the marker shown as literal text; that expectation predates
+SPEC-ANKICARD-005 and is withdrawn, and an implementation producing it fails
+this criterion.
 
 **And** given a swift entry with an arrow line and **no** hand-written marker
 anywhere,
@@ -281,7 +320,8 @@ corpus row 15 and observing three paragraphs, which is the tree's behavior
 today and the evidence that DD-7's decision was implemented.
 
 ```bash
-go test -run 'TestSwiftPipelineOrder' ./internal/anki/orgdoc -v
+go test -run '^TestSwiftPipelineOrder$' ./internal/anki/orgdoc -v
+go test -run '^TestSwiftUnpairedExtraMarkerIsReported$' ./internal/anki/planner -v
 ```
 
 ### AC-SW-009 — The dispatch is extended, not duplicated, and is total (REQ-SW-009)
@@ -310,7 +350,7 @@ entry point. Both are asserted at the renderer's own boundary, because neither
 is reachable through the planner.
 
 ```bash
-go test -run 'TestRenderSignatureIsUnchanged|TestSwiftDispatch' ./internal/anki/orgdoc -v
+go test -run '^(TestRenderSignatureIsUnchanged|TestSwiftDispatch)$' ./internal/anki/orgdoc -v
 ```
 
 ### AC-SW-010 — The new code never competes for the one diagnostic slot (REQ-SW-010)
@@ -326,8 +366,13 @@ arrow line,
 `swift_arrow_missing` nor `multiline_answer_missing` can be reported for it, so
 the two renderer diagnostics can never co-occur.
 
+**And** given a swift entry whose body carries an orphan `#+END_EXTRA` line
+**and** no arrow line,
+**Then** exactly one error is reported and its code is `extra_block_unbalanced`,
+not `swift_arrow_missing` — the check runs on the split, before composition.
+
 ```bash
-go test -run 'TestGatePrecedesRendering|TestSwiftWithMultilineOptionIsRejected' ./internal/anki/planner -v
+go test -run '^(TestGatePrecedesRendering|TestSwiftWithMultilineOptionIsRejected|TestSwiftUnpairedExtraMarkerIsReported)$' ./internal/anki/planner -v
 ```
 
 ### AC-SW-011 — Consecutive arrow lines render apart, and the arrow is styleable (REQ-SW-011)
@@ -354,7 +399,7 @@ carries a rule for it that names no network-hosted resource and derives nothing
 from a deck name:
 
 ```bash
-go test -run 'TestSwiftLineBreak|TestSwiftArrowClass' ./internal/anki/orgdoc -v
+go test -run '^(TestSwiftLineBreak|TestSwiftArrowClass)$' ./internal/anki/orgdoc -v
 grep -n '#+ATTR_HTML' internal/anki/orgdoc/swift.go
 grep -n 'swift-arrow' internal/anki/model/assets/base.css
 go test ./internal/anki/model/... -count=1
@@ -371,7 +416,7 @@ corpus SPEC-ANKICARD-003 recorded,
 was modified:
 
 ```bash
-go test -run 'TestRenderGoldenCorpus|TestMultilineGoldenCorpus' ./internal/anki/orgdoc -v
+go test -run '^(TestRenderGoldenCorpus|TestMultilineGoldenCorpus)$' ./internal/anki/orgdoc -v
 git diff --stat -- internal/anki/orgdoc/testdata/
 ```
 
@@ -404,16 +449,19 @@ boolean* while ignoring the wire field — it passes both — so the contract is
 this trio, and the criterion fails if any one of the three is absent.
 
 **And** the helper the first half runs through carries, in its own docstring,
-the statement of what the probe no longer covers, why, and all **three** legs —
-so the next reader of the probe finds the narrowing and the full contract where
-the probe is, not only in `plan.md`.
+the statement of what the probe no longer covers, why, all **three** legs, and
+the three evasions they exclude — hashing the wire field, ignoring the option,
+introducing a new parameter — stated as three rather than as every route, so
+the next reader of the probe finds the narrowing and the full contract where
+the probe is, not only in `plan.md`. The criterion fails on a docstring that
+claims the legs exclude every way an option could reach the hash.
 
 **And** the shared option fixture the validation gate's tables run against
 carries an arrow line, so those tables still test the gate:
 
 ```bash
-go test -run 'TestHashIsUnchangedByCardOptions|TestHashChangesThroughRenderedValue|TestHashCallSiteTakesFourArguments' ./internal/anki/planner -v
-go test -run 'TestCardOptionValueRecognition|TestSwiftWithMultilineOptionIsRejected' ./internal/anki/planner -v
+go test -run '^(TestHashIsUnchangedByCardOptions|TestHashChangesThroughRenderedValue|TestHashCallSiteTakesFourArguments)$' ./internal/anki/planner -v
+go test -run '^(TestCardOptionValueRecognition|TestSwiftWithMultilineOptionIsRejected)$' ./internal/anki/planner -v
 ```
 
 ### AC-SW-014 — The editor command writes the property correctly (REQ-SW-013)
@@ -438,20 +486,49 @@ must fire no swift-conflict prompt at all. A test that stubs the prompt to
 always-yes passes while the defect is present, so this clause requires the
 unstubbed form.
 
-**And** given a heading with **both** `ANKI_DIRECTION: ->` and
-`ANKI_INCREMENTAL: t` on,
+**And** given a heading that resolves no swift option — the **on** direction —
+with **both** `ANKI_DIRECTION: ->` and `ANKI_INCREMENTAL: t` on,
 **When** the toggle runs and the user declines the conflict prompt,
 **Then** nothing is written — not `ANKI_SWIFT`, and not `ANKI_NOTE_TYPE`; and
 when the user confirms, **both** multiline properties are cleared to the falsy
 spelling in the heading's own drawer and `ANKI_SWIFT` is written. Clearing only
 one would leave the heading in the state the conflict rule rejects.
 
+**And** given a heading whose own drawer carries `ANKI_DIRECTION: ->` and which
+resolves `ANKI_SWIFT` to `t` only through inheritance — the **off** direction,
+on the heading SPEC-ANKICARD-002's gate rejects with `card_option_conflict`,
+**When** the toggle runs, with the confirmation prompt **unstubbed**,
+**Then** the heading's own drawer carries the falsy spelling of `ANKI_SWIFT`,
+`ANKI_DIRECTION` in that drawer is still `->`, `ANKI_INCREMENTAL` is neither
+written nor created, and no prompt fires. The mirror conflict check binds the on
+direction only (REQ-SW-013.4); a command that asked here would clear the very
+option a user turning swift off meant to keep.
+
 **And** the note-type failure message names the card option rather than the
 multiline pair, since it now reports for a swift heading too.
 
-**And** given a heading whose `ANKI_NOTE_TYPE` is `imoogi-Basic`,
+**And** given a heading whose `ANKI_NOTE_TYPE` is `imoogi-Basic` and which
+resolves no swift option — the **on** direction,
 **When** the toggle runs,
-**Then** it reports the type and changes nothing.
+**Then** it reports the type and changes nothing: no `ANKI_SWIFT` and no
+`ANKI_NOTE_TYPE` is written.
+
+**And** given a heading whose own drawer carries `ANKI_NOTE_TYPE: imoogi-Basic`
+and which resolves `ANKI_SWIFT` to `t` only through inheritance — the **off**
+direction, on the heading SPEC-ANKICARD-002's gate rejects with
+`card_option_needs_cloze`,
+**When** the toggle runs, with the confirmation prompt **unstubbed**,
+**Then** the heading's own drawer carries the falsy spelling of `ANKI_SWIFT`,
+`ANKI_NOTE_TYPE` is still `imoogi-Basic`, no note-type failure message is shown,
+and no prompt fires. The note-type contract binds the on direction only
+(REQ-SW-013.3); a command that refused here would refuse the very fix the
+`card_option_needs_cloze` message prescribes.
+
+**And** given a heading carrying no `ANKI_NOTE_TYPE` that resolves `ANKI_SWIFT`
+to `t` through inheritance,
+**When** the toggle runs,
+**Then** the falsy spelling is written and **no** `ANKI_NOTE_TYPE` is created —
+declining a card option creates no card marker.
 
 **And** `ANKI_SWIFT` is a member of the property-name completion candidates,
 where it previously was deliberately absent:
@@ -490,19 +567,29 @@ grep -n 'swift_arrow_missing' internal/anki/protocol/protocol.go modules/org/ank
 | Hand-written marker spanning the arrow | Not an arrow line; no generated marker anywhere on it | Corpus row 18, AC-SW-005 |
 | Unclosed `{{cN::` above an arrow line | The opening spans to the body's end, so nothing below it is an arrow line | Corpus rows 19 and 24, AC-SW-005 |
 | Arrow line whose first token is at column zero | Not an arrow line — the left side holds the first token | Corpus row 20, AC-SW-001b |
-| Arrow in a table row, a heading, a keyword line, or a comment line | Not an arrow line; each renders unchanged | Corpus row 22, AC-SW-001e2 |
+| Arrow in a table row, a heading, a keyword line, or a comment line | Not an arrow line; each renders unchanged | Corpus rows 22, 27-29, AC-SW-001e2 |
 | Prose immediately below an arrow line | No break emitted; the prose renders exactly as today | Corpus row 23, AC-SW-011 |
 | Empty remaining body | No arrow line; skipped with `swift_arrow_missing` | AC-SW-002 |
 | Body is one `#+BEGIN_EXTRA` block carrying an arrow | Skipped; the arrow never leaves the extra field | AC-SW-008 |
-| Dangling `#+END_EXTRA` between two arrow lines | Both lines are still arrow lines; the marker renders as visible literal text on its own line | Pinned here; the shape belongs to backlog card t16 |
+| Dangling `#+END_EXTRA` between two arrow lines | Skipped with `extra_block_unbalanced` by SPEC-ANKICARD-005's check, before composition; nothing composed | AC-SW-008, AC-SW-010 |
 | A hand-written marker on **both** sides of every arrow line | Nothing wrapped; entry renders rather than being skipped | AC-SW-005 |
 | Left side ends in a bare URL before the token | go-org linkifies part of it; pre-existing renderer behavior, unconstrained | `plan.md` DD-1 |
 | Multi-byte sides | Wrapped correctly; the scan never cuts inside a character because it splits on the token, not on a byte count | Corpus rows 1-2, AC-SW-001 |
 | Right side is a single non-breaking space | Not an arrow line — the trim is Unicode-aware. An ASCII-only trim would admit it and wrap a blank | AC-SW-001c |
 | Fixed-width line (`: A :-> B`) | Not an arrow line; renders inside `<pre class="example">` as today | Corpus row 25, AC-SW-001e2 |
 | Footnote definition (`[fn:1] …`) | Not an arrow line; renders to nothing, as today | Corpus row 26, AC-SW-001e2 |
-| Arrow inside a `\begin{…}` environment | Not an arrow line; the pairing rule covers both delimiter forms | Corpus row 30, AC-SW-001e3 |
-| One-line `\begin{align} A :-> B \end{align}` | **Is** an arrow line — measured, the one-line form is an ordinary paragraph | AC-SW-001e3's converse |
+| Arrow inside a `\begin{…}` environment | Not an arrow line; the scanner mirrors go-org's own `\begin`/`\end` rule as a second delimiter form | Corpus row 30, AC-SW-001e3 |
+| One-line `\begin{align} A :-> B \end{align}` | **Is** an arrow line — measured, the one-line form is an ordinary paragraph | Corpus row 37, AC-SW-001e3 |
+| `\begin{align}` with no matching `\end{…}` above an arrow line | **Is** an arrow line — the unmatched opening opens nothing, as in the parser | Corpus row 35, AC-SW-001e3 |
+| Arrow on a line continuing a `[fn:1]` footnote definition | Not an arrow line; renders to nothing | Corpus row 33, AC-SW-001e3 |
+| Arrow after a footnote definition and two blank lines | **Is** an arrow line — two blank lines end the definition | Corpus row 34, AC-SW-001e3 |
+| Arrow inside a mid-body `:PROPERTIES:` drawer | Not an arrow line; the drawer renders to nothing | Corpus row 36, AC-SW-001e3 |
+| Arrow inside an ordinary drawer (`:NOTES:` … `:END:`) | **Is** an arrow line — measured, the interior renders as an in-place `<p>` | Corpus row 38, AC-SW-001e3 |
+| Arrow in a source block's result under `:exports code` or `none` | Not an arrow line; the attached result renders to nothing | Corpus row 39, AC-SW-001e3 |
+| Arrow in a source block's result under the default export | **Is** an arrow line — the result renders as an in-place `<p>` | Corpus row 40, AC-SW-001e3 |
+| Footnote definition, then a nested block holding two blank lines, then an arrow line | Not an arrow line — the blank pair inside the block does not end the definition | Corpus row 41, AC-SW-001e3 |
+| `:PROPERTIES:` followed by a non-property line | **Is** an arrow line — the drawer opens nothing and its lines render in place | Corpus row 42, AC-SW-001e3 |
+| `#+BEGIN_` block and `\begin{…}` interleaved | Out of scope. Under REQ-SW-001.6's union composition, the environment-first and source-first shapes over-exclude the arrow line, and the quote-first shape agrees with go-org | `spec.md` § 5, block interiors |
 | Arrow inside an inline construct (link, code, verbatim, emphasis, author's snippet, inline footnote) | Composes, and the output is broken in the way § 5 measures per construct. Pinned, not repaired | Corpus rows 31-32, AC-SW-001g |
 
 ## Quality Gate Criteria
@@ -510,12 +597,12 @@ grep -n 'swift_arrow_missing' internal/anki/protocol/protocol.go modules/org/ank
 | Gate | Threshold | Command |
 |---|---|---|
 | Go tests | exit 0 | `go test ./... -count=1` |
-| `orgdoc` coverage | ≥ 100.0% (the `08f7504` baseline) | `go test -cover ./internal/anki/orgdoc` |
-| `planner` coverage | ≥ 92.8% (the `08f7504` baseline) | `go test -cover ./internal/anki/planner` |
+| `orgdoc` coverage | ≥ 100.0% (the `7d98ec0` baseline) | `go test -cover ./internal/anki/orgdoc` |
+| `planner` coverage | ≥ 92.8% (the `7d98ec0` baseline) | `go test -cover ./internal/anki/planner` |
 | Lint | 0 NEW issues over baseline | `make lint` |
 | Format | exit 0 | `make fmt-check` |
 | Cross-platform build | exit 0 both | `go build ./...` and `GOOS=windows GOARCH=amd64 go build ./...` |
-| Elisp tests | 0 unexpected; count ≥ 435 | `make test-elisp` |
+| Elisp tests | 0 unexpected; count ≥ 645 (the `7d98ec0` baseline) | `make test-elisp` |
 | Full local CI | exit 0 | `make ci-local` |
 
 ## Definition of Done
@@ -523,7 +610,7 @@ grep -n 'swift_arrow_missing' internal/anki/protocol/protocol.go modules/org/ank
 - [ ] AC-SW-001 through AC-SW-015 all PASS, each with its deciding command's
       verbatim output cited.
 - [ ] Every quality gate above meets its threshold, measured against the
-      `08f7504` baseline in `plan.md` § A.2.
+      `7d98ec0` baseline in `plan.md` § A.2.
 - [ ] The two pre-existing golden corpora are unmodified; `git diff --stat` over
       `internal/anki/orgdoc/testdata/` shows only the new swift corpus.
 - [ ] The three amendable test sites of `plan.md` § A.4 are green, and none of
@@ -532,11 +619,12 @@ grep -n 'swift_arrow_missing' internal/anki/protocol/protocol.go modules/org/ank
       other-actor files.
 - [ ] No git command that writes ran against the shared checkout.
 - [ ] `README.md`'s Anki section documents the swift card.
-- [ ] Every corpus row 18 through 30 is exercised by a test that fails if its
-      defect returns — for the zero-arrow-line rows, asserting **both** the zero
-      count and byte-identical composition, since a count alone passes on a
-      scanner that found zero for the wrong reason. Rows 31 and 32 are
-      exercised by a test asserting the measured broken output § 5 discloses.
+- [ ] Every corpus row 18 through 30 and 33 through 42 is exercised by a test
+      that fails if its defect returns — for the zero-arrow-line rows, asserting
+      **both** the zero count and byte-identical composition, since a count
+      alone passes on a scanner that found zero for the wrong reason. Rows 31
+      and 32 are exercised by a test asserting the measured broken output § 5
+      discloses.
 - [ ] `progress.md` §E.2 and §E.3 carry the run-phase evidence and the
       audit-ready signal.
 

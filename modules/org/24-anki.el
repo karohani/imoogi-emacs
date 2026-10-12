@@ -51,20 +51,24 @@
     (load (expand-file-name "imoogi.el" imoogi-anki-lisp-dir) nil t)
     (load (expand-file-name "imoogi-process.el" imoogi-anki-lisp-dir) nil t)))
 (require 'imoogi-setup)
+;; Anki 카드 뒷면의 "Emacs에서 원본 열기" 링크가 emacsclient 로 부르는 수신
+;; 함수(`imoogi-anki-open-id').  위와 같은 이유로 autoload 에 기대지 않고
+;; 모듈과 함께 올린다 (SPEC-ANKISRC-001 REQ-ASRC-011.7).
+(require 'imoogi-open)
 
 ;;; 프로퍼티 자동완성
 
 (defconst imoogi-anki-property-names
   '("ANKI_NOTE_TYPE" "ANKI_DECK" "ANKI_TAGS" "ANKI_NOTE_ID"
-    "ANKI_DIRECTION" "ANKI_INCREMENTAL")
+    "ANKI_DIRECTION" "ANKI_INCREMENTAL" "ANKI_SWIFT")
   "imoogi 가 읽는 Org 프로퍼티 이름.
 `C-c C-x p'(`org-set-property')의 이름 후보로 등록된다 — 등록하지 않으면
 버퍼에 이미 쓰인 프로퍼티만 후보로 나와서, 첫 카드를 만들 때 이름을
 통째로 타이핑해야 한다.
 
-ANKI_SWIFT 는 일부러 빠져 있다.  이름의 후보 자격은 그 프로퍼티를 쓰는
-명령과 함께 간다는 것이 SPEC-ANKICARD-002 이 정한 바이고, 이 설정이 쓰는
-것은 셋 중 둘이다 — 나머지 하나는 swift 카드 명령의 몫이다.")
+이름의 후보 자격은 그 프로퍼티를 쓰는 명령과 함께 간다.  ANKI_SWIFT 는 그
+명령(`imoogi-anki-toggle-swift')이 SPEC-ANKICARD-004 로 들어오면서 함께
+후보가 되었다 (REQ-SW-013.5).")
 
 (with-eval-after-load 'org
   (dolist (name imoogi-anki-property-names)
@@ -336,19 +340,30 @@ ANKI_NOTE_TYPE 이 아직 없으면 Cloze 로 지정해 준다 (프로퍼티를 
   "카드 옵션을 쓰기 전에 노트 타입을 확인한다.  써도 되면 non-nil.
 
 `imoogi-anki-cloze-region' 과 같은 계약이다.  타입이 아직 없으면 imoogi-Cloze
-를 달아 준다 — 멀티라인 옵션을 다는 행위 자체가 \"이건 Cloze 카드\" 라는
-뜻이다.  이미 Cloze 계열이면(스톡 \"Cloze\" 포함) 손대지 않는다.  다른
+를 달아 준다 — 카드 옵션을 다는 행위 자체가 \"이건 Cloze 카드\" 라는
+뜻이다.  swift 토글은 켜는 방향에서만 이 계약을 부른다.  이미 Cloze 계열이면(스톡 \"Cloze\" 포함) 손대지 않는다.  다른
 타입이면 알리기만 하고 nil 을 돌려준다 — 그 옵션이 만드는 카드는 모두
 Cloze 계열 위에 세워지므로, 다른 타입에 달면 만들 수 없는 카드를 적어 두는
 셈이 된다."
+  (when (imoogi-anki--cloze-type-acceptable-p)
+    (unless (org-entry-get (point) "ANKI_NOTE_TYPE")
+      (org-set-property "ANKI_NOTE_TYPE" imoogi-anki-cloze-note-type))
+    t))
+
+(defun imoogi-anki--cloze-type-acceptable-p ()
+  "카드 옵션을 달 수 있는 노트 타입이면 non-nil.  아무것도 쓰지 않는다.
+
+타입이 없거나 Cloze 계열이면 t.  다른 타입이면 알리고 nil 을 돌려준다.
+`imoogi-anki--ensure-cloze-type' 의 판정 절반이다 -- swift 토글은 이것을
+멀티라인 충돌 해소보다 먼저 불러, 거부될 heading 의 옵션을 지우지 않는다
+(SPEC-ANKICARD-004 REQ-SW-013.3, 카드 리뷰 t15 발견 3)."
   (let ((type (org-entry-get (point) "ANKI_NOTE_TYPE")))
     (cond
-     ((null type)
-      (org-set-property "ANKI_NOTE_TYPE" imoogi-anki-cloze-note-type)
-      t)
-     ((imoogi-anki-cloze-note-type-p type) t)
+     ((or (null type) (imoogi-anki-cloze-note-type-p type)) t)
+     ;; 메시지는 카드 옵션을 부른다 — 멀티라인 쌍만이 아니라 swift
+     ;; heading 에서도 이 메시지가 나온다 (SPEC-ANKICARD-004 REQ-SW-013.3).
      (t
-      (message "imoogi: 이 heading 은 %s 카드라 멀티라인 옵션을 달 수 없습니다 — Cloze 로 바꾸려면 C-c a c"
+      (message "imoogi: 이 heading 은 %s 카드라 카드 옵션을 달 수 없습니다 — Cloze 로 바꾸려면 C-c a c"
                type)
       nil))))
 
@@ -426,6 +441,93 @@ nil (해제) 이다.  해제는 프로퍼티를 지우는 것이 아니라 거�
                    "imoogi: 답별 카드 분리를 껐습니다 (상속을 끊기 위해 nil 을 씁니다)"
                  "imoogi: 답별 카드 분리를 켰습니다")))))
 
+;;; 화살표(swift) 카드 옵션 (SPEC-ANKICARD-004 REQ-SW-013)
+
+;; swift 가 켜진 heading 은 본문의 화살표 줄 (`도쿄 :-> 일본') 마다 빈칸
+;; 한 쌍을 만든다.  토글은 `imoogi-anki-toggle-incremental' 을 본뜨지만,
+;; `imoogi-anki--write-card-option' 을 거치지 않는다: 그 헬퍼는 swift 충돌
+;; 확인을 늘 먼저 돌리므로, swift 를 끄려는 바로 그 경로에서 \"swift 를
+;; 끌까요?\" 를 묻게 되고, 거절하면 끌 방법이 없다 (plan.md DD-10).
+;;
+;; 두 확인 -- 노트 타입 계약과 멀티라인 충돌 -- 은 켜는 방향에만 걸린다.
+;; 끄는 방향은 동기화가 거부하는 heading (card_option_needs_cloze,
+;; card_option_conflict) 에 닿는 경로이고, 그 진단들이 안내하는 해결이 바로
+;; 자신의 드로어에 nil 을 쓰는 것이다.  끄는 쪽에 확인을 걸면 명령이 진단의
+;; 처방을 거부하게 된다 (REQ-SW-013.3, .4).
+
+(defun imoogi-anki--multiline-options-on ()
+  "point 의 heading 에서 상속까지 따져 켜져 있는 멀티라인 옵션 이름의 목록.
+
+ANKI_INCREMENTAL 은 `t' 일 때, ANKI_DIRECTION 은 비어 있지 않고 거짓
+철자가 아닐 때 켜진 것으로 본다.  둘은 함께 켜져 있을 수 있다."
+  (let ((direction (imoogi-props-resolve-direction))
+        (incremental (imoogi-props-resolve-incremental))
+        on)
+    (when (and incremental (string-equal-ignore-case (string-trim incremental) "t"))
+      (push "ANKI_INCREMENTAL" on))
+    (when (and direction
+               (not (string-empty-p (string-trim direction)))
+               (not (string-equal-ignore-case (string-trim direction)
+                                              imoogi-anki-option-falsy)))
+      (push "ANKI_DIRECTION" on))
+    on))
+
+(defun imoogi-anki--resolve-multiline-conflict (on)
+  "켜진 멀티라인 옵션 ON 이 있으면 물어보고, 계속해도 되면 non-nil.
+
+`imoogi-anki--resolve-swift-conflict' 의 거울이다.  swift 를 방향 옆에
+쓰면 SPEC-ANKICARD-002 의 충돌 규칙이 다음 동기화에서 거부하는 heading 이
+된다.  다른 점은 끌 것이 둘일 수 있다는 것 -- ON 의 모든 옵션을 heading
+자신의 드로어에서 거짓 철자로 끈다.  하나만 끄면 충돌 규칙이 거부하는 바로
+그 상태가 남는다.
+
+swift 를 켜는 방향에서만 부른다.  거절하면 nil 을 돌려주고, 호출자는
+아무것도 쓰지 않는다."
+  (let ((names (string-join on ", ")))
+    (cond
+     ((null on) t)
+     ((yes-or-no-p (format "imoogi: 이 heading 은 %s 이(가) 켜져 있습니다. 화살표 카드와는 다른 종류의 카드라 함께 쓸 수 없습니다. %s 을(를) 끄고 계속할까요? "
+                           names names))
+      (dolist (property on)
+        (org-set-property property imoogi-anki-option-falsy))
+      t)
+     (t
+      (message "imoogi: %s 이(가) 켜져 있어 아무것도 쓰지 않았습니다" names)
+      nil))))
+
+(defun imoogi-anki-toggle-swift ()
+  "이 heading 의 ANKI_SWIFT 를 켜고 끈다.
+
+켜면 본문의 화살표 줄마다 빈칸 한 쌍이 생긴다 -- `왼쪽 :-> 오른쪽' 은
+오른쪽을, `:<-' 는 왼쪽을, `:<->' 는 둘 다 가린다.  화살표 줄이 하나도
+없으면 동기화가 이 heading 만 건너뛰고 그 이유를 알려 준다.
+
+상속으로 보이는 값을 기준으로 뒤집는다.  끄는 것은 지우는 것이 아니다 --
+상속된 값이 다시 드러나지 않도록 heading 자신의 드로어에 거짓 철자를 쓴다.
+
+켤 때만 두 가지를 확인한다: 멀티라인 옵션이 켜져 있으면 끌지 묻고, 노트
+타입이 없으면 imoogi-Cloze 를 달아 주며 Cloze 계열이 아니면 알리기만 한다.
+끌 때는 아무것도 묻지 않고 노트 타입도 건드리지 않는다."
+  (interactive)
+  (imoogi-anki--at-heading)
+  (let* ((current (imoogi-props-resolve-swift))
+         (on (and current (string-equal-ignore-case (string-trim current) "t"))))
+    (if on
+        (progn
+          (org-set-property "ANKI_SWIFT" imoogi-anki-option-falsy)
+          (message "imoogi: 화살표 카드를 껐습니다 (상속을 끊기 위해 nil 을 씁니다)"))
+      (let ((conflicting (imoogi-anki--multiline-options-on)))
+        ;; 타입 판정이 먼저다: 충돌 해소는 멀티라인 옵션을 지우므로, 그
+        ;; 뒤에 거부하면 거부된 heading 의 옵션이 이미 지워져 있다.
+        (when (and (imoogi-anki--cloze-type-acceptable-p)
+                   (imoogi-anki--resolve-multiline-conflict conflicting)
+                   (imoogi-anki--ensure-cloze-type))
+          (org-set-property "ANKI_SWIFT" "t")
+          (message (if conflicting
+                       (format "imoogi: 화살표 카드를 켰습니다 (%s 을(를) nil 로 껐습니다)"
+                               (string-join conflicting ", "))
+                     "imoogi: 화살표 카드를 켰습니다")))))))
+
 ;;; 키 — C-c a 접두 맵 (17-lsp.el 의 C-c l 맵과 같은 구조)
 
 (defvar imoogi-anki-map
@@ -438,6 +540,7 @@ nil (해제) 이다.  해제는 프로퍼티를 지우는 것이 아니라 거�
     (define-key map (kbd "z") #'imoogi-anki-cloze-region)
     (define-key map (kbd "r") #'imoogi-anki-set-direction)
     (define-key map (kbd "i") #'imoogi-anki-toggle-incremental)
+    (define-key map (kbd "w") #'imoogi-anki-toggle-swift)
     (define-key map (kbd "s") #'imoogi-sync)
     map)
   "Anki 명령 접두 맵.  Org 버퍼에서 `C-c a' 에 붙는다.
@@ -455,7 +558,8 @@ nil (해제) 이다.  해제는 프로퍼티를 지우는 것이 아니라 거�
                    ("l" . imoogi-anki-list-targets)
                    ("L" . imoogi-anki-list-files)
                    ("g" . imoogi-anki-open-log)
-                   ("u" . imoogi-anki-unregister-target)))
+                   ("u" . imoogi-anki-unregister-target)
+                   ("w" . imoogi-anki-toggle-swift)))
   (define-key imoogi-anki-map (kbd (car binding)) (cdr binding)))
 
 ;;; transient 메뉴
@@ -478,7 +582,8 @@ nil (해제) 이다.  해제는 프로퍼티를 지우는 것이 아니라 거�
       ("t" "태그 지정" imoogi-anki-set-tags)
       ("z" "선택 영역을 빈칸으로" imoogi-anki-cloze-region)
       ("r" "방향 지정" imoogi-anki-set-direction)
-      ("i" "답별 카드 분리" imoogi-anki-toggle-incremental)]
+      ("i" "답별 카드 분리" imoogi-anki-toggle-incremental)
+      ("w" "화살표 카드" imoogi-anki-toggle-swift)]
      ["실행 -----------"
       ("s" "동기화" imoogi-sync)
       ("S" "최초 설정" imoogi-anki-setup)

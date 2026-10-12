@@ -5,12 +5,14 @@
 (imoogi-require "01-keys")
 
 ;;; Quit an active minibuffer even after focus moves to another window.
+;; Use the built-in command `minibuffer-local-map' binds to C-g, so this does
+;; not depend on another module loading `delsel' (`minibuffer-keyboard-quit').
 (defun imoogi-keyboard-quit ()
   "Cancel the active minibuffer, or perform the usual keyboard quit."
   (interactive)
   (if-let* ((window (active-minibuffer-window)))
       (with-selected-window window
-        (minibuffer-keyboard-quit))
+        (abort-minibuffers))
     (keyboard-quit)))
 
 (global-set-key (kbd "C-g") #'imoogi-keyboard-quit)

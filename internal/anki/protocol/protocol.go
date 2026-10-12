@@ -2,10 +2,21 @@
 // front end and the Go back end: one request on stdin, one response on stdout,
 // per sync run.
 //
-// No field carries omitempty. A null note_id is the add trigger and a null deck
-// is the default-deck fallback trigger, so a dropped key and a null value are
-// not interchangeable on the wire.
+// No field carries omitempty, with one deliberate exception. A null note_id is
+// the add trigger and a null deck is the default-deck fallback trigger, so a
+// dropped key and a null value are not interchangeable on the wire.
+//
+// The exception is Entry.OrgID (SPEC-ANKISRC-001 REQ-ASRC-003.1): it is
+// omitted when empty, and adding it did NOT bump Version. Both halves are
+// safe because the field is purely additive in each direction. An older back
+// end decodes leniently and ignores the unknown key, so it keeps syncing
+// without the source link. An older front end never sends the key, and its
+// absence means exactly what an empty value means here: no link. No meaning
+// hangs on telling a dropped org_id from an empty one, which is the property
+// the rule above exists to protect for note_id and deck.
 package protocol
+
+import "regexp"
 
 // Version is the wire-contract version this binary speaks. The front end sends
 // its own version in every request; a mismatch is reported rather than parsed
@@ -112,7 +123,38 @@ const (
 	// question and the supplementary content and can itself be the cause of a
 	// missing marker or a missing answer list (REQ-AKX-004).
 	CodeExtraBlockUnbalanced = "extra_block_unbalanced"
+
+	// CodeSwiftArrowMissing reports a swift entry whose remaining body yields
+	// no arrow line (SPEC-ANKICARD-004 REQ-SW-002).
+	//
+	// Like the two codes above it is decided during the render, so it never
+	// competes with the gate's three codes for the one-diagnostic slot: it is
+	// fifth by construction rather than by placement (REQ-SW-010). It cannot
+	// co-occur with CodeMultilineAnswerMissing — the gate rejects swift beside
+	// a multiline option before either renderer runs — nor with
+	// CodeExtraBlockUnbalanced, whose check runs on the split, before
+	// composition.
+	CodeSwiftArrowMissing = "swift_arrow_missing"
+
+	// CodeOrgIDInvalid reports an entry whose org_id falls outside the
+	// character set ValidOrgID accepts (SPEC-ANKISRC-001 REQ-ASRC-006.3). It
+	// is advisory: the note is still added or updated, only without the
+	// open-source link.
+	CodeOrgIDInvalid = "org_id_invalid"
 )
+
+// orgIDPattern is the one character set every layer applies to an Org ID
+// before it reaches a link, a URL, or a Lisp string literal (DD-3): the
+// planner here, the open handler, and the Elisp receiver. It covers the three
+// org-id-method formats plus the @FQDN suffix org-id-include-domain adds, and
+// excludes every character that would need escaping in a query value, an HTML
+// attribute, or a Lisp string (%, &, =, /, ", backslash, whitespace, control).
+var orgIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:@-]{1,128}$`)
+
+// ValidOrgID reports whether id is inside the shared Org ID character set.
+func ValidOrgID(id string) bool {
+	return orgIDPattern.MatchString(id)
+}
 
 // Request is the document the front end writes to the binary's stdin.
 type Request struct {
@@ -183,6 +225,11 @@ type Entry struct {
 	Direction   *string `json:"direction"`
 	Incremental *string `json:"incremental"`
 	Swift       *string `json:"swift"`
+
+	// OrgID is the heading's own :ID: as read from disk, or "" when the
+	// heading has none (or the front end withheld it as a duplicate). It is
+	// the package's one omitempty field; see the package comment.
+	OrgID string `json:"org_id,omitempty"`
 }
 
 // InstallRequest is the document the front end writes to the install-models

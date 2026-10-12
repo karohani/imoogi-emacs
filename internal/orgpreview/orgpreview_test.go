@@ -84,6 +84,89 @@ func TestPropertyDrawerRendersAsEscapedInformationTable(t *testing.T) {
 	}
 }
 
+func TestOrgIDLinkRendersDescriptionNotSource(t *testing.T) {
+	source := "- [[id:E17712CF-ECC8-436F-9E49-C920A209BA52][bug <preview> note]]\n"
+	doc, err := FallbackParser{}.Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := Renderer{}.Render(doc)
+	for _, unwanted := range []string{"[[", "]]", "id:E17712CF"} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("id link leaked %q:\n%s", unwanted, out)
+		}
+	}
+	for _, want := range []string{
+		`data-org-kind="link"`,
+		`data-org-link-id="E17712CF-ECC8-436F-9E49-C920A209BA52"`,
+		`>bug &lt;preview&gt; note</a>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("id link missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "href=") {
+		t.Fatalf("id link must not carry an href until it is resolvable:\n%s", out)
+	}
+}
+
+func TestOrgKeywordLinesAreNotRenderedAsText(t *testing.T) {
+	source := "#+TITLE: Spec\n#+CATEGORY: imoogi-emacs\n* Heading\nBody\n#+caption: Figure\nAfter\n"
+	doc, err := FallbackParser{}.Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := Renderer{}.Render(doc)
+	for _, unwanted := range []string{"#+TITLE", "#+CATEGORY", "imoogi-emacs", "#+caption"} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("keyword line leaked %q:\n%s", unwanted, out)
+		}
+	}
+	for _, want := range []string{"Heading", "Body", "After"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("content %q disappeared:\n%s", want, out)
+		}
+	}
+}
+
+func TestOrgColorLinkRendersResolvedColor(t *testing.T) {
+	source := "[[color:blue1][파란 <글>]] [[color:#3498db][hex]] [[color:nope][plain]] [[color:red;x:y][evil]]\n"
+	doc, err := FallbackParser{}.Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := Renderer{ColorMap: map[string]string{"blue1": "#0000ff", "red;x:y": "red;x:y"}}.Render(doc)
+	for _, unwanted := range []string{"[[", "]]", "color:blue1", "href=", "x:y"} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("color link leaked %q:\n%s", unwanted, out)
+		}
+	}
+	for _, want := range []string{
+		`style="color:#0000ff">파란 &lt;글&gt;</span>`,
+		`style="color:#3498db">hex</span>`,
+		`>plain</span>`,
+		`>evil</span>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("color link missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Count(out, "style=") != 2 {
+		t.Fatalf("only resolved hex colors may carry a style:\n%s", out)
+	}
+}
+
+func TestOrgColorLinkWithoutDescriptionShowsColorName(t *testing.T) {
+	doc, err := FallbackParser{}.Parse("[[color:blue1]]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := Renderer{ColorMap: map[string]string{"blue1": "#0000ff"}}.Render(doc)
+	if !strings.Contains(out, `style="color:#0000ff">blue1</span>`) || strings.Contains(out, ">color:blue1<") {
+		t.Fatalf("undescribed color link must show the bare color name:\n%s", out)
+	}
+}
+
 func TestMalformedPropertyDrawerRemainsPlainText(t *testing.T) {
 	source := "* Task\n:PROPERTIES:\nnot-a-property\n:END:\n"
 	doc, err := FallbackParser{}.Parse(source)
@@ -741,6 +824,41 @@ func getFilePreview(t *testing.T, handler http.Handler, target string) filePrevi
 	return response
 }
 
+// Structural guard for the embedded browser script (it has no JS harness):
+// Emacs cursor navigation must bring the active block into view, without
+// centering it and without scrolling the pane on the browser's own clicks.
+func TestBrowserShellKeepsEmacsCursorBlockInView(t *testing.T) {
+	body := functionBody(t, browserShell, "function markElement(")
+	if !strings.Contains(body, "scrollIntoView({block:'nearest'") {
+		t.Fatalf("markElement must reveal the active block with block:'nearest':\n%s", body)
+	}
+	if !strings.Contains(functionBody(t, browserShell, "function markFromMessage("), "msg.origin === 'emacs'") {
+		t.Fatal("only Emacs-originated navigation may scroll the preview")
+	}
+	if !strings.Contains(body, "reveal:!!reveal") ||
+		!strings.Contains(functionBody(t, browserShell, "function restoreActive("), "markElement(el, reveal)") {
+		t.Fatal("a re-render must keep an Emacs-followed block in view and leave browser-selected ones alone")
+	}
+	render := functionBody(t, browserShell, "function renderRevision(")
+	restore, reveal := strings.Index(render, "window.scrollTo(x, y)"), strings.Index(render, "restoreActive()")
+	if restore < 0 || reveal < 0 || restore > reveal || strings.Contains(render, "requestAnimationFrame(() => window.scrollTo") {
+		t.Fatalf("renderRevision must restore the old viewport before revealing the active block:\n%s", render)
+	}
+}
+
+func functionBody(t *testing.T, source, header string) string {
+	t.Helper()
+	start := strings.Index(source, header)
+	if start < 0 {
+		t.Fatalf("%q not found", header)
+	}
+	end := strings.Index(source[start:], "\n}\n")
+	if end < 0 {
+		t.Fatalf("end of %q not found", header)
+	}
+	return source[start : start+end]
+}
+
 func TestServerServesPreviewShellAndBrowserWebSocketQueryContract(t *testing.T) {
 	server, err := NewServer(ServerConfig{Token: "test-token"})
 	if err != nil {
@@ -983,5 +1101,100 @@ func TestServerServesMermaidDiagnostics(t *testing.T) {
 	server.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/static/mermaid-diagnostics.js", nil))
 	if recorder.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("POST status=%d", recorder.Code)
+	}
+}
+
+// Structural guard: a click on a local (non-http) link asks Emacs to open it
+// by naming the link node only, instead of navigating the browser.
+func TestBrowserShellSendsLinkClicksToEmacs(t *testing.T) {
+	connect := functionBody(t, browserShell, "function connect(")
+	for _, want := range []string{
+		`event.target.closest('a[data-org-kind="link"]')`,
+		"event.preventDefault()",
+		"sendOpen(ws, link)",
+	} {
+		if !strings.Contains(connect, want) {
+			t.Fatalf("connect() missing %q:\n%s", want, connect)
+		}
+	}
+	send := functionBody(t, browserShell, "function sendOpen(")
+	if !strings.Contains(send, "type:'open'") || !strings.Contains(send, "element_id:link.dataset.orgId") ||
+		strings.Contains(send, "href") || strings.Contains(send, "path") {
+		t.Fatalf("sendOpen must name only the link node:\n%s", send)
+	}
+}
+
+// The browser names only the clicked link node; the server derives the
+// target from its own parsed document and validates it against the roots.
+func TestBrowserOpenLinkIsResolvedByServerForEmacs(t *testing.T) {
+	dir := t.TempDir()
+	doc := filepath.Join(dir, "notes", "doc.org")
+	if err := os.MkdirAll(filepath.Dir(doc), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"notes/doc.org", "notes/other.org", "outside.org"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("* x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server, err := NewServer(ServerConfig{Token: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := "[[file:other.org][o]] [[file:missing.org][m]] [[file:../outside.org][x]] [[id:ABC-1][i]] [[https://example.com][w]]\n"
+	resp := postRevision(t, server.Handler(), "test-token", RevisionRequest{
+		Envelope: NewEnvelope("s1", "b1", 1, OriginEmacs, "rev-1"),
+		Path:     doc, Syntax: "org", Text: text, AllowedRoots: []string{filepath.Dir(doc)},
+	})
+	links := map[string]string{}
+	var walk func([]Node)
+	walk = func(nodes []Node) {
+		for _, node := range nodes {
+			if node.Type == "link" {
+				links[node.Attrs["label"]] = node.ID
+			}
+			walk(node.Children)
+		}
+	}
+	walk(resp.Document.Nodes)
+	ch := make(chan NavigationEvent, 8)
+	server.addEmacsSubscriber("s1", ch)
+	client := &browserClient{sessionID: "s1", bufferID: "b1"}
+	open := func(label string) *OpenTarget {
+		t.Helper()
+		ev := NavigationEvent{Envelope: NewEnvelope("s1", "b1", 1, OriginBrowser, "open-"+label), Type: "open", ElementID: links[label]}
+		server.handleBrowserEvent(client, ev)
+		select {
+		case got := <-ch:
+			if got.Type != "open" || got.Open == nil {
+				t.Fatalf("%s: not an open event: %#v", label, got)
+			}
+			return got.Open
+		default:
+			t.Fatalf("%s: nothing sent to Emacs", label)
+			return nil
+		}
+	}
+	other, _ := filepath.EvalSymlinks(filepath.Join(dir, "notes", "other.org"))
+	if got := open("o"); got.Kind != "file" || got.Path != other {
+		t.Fatalf("file link: %#v, want path %s", got, other)
+	}
+	if got := open("m"); got.Kind != "unavailable" || got.Path != "" {
+		t.Fatalf("missing file must not be opened: %#v", got)
+	}
+	if got := open("x"); got.Kind != "unavailable" || got.Path != "" {
+		t.Fatalf("file outside allowed roots must not be opened: %#v", got)
+	}
+	if got := open("i"); got.Kind != "id" || got.ID != "ABC-1" {
+		t.Fatalf("id link: %#v", got)
+	}
+	for _, id := range []string{links["w"], "no-such-node"} {
+		ev := NavigationEvent{Envelope: NewEnvelope("s1", "b1", 1, OriginBrowser, "open-"+id), Type: "open", ElementID: id}
+		server.handleBrowserEvent(client, ev)
+	}
+	select {
+	case got := <-ch:
+		t.Fatalf("web links and unknown nodes must not reach Emacs: %#v", got)
+	default:
 	}
 }

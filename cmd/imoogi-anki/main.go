@@ -14,6 +14,7 @@ import (
 
 	"github.com/karohani/imoogi-emacs/internal/anki/ankiconnect"
 	"github.com/karohani/imoogi-emacs/internal/anki/model"
+	"github.com/karohani/imoogi-emacs/internal/anki/opener"
 	"github.com/karohani/imoogi-emacs/internal/anki/planner"
 	"github.com/karohani/imoogi-emacs/internal/anki/protocol"
 	"github.com/karohani/imoogi-emacs/internal/anki/registry"
@@ -34,8 +35,21 @@ commands:
   migrate          re-home stock-note-type entries onto imoogi's own note types
     --dry-run      report the candidates and their count; write nothing
   list-decks       read an AnkiConnect URL from stdin, write deck names as JSON
+  open <url>       open the Org heading an imoogi-anki://open?id=... link names, in Emacs
+  install-url-handler [--dest DIR] [--no-register]
+                   create ImoogiAnki.app (default ~/Applications) so macOS hands
+                   imoogi-anki:// links to this binary, and register it
   --version        print the version and exit
 `
+
+// openDeps and installRunner are the open side's seams (SPEC-ANKISRC-001).
+// Tests replace them so no real emacsclient, osascript, osacompile, codesign
+// or lsregister ever runs.
+var (
+	openDeps      = opener.DefaultDeps
+	installRunner = opener.Runner(opener.ExecRunner)
+	currentBinary = opener.CurrentBinary
+)
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
@@ -73,11 +87,65 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runMigrate(args[1:], stdin, stdout, stderr, logger)
 	case "list-decks":
 		return runListDecks(stdin, stdout, stderr)
+	case "open":
+		return runOpen(args[1:], stderr)
+	case "install-url-handler":
+		return runInstallURLHandler(args[1:], stdout, stderr)
 	default:
 		logger.Event("command_rejected", map[string]any{"reason": "unknown_command", "command": args[0]})
 		_, _ = fmt.Fprintf(stderr, "imoogi: unknown command %q\n\n%s", args[0], usage)
 		return 2
 	}
+}
+
+// runOpen is the URL handler the generated app invokes as `imoogi-anki open
+// <url>` (SPEC-ANKISRC-001 REQ-ASRC-009, REQ-ASRC-010). It reads no stdin and
+// writes no response document; its failures are notifications.
+func runOpen(args []string, stderr io.Writer) int {
+	if len(args) != 1 {
+		_, _ = fmt.Fprintf(stderr, "imoogi: open takes exactly one URL\n\n%s", usage)
+		return opener.ExitUsage
+	}
+	return opener.Open(args[0], openDeps(stderr))
+}
+
+// runInstallURLHandler generates ImoogiAnki.app around this binary's absolute
+// path and, unless --no-register is given, registers it with Launch Services
+// (SPEC-ANKISRC-001 REQ-ASRC-013). Any other flag is a usage error.
+func runInstallURLHandler(args []string, stdout, stderr io.Writer) int {
+	opts := opener.InstallOptions{Register: true, Run: installRunner}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--no-register":
+			opts.Register = false
+		case "--dest":
+			if i+1 >= len(args) || args[i+1] == "" {
+				_, _ = fmt.Fprintf(stderr, "imoogi: --dest needs a directory\n\n%s", usage)
+				return 2
+			}
+			i++
+			opts.Dest = args[i]
+		default:
+			_, _ = fmt.Fprintf(stderr, "imoogi: unknown install-url-handler flag %q\n\n%s", args[i], usage)
+			return 2
+		}
+	}
+	binary, err := currentBinary()
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "imoogi: cannot resolve this binary's path: %v\n", err)
+		return 1
+	}
+	opts.BinaryPath = binary
+	app, err := opener.Install(opts)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "imoogi: URL handler not installed: %v\n", err)
+		return 1
+	}
+	_, _ = fmt.Fprintln(stdout, app)
+	if !opts.Register {
+		_, _ = fmt.Fprintln(stderr, "imoogi: generated without registering; run without --no-register to register it")
+	}
+	return 0
 }
 
 // runListDecks is a read-only query for the interactive Emacs deck picker.

@@ -54,6 +54,8 @@ type Server struct {
 	mu       sync.Mutex
 	sessions map[string]*sessionState
 	roots    []string
+	// touchSeq orders buffer updates across buffers; guarded by mu.
+	touchSeq uint64
 }
 
 type sessionState struct {
@@ -73,6 +75,7 @@ type bufferState struct {
 	generation   uint64
 	browserView  string
 	assetHandles map[string]string
+	touched      uint64
 }
 
 type browserClient struct {
@@ -151,6 +154,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/emacs/navigation", s.handleEmacsNavigation)
 	s.mux.HandleFunc("/api/sessions/", s.handleSessionRender)
 	s.mux.HandleFunc("/api/file-preview", s.handleFilePreview)
+	s.mux.HandleFunc("/api/recent", s.handleRecentFiles)
 	s.mux.HandleFunc("/ws/browser", s.handleBrowserWebSocket)
 	s.mux.HandleFunc("/asset", s.handleAsset)
 	s.mux.HandleFunc("/static/mermaid.min.js", s.handleMermaidJS)
@@ -280,6 +284,7 @@ func (s *Server) handleRevision(w http.ResponseWriter, r *http.Request) {
 		BaseFile:    req.Path,
 		AssetHref:   func(path string) string { return secureURL("/asset", path) },
 		PreviewHref: func(path string) string { return secureURL("/preview", path) },
+		ColorMap:    req.ColorMap,
 	}.Render(doc)
 	renderEvent := RenderEvent{Envelope: req.Envelope, Document: doc, HTML: html}
 	committed := s.commitRevision(req, doc, html, roots, view, handles)
@@ -797,6 +802,8 @@ func (s *Server) commitRevision(req RevisionRequest, doc Document, html string, 
 		roots: roots, exactAssets: req.AssetMap, generation: req.Generation,
 		browserView: view, assetHandles: handles,
 	}
+	s.touchSeq++
+	state.buffers[req.BufferID].touched = s.touchSeq
 	return true
 }
 
@@ -902,19 +909,76 @@ func (s *Server) browserReadLoop(client *browserClient, rw *bufio.ReadWriter) er
 		if err := json.Unmarshal(payload, &ev); err != nil {
 			continue
 		}
-		if err := ev.Envelope.Validate(); err != nil {
-			continue
-		}
-		if ev.Origin != OriginBrowser || ev.SessionID != client.sessionID || ev.BufferID != client.bufferID {
-			continue
-		}
-		if ev.ElementID == "" {
-			continue
-		}
-		if s.markSeen(ev.SessionID, ev.EventID) {
-			s.broadcastEmacs(ev)
-		}
+		s.handleBrowserEvent(client, ev)
 	}
+}
+
+func (s *Server) handleBrowserEvent(client *browserClient, ev NavigationEvent) {
+	if err := ev.Envelope.Validate(); err != nil {
+		return
+	}
+	if ev.Origin != OriginBrowser || ev.SessionID != client.sessionID || ev.BufferID != client.bufferID {
+		return
+	}
+	if ev.ElementID == "" {
+		return
+	}
+	ev.Open = nil
+	if ev.Type == "open" {
+		open, ok := s.resolveOpen(ev.SessionID, ev.BufferID, ev.ElementID)
+		if !ok {
+			return
+		}
+		ev.Open = open
+	} else {
+		ev.Type = ""
+	}
+	if s.markSeen(ev.SessionID, ev.EventID) {
+		s.broadcastEmacs(ev)
+	}
+}
+
+var orgIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+
+// resolveOpen turns a clicked link node into something Emacs may open. The
+// target comes from the buffer's committed document, and file targets must
+// be existing regular files inside the buffer's allowed roots.
+func (s *Server) resolveOpen(sessionID, bufferID, elementID string) (*OpenTarget, bool) {
+	s.mu.Lock()
+	var buf *bufferState
+	if state := s.sessions[sessionID]; state != nil {
+		buf = state.buffers[bufferID]
+	}
+	s.mu.Unlock()
+	if buf == nil {
+		return nil, false
+	}
+	node := FindNodeByID(buf.document.Nodes, elementID)
+	if node == nil || node.Type != "link" {
+		return nil, false
+	}
+	target := node.Attrs["target"]
+	if id, ok := strings.CutPrefix(target, "id:"); ok {
+		if !orgIDRE.MatchString(id) {
+			return &OpenTarget{Kind: "unavailable", Target: target}, true
+		}
+		return &OpenTarget{Kind: "id", ID: id}, true
+	}
+	if strings.HasPrefix(target, "color:") || strings.Contains(target, "://") {
+		return nil, false
+	}
+	resolver, err := NewAssetResolverWithMap(buf.roots, buf.exactAssets)
+	if err != nil {
+		return &OpenTarget{Kind: "unavailable", Target: target}, true
+	}
+	path, err := resolver.Resolve(buf.path, target)
+	if err != nil {
+		return &OpenTarget{Kind: "unavailable", Target: target}, true
+	}
+	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
+		return &OpenTarget{Kind: "unavailable", Target: target}, true
+	}
+	return &OpenTarget{Kind: "file", Path: path}, true
 }
 
 func (c *browserClient) writeLoop() error {
@@ -1088,6 +1152,7 @@ pre,code{border-radius:6px;background:#11151b}code{padding:2px 5px;color:#cdd6e3
 table{width:100%;border-collapse:collapse;margin:1.1em 0;overflow:hidden;border-radius:7px}td{border:1px solid var(--line);padding:7px 10px}
 [data-org-id].active-block{outline:2px solid var(--active);outline-offset:5px;background-color:rgba(137,221,255,.07)}
 .toc-item.active,.overview-item.active{background:rgba(137,221,255,.10);box-shadow:inset 2px 0 0 var(--active)}
+.recent-item{display:block;border-radius:6px;padding:7px 8px;color:var(--text);text-decoration:none;font-size:13px;line-height:1.35}.recent-item:hover{background:rgba(255,255,255,.055)}.recent-item.current{background:rgba(137,221,255,.10);box-shadow:inset 2px 0 0 var(--active)}.recent-title,.recent-dir{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.recent-dir{color:var(--muted);font-size:11px}
 @media (max-width:980px){#app{display:block;padding:18px 14px 42px}.preview-sidebar{position:relative;top:auto;margin:0 0 18px;max-height:none}.panel{max-height:240px}.org-preview{padding:24px 22px}.org-preview h1,.org-preview h2,.org-preview h3,.org-preview h4,.org-preview h5,.org-preview h6{margin-left:-10px;margin-right:-10px;padding-left:10px;padding-right:10px}}
 </style>
 <div id="app">
@@ -1096,9 +1161,11 @@ table{width:100%;border-collapse:collapse;margin:1.1em 0;overflow:hidden;border-
     <nav class="tabs" aria-label="Preview navigation">
       <button class="tab active" data-panel="toc" type="button">목차</button>
       <button class="tab" data-panel="overview" type="button">개요</button>
+      <button class="tab" data-panel="recent" type="button">최근</button>
     </nav>
     <section id="toc" class="panel active" aria-label="Table of contents"></section>
     <section id="overview" class="panel" aria-label="Document overview"></section>
+    <section id="recent" class="panel" aria-label="Recent files"></section>
   </aside>
   <div id="root"></div>
 </div>
@@ -1135,7 +1202,7 @@ const palette = ['red','blue','green','yellow'];
 function wsURL(){const u=new URL('/ws/browser', location.href);u.protocol=location.protocol==='https:'?'wss:':'ws:';u.searchParams.set('session', sessionID || '');u.searchParams.set('buffer', bufferID || '');u.searchParams.set('generation', generation);u.searchParams.set('view', view);return u;}
 function connect(){
   const ws = new WebSocket(wsURL());
-  ws.onopen = () => { navigationSocket = ws; statusEl.textContent = 'connected'; };
+  ws.onopen = () => { navigationSocket = ws; statusEl.textContent = 'connected'; refreshRecent(); };
   ws.onclose = () => { if (navigationSocket === ws) navigationSocket = null; statusEl.textContent = 'reconnecting'; setTimeout(connect, 500); };
   ws.onmessage = event => {
     const msg = JSON.parse(event.data);
@@ -1144,6 +1211,13 @@ function connect(){
   };
   root.onclick = event => {
     if (event.target.closest('[data-mermaid-controls]')) return;
+    // Local file and Org ID links open in Emacs; web links keep browser behavior.
+    const link = event.target.closest('a[data-org-kind="link"]');
+    if (link && !/^https?:/i.test(link.getAttribute('href') || '')) {
+      event.preventDefault();
+      if (sessionID && bufferID && ws.readyState === WebSocket.OPEN) sendOpen(ws, link);
+      return;
+    }
     const el = blockFor(event.target.closest('[data-org-id]'));
     if (!el || !sessionID || !bufferID || ws.readyState !== WebSocket.OPEN) return;
     sendNavigation(ws, el);
@@ -1175,6 +1249,9 @@ async function loadLinkedFile(){
 function sendNavigation(ws, el){
   ws.send(JSON.stringify({version:'org-preview/v1',session_id:sessionID,buffer_id:bufferID,revision:revision,event_id:String(Date.now()),origin:'browser',element_id:el.dataset.orgId,range:{start:Number(el.dataset.orgRangeStart||0),end:Number(el.dataset.orgRangeEnd||0)}}));
 }
+function sendOpen(ws, link){
+  ws.send(JSON.stringify({version:'org-preview/v1',session_id:sessionID,buffer_id:bufferID,revision:revision,event_id:'open-'+Date.now(),origin:'browser',type:'open',element_id:link.dataset.orgId}));
+}
 function renderRevision(msg){
   if (typeof msg.revision === 'number' && msg.revision < revision) return;
   const x = window.scrollX;
@@ -1183,9 +1260,11 @@ function renderRevision(msg){
   root.innerHTML = msg.html;
   decorateDocument();
   rebuildSidebars();
+  // Restore the old viewport first, then let the active block pull it into view.
+  window.scrollTo(x, y);
   restoreActive();
   renderMermaid(revision);
-  requestAnimationFrame(() => window.scrollTo(x, y));
+  refreshRecent();
 }
 async function renderMermaid(targetRevision){
   await mermaidDiagnostics.render(root.querySelectorAll('.mermaid'), targetRevision);
@@ -1196,12 +1275,14 @@ function markFromMessage(msg){
   if (typeof msg.revision === 'number' && msg.revision < revision) return;
   const byID = msg.element_id ? root.querySelector('[data-org-id="'+CSS.escape(msg.element_id)+'"]') : null;
   const byRange = msg.range ? root.querySelector('[data-org-range-start="'+Number(msg.range.start||0)+'"][data-org-range-end="'+Number(msg.range.end||0)+'"]') : null;
-  markElement(byID || byRange);
+  markElement(byID || byRange, msg.origin === 'emacs');
 }
-function markElement(el){
+// reveal: follow the Emacs cursor; 'nearest' leaves a visible block in place.
+function markElement(el, reveal){
   el = blockFor(el);
   if (!el) return;
-  activeTarget = {id:el.dataset.orgId,start:el.dataset.orgRangeStart,end:el.dataset.orgRangeEnd};
+  if (reveal) el.scrollIntoView({block:'nearest',behavior:'smooth'});
+  activeTarget = {id:el.dataset.orgId,start:el.dataset.orgRangeStart,end:el.dataset.orgRangeEnd,reveal:!!reveal};
   root.querySelectorAll('.active-block').forEach(n => n.classList.remove('active-block'));
   document.querySelectorAll('.toc-item.active,.overview-item.active').forEach(n => n.classList.remove('active'));
   el.classList.add('active-block');
@@ -1210,8 +1291,9 @@ function markElement(el){
 }
 function restoreActive(){
   if (!activeTarget) return;
-  const el = root.querySelector('[data-org-id="'+CSS.escape(activeTarget.id)+'"]') || root.querySelector('[data-org-range-start="'+CSS.escape(activeTarget.start)+'"][data-org-range-end="'+CSS.escape(activeTarget.end)+'"]');
-  markElement(el);
+  const reveal = activeTarget.reveal;
+  const el =root.querySelector('[data-org-id="'+CSS.escape(activeTarget.id)+'"]') || root.querySelector('[data-org-range-start="'+CSS.escape(activeTarget.start)+'"][data-org-range-end="'+CSS.escape(activeTarget.end)+'"]');
+  markElement(el, reveal);
 }
 function blockFor(el){
   while (el && el !== root) {
@@ -1308,6 +1390,52 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.panel').forEach(n => n.classList.toggle('active', n.id === tab.dataset.panel));
   });
 });
+const recentPanel = document.getElementById('recent');
+let recentRequest = 0;
+// Files previewed in this Emacs session; each entry opens its live preview.
+async function refreshRecent(){
+  if (linkedFileID || !sessionID || !bufferID) { fillRecent([]); return; }
+  const ticket = ++recentRequest;
+  const endpoint = new URL('/api/recent', location.href);
+  endpoint.searchParams.set('session', sessionID);
+  endpoint.searchParams.set('buffer', bufferID);
+  endpoint.searchParams.set('generation', generation);
+  endpoint.searchParams.set('view', view);
+  try {
+    const response = await fetch(endpoint);
+    if (!response.ok) throw new Error('recent files unavailable');
+    const payload = await response.json();
+    if (ticket === recentRequest) fillRecent(payload.files || []);
+  } catch (_) {
+    if (ticket === recentRequest) fillRecent([]);
+  }
+}
+function fillRecent(files){
+  recentPanel.replaceChildren();
+  if (!files.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'No recent files';
+    recentPanel.appendChild(empty);
+    return;
+  }
+  files.forEach(file => {
+    const link = document.createElement('a');
+    link.className = 'recent-item' + (file.current ? ' current' : '');
+    link.href = file.url;
+    link.title = file.path;
+    if (file.current) link.setAttribute('aria-current', 'page');
+    const title = document.createElement('span');
+    title.className = 'recent-title';
+    title.textContent = file.title;
+    const dir = document.createElement('span');
+    dir.className = 'recent-dir';
+    dir.textContent = file.path.slice(0, Math.max(0, file.path.length - file.title.length)).replace(/[\\/]+$/, '');
+    link.append(title, dir);
+    recentPanel.appendChild(link);
+  });
+}
+document.querySelector('.tab[data-panel="recent"]').addEventListener('click', refreshRecent);
 function bootEmpty(){
   root.innerHTML = '<main class="org-preview"><p>Waiting for Emacs buffer...</p></main>';
   rebuildSidebars();

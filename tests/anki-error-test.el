@@ -29,7 +29,9 @@
     "card_option_conflict"
     "card_option_needs_cloze"
     "multiline_answer_missing"
-    "extra_block_unbalanced")
+    "extra_block_unbalanced"
+    "swift_arrow_missing"
+    "org_id_invalid")
   "The `Code...' string constants internal/anki/protocol/protocol.go
 declares today -- hardcoded here because this suite has no Go parser
 available.  Each later SPEC appends its own codes here in the order
@@ -88,7 +90,8 @@ Go-source parse proves awkward from Elisp."
                         (sort (copy-sequence imoogi-error-test--go-emitted-codes) #'string<)))))))
 
 (defconst imoogi-error-test--elisp-only-codes
-  '("binary_not_found" "sync_root_unset" "note_id_unknown")
+  '("binary_not_found" "sync_root_unset" "note_id_unknown"
+    "org_id_duplicated" "org_id_create_failed")
   "Table entries that legitimately have no `protocol.Code*' constant.
 
 The first two are Elisp-side preconditions (plan.md D-5): `imoogi-sync'
@@ -97,7 +100,10 @@ them and never should.  `note_id_unknown' is D-5's Go-origin code that
 the binary does not currently emit (REQ-012 reconciles the case as an
 ordinary add) -- it stays in the table because D-5 names it, and it
 stays here because the Go side declaring it would be a change, not a
-fix.  Everything NOT on this list must be paired with a Go constant.")
+fix.  `org_id_duplicated' and `org_id_create_failed' are SPEC-ANKISRC-001
+DD-4's front-end-only reports: the ID pass and the duplicate check run in
+Elisp before the request is built, so no Go code exists for either.
+Everything NOT on this list must be paired with a Go constant.")
 
 (ert-deftest imoogi-error-test-table-entries-are-all-paired-with-a-go-constant ()
   "AC-C-021c (REQ-C-023), the reverse direction: an entry added to the
@@ -147,6 +153,29 @@ transport error, an Emacs backtrace, or a bare process exit code."
                             "exit status" "wrong-type-argument" "file-missing"
                             "Debugger entered"))
         (should-not (string-match-p (regexp-quote forbidden) msg))))))
+
+(ert-deftest imoogi-error-test-swift-arrow-missing-message-states-the-fix ()
+  "SPEC-ANKICARD-004 AC-SW-015 (REQ-SW-014.1): the message names the
+problem and a corrective action -- including what does NOT count as an
+arrow line, since a body that looks to its author as though it carries
+arrows is exactly the case that produces this code."
+  (let ((msg (cdr (assoc "swift_arrow_missing" imoogi-error-table))))
+    (should msg)
+    ;; the problem: the option, and the arrow line it found none of
+    (should (string-match-p "ANKI_SWIFT" msg))
+    (should (string-match-p "arrow line" msg))
+    ;; the three tokens
+    (should (string-match-p (regexp-quote ":->") msg))
+    (should (string-match-p (regexp-quote ":<-") msg))
+    (should (string-match-p (regexp-quote ":<->") msg))
+    ;; what does not count -- the shapes an author most often writes
+    (should (string-match-p "list" msg))
+    (should (string-match-p (regexp-quote "#+BEGIN_") msg))
+    (should (string-match-p "table" msg))
+    (should (string-match-p "footnote" msg))
+    ;; and how to opt out, inheritance included
+    (should (string-match-p (regexp-quote "`nil'") msg))
+    (should (string-match-p "inherited" msg))))
 
 (ert-deftest imoogi-error-test-message-lookup-known-code ()
   (should (string-match-p "sync root" (imoogi-error-message "sync_root_unset"))))
