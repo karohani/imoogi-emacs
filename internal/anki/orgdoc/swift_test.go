@@ -253,6 +253,26 @@ var swiftMirrorCases = []swiftMirrorCase{
 	{"a_quote_block_as_the_result_ends_at_its_close", "#+BEGIN_SRC sh :exports code\necho\n#+END_SRC\n#+RESULTS:\n#+BEGIN_QUOTE\nx\n#+END_QUOTE\n도쿄 :-> 일본", 1},
 	{"an_environment_as_the_result_ends_at_its_close", "#+BEGIN_SRC sh :exports code\necho\n#+END_SRC\n#+RESULTS:\n\\begin{align}\nx\n\\end{align}\n도쿄 :-> 일본", 1},
 	{"results_as_the_last_line_attaches_nothing", "도쿄 :-> 일본\n#+BEGIN_SRC sh :exports code\necho\n#+END_SRC\n#+RESULTS:", 1},
+	// An affiliated keyword between the result and its construct (go-org's
+	// parseKeyword: NAME attaches the next construct, a run of CAPTION and
+	// ATTR_HTML attaches the construct after the run, any other keyword is
+	// one line on its own). A construct opened on a blank line is a paragraph
+	// that runs on through the text below it (card review t15, finding 1).
+	{"a_name_keyword_across_a_blank_joins_the_result", "#+BEGIN_SRC sh :exports code\necho\n#+END_SRC\n#+RESULTS:\n#+NAME: r\n\n도쿄 :-> 일본", 0},
+	{"a_caption_keyword_across_a_blank_joins_the_result", "#+BEGIN_SRC sh :exports code\necho\n#+END_SRC\n#+RESULTS:\n#+CAPTION: x\n\n도쿄 :-> 일본", 0},
+	{"a_name_then_a_caption_join_the_result", "#+BEGIN_SRC sh :exports code\necho\n#+END_SRC\n#+RESULTS:\n#+NAME: r\n#+CAPTION: x\n도쿄 :-> 일본", 0},
+	{"an_attr_latex_keyword_is_the_whole_result", "#+BEGIN_SRC sh :exports code\necho\n#+END_SRC\n#+RESULTS:\n#+ATTR_LATEX: x\n도쿄 :-> 일본", 1},
+	{"a_caption_then_a_name_is_the_whole_result", "#+BEGIN_SRC sh :exports code\necho\n#+END_SRC\n#+RESULTS:\n#+CAPTION: x\n#+NAME: r\n도쿄 :-> 일본", 1},
+	{"a_name_keyword_as_the_last_line_attaches_nothing", "도쿄 :-> 일본\n#+BEGIN_SRC sh :exports code\necho\n#+END_SRC\n#+RESULTS:\n#+NAME: r", 1},
+	{"a_caption_run_as_the_last_lines_attaches_nothing", "도쿄 :-> 일본\n#+BEGIN_SRC sh :exports code\necho\n#+END_SRC\n#+RESULTS:\n#+CAPTION: x\n#+ATTR_HTML: :class y", 1},
+
+	// A block nested in a list item runs to its own close, whatever its
+	// interior's indentation (go-org's parseBlock and parseLatexBlock ignore
+	// the item's stop; card review t15, finding 2).
+	{"a_nested_block_in_a_result_list_is_consumed_whole", "#+BEGIN_SRC sh :exports code\necho\n#+END_SRC\n#+RESULTS:\n- item\n  #+BEGIN_EXAMPLE\nx\n  #+END_EXAMPLE\n  도쿄 :-> 일본", 0},
+	{"a_nested_block_in_a_list_is_consumed_whole", "- item\n  #+BEGIN_EXAMPLE\nx\n  #+END_EXAMPLE\n  도쿄 :-> 일본", 0},
+	{"a_nested_environment_in_a_list_is_consumed_whole", "- item\n  \\begin{align}\nx\n  \\end{align}\n  도쿄 :-> 일본", 0},
+	{"an_unclosed_nested_block_ends_the_list_at_the_shallow_line", "- item\n  #+BEGIN_EXAMPLE\nx\n  도쿄 :-> 일본", 1},
 
 	// The LaTeX environment.
 	{"uppercase_keywords_open_an_environment", "\\BEGIN{align}\n도쿄 :-> 일본\n\\END{align}", 0},

@@ -392,11 +392,63 @@ func constructEnd(lines []sourceLine, j int, blocks, environments []blockSpan, r
 	if bullet, ok := readBullet(text); ok {
 		return walkList(lines, j, bullet, func(int, listLineRole, bulletLine) {}) - 1
 	}
+	if key, ok := keywordKey(text); ok {
+		return keywordEnd(lines, j, key, blocks, environments, region)
+	}
 	k := j + 1
 	for k < len(lines) && !lines[k].blank && isPlainTextLine(lines[k].text) {
 		k++
 	}
 	return k - 1
+}
+
+// keywordLinePattern is go-org v1.9.1's keyword grammar (org/keyword.go).
+var keywordLinePattern = regexp.MustCompile(`^(\s*)#\+([^:]+):(\s+(.*)|$)`)
+
+// keywordKey reports the upper-cased key of a line go-org lexes as a keyword.
+// A block delimiter or a `#+RESULTS:` line also matches the grammar, but the
+// lexer reads it first as what it is, so it is not a keyword.
+func keywordKey(text string) (string, bool) {
+	m := keywordLinePattern.FindStringSubmatch(text)
+	if m == nil || beginBlockLinePattern.MatchString(text) ||
+		endBlockLinePattern.MatchString(text) || resultLinePattern.MatchString(text) {
+		return "", false
+	}
+	return strings.ToUpper(m[2]), true
+}
+
+// keywordEnd reports the last line of the construct a keyword at line j opens,
+// mirroring org/keyword.go's parseKeyword.
+//
+// `#+NAME:` attaches the one construct the parser reads on the next line. A
+// run of `#+CAPTION:` and `#+ATTR_HTML:` lines attaches the construct after
+// the run, unless the run holds any other keyword, in which case the first
+// keyword stands alone. Every other keyword is one line on its own. Either
+// way, a following line that is blank opens a paragraph that runs on through
+// the text below it — which is how an arrow line two lines below a suppressed
+// result's `#+NAME:` is suppressed with it (card review t15, finding 1).
+func keywordEnd(lines []sourceLine, j int, key string, blocks, environments []blockSpan, region []bool) int {
+	switch key {
+	case "NAME":
+		if j+1 < len(lines) {
+			return constructEnd(lines, j+1, blocks, environments, region)
+		}
+	case "CAPTION", "ATTR_HTML":
+		k := j + 1
+		for ; k < len(lines); k++ {
+			next, ok := keywordKey(lines[k].text)
+			if !ok {
+				break
+			}
+			if next != "CAPTION" && next != "ATTR_HTML" {
+				return j
+			}
+		}
+		if k < len(lines) {
+			return constructEnd(lines, k, blocks, environments, region)
+		}
+	}
+	return j
 }
 
 // excludePropertyDrawers mirrors org/drawer.go's parsePropertyDrawer. A line
@@ -480,8 +532,10 @@ func scanArrowLines(title, body string) []arrowLine {
 // The i-th arrow line numbers its right side c(base+2i−1) and its left side
 // c(base+2i), where base is the highest hand-written number in the entry
 // (REQ-SW-003, REQ-SW-005.3). Numbering is POSITIONAL: a side the token leaves
-// unwrapped still consumes its number, so inserting a `:<-` line above another
-// renumbers nothing below it and Anki keeps every card's review history.
+// unwrapped still consumes its number, so changing a line's arrow renumbers no
+// line and Anki keeps every card's review history. Inserting or deleting an
+// arrow line does renumber every arrow line below it, and Anki's history then
+// follows the number, not the content.
 //
 // Composition inserts no line of its own (REQ-SW-011.3). The emphasis replaces
 // the token; the break is appended to an arrow line if and only if the very

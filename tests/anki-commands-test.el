@@ -485,6 +485,30 @@ swift 를 끄는 것이 그 진단이 안내하는 해결이므로, 여기서 �
     (should-not (org-entry-get (point) "ANKI_SWIFT"))
     (should (equal (org-entry-get (point) "ANKI_NOTE_TYPE") "imoogi-Basic"))))
 
+(ert-deftest imoogi-anki-toggle-swift-on-refuses-a-non-cloze-type-before-clearing-options ()
+  "REQ-SW-013.3: 다른 타입이면 알리기만 하고 아무것도 바꾸지 않는다 -- 멀티라인
+충돌 확인에 \"예\" 라고 답할 수 있는 상황이어도.
+
+노트 타입 확인이 충돌 해소보다 늦으면, imoogi-Basic heading 자신의
+ANKI_DIRECTION 이 지워진 뒤에야 swift 가 거부된다 (카드 리뷰 t15, 발견 3).
+그래서 프롬프트는 \"예\" 로 답하게 두고, 프로퍼티가 하나도 바뀌지 않았는지
+본다."
+  (imoogi-anki-test--with-org
+      "* 제목\n:PROPERTIES:\n:ANKI_NOTE_TYPE: imoogi-Basic\n:ANKI_DIRECTION: ->\n:END:\n\n도쿄 :-> 일본\n"
+    (goto-char (point-max))
+    (let ((before (buffer-string))
+          said)
+      (cl-letf (((symbol-function 'yes-or-no-p) (lambda (&rest _) t))
+                ((symbol-function 'message)
+                 (lambda (fmt &rest args) (push (apply #'format fmt args) said))))
+        (imoogi-anki-toggle-swift))
+      (should (seq-some (lambda (m) (string-match-p "imoogi-Basic" m)) said))
+      (should (equal (buffer-string) before)))
+    (org-back-to-heading t)
+    (should-not (org-entry-get (point) "ANKI_SWIFT"))
+    (should (equal (org-entry-get (point) "ANKI_NOTE_TYPE") "imoogi-Basic"))
+    (should (equal (org-entry-get (point) "ANKI_DIRECTION") "->"))))
+
 (ert-deftest imoogi-anki-toggle-swift-off-on-a-basic-heading-writes-the-falsy-spelling ()
   "AC-SW-014 (REQ-SW-013.3): 끄는 방향에서는 노트 타입 계약이 걸리지 않는다.
 

@@ -341,12 +341,21 @@ ANKI_NOTE_TYPE 이 아직 없으면 Cloze 로 지정해 준다 (프로퍼티를 
 타입이면 알리기만 하고 nil 을 돌려준다 — 그 옵션이 만드는 카드는 모두
 Cloze 계열 위에 세워지므로, 다른 타입에 달면 만들 수 없는 카드를 적어 두는
 셈이 된다."
+  (when (imoogi-anki--cloze-type-acceptable-p)
+    (unless (org-entry-get (point) "ANKI_NOTE_TYPE")
+      (org-set-property "ANKI_NOTE_TYPE" imoogi-anki-cloze-note-type))
+    t))
+
+(defun imoogi-anki--cloze-type-acceptable-p ()
+  "카드 옵션을 달 수 있는 노트 타입이면 non-nil.  아무것도 쓰지 않는다.
+
+타입이 없거나 Cloze 계열이면 t.  다른 타입이면 알리고 nil 을 돌려준다.
+`imoogi-anki--ensure-cloze-type' 의 판정 절반이다 -- swift 토글은 이것을
+멀티라인 충돌 해소보다 먼저 불러, 거부될 heading 의 옵션을 지우지 않는다
+(SPEC-ANKICARD-004 REQ-SW-013.3, 카드 리뷰 t15 발견 3)."
   (let ((type (org-entry-get (point) "ANKI_NOTE_TYPE")))
     (cond
-     ((null type)
-      (org-set-property "ANKI_NOTE_TYPE" imoogi-anki-cloze-note-type)
-      t)
-     ((imoogi-anki-cloze-note-type-p type) t)
+     ((or (null type) (imoogi-anki-cloze-note-type-p type)) t)
      ;; 메시지는 카드 옵션을 부른다 — 멀티라인 쌍만이 아니라 swift
      ;; heading 에서도 이 메시지가 나온다 (SPEC-ANKICARD-004 REQ-SW-013.3).
      (t
@@ -504,7 +513,10 @@ swift 를 켜는 방향에서만 부른다.  거절하면 nil 을 돌려주고, 
           (org-set-property "ANKI_SWIFT" imoogi-anki-option-falsy)
           (message "imoogi: 화살표 카드를 껐습니다 (상속을 끊기 위해 nil 을 씁니다)"))
       (let ((conflicting (imoogi-anki--multiline-options-on)))
-        (when (and (imoogi-anki--resolve-multiline-conflict conflicting)
+        ;; 타입 판정이 먼저다: 충돌 해소는 멀티라인 옵션을 지우므로, 그
+        ;; 뒤에 거부하면 거부된 heading 의 옵션이 이미 지워져 있다.
+        (when (and (imoogi-anki--cloze-type-acceptable-p)
+                   (imoogi-anki--resolve-multiline-conflict conflicting)
                    (imoogi-anki--ensure-cloze-type))
           (org-set-property "ANKI_SWIFT" "t")
           (message (if conflicting

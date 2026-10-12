@@ -441,10 +441,18 @@ const (
 // minimum indent, which is the bullet's indent plus the bullet's own width; and
 // two consecutive blank lines end the list where one does not.
 //
+// A fifth rule bounds the fourth and the indent rule: a paired `#+BEGIN_` block
+// or LaTeX environment opened on a line of the item runs to its own close as
+// one continuation, whatever its interior holds — go-org's parseBlock and
+// parseLatexBlock stop only at their own close, not at the item's stop. So
+// neither a shallow interior line, nor a blank pair, nor a bullet inside it
+// ends the list or opens an item (card review t15, finding 2).
+//
 // It is the ONE copy of that rule in the package: the multiline answer scan
 // reads item spans from it, and the swift scanner reads which lines are list
 // content (SPEC-ANKICARD-004 REQ-SW-001.5).
 func walkList(lines []sourceLine, first int, base bulletLine, visit func(i int, role listLineRole, b bulletLine)) int {
+	nested := nestedConstructEnds(lines)
 	cur := base
 	blankRun := 0
 	for i := first; i < len(lines); i++ {
@@ -468,6 +476,13 @@ func walkList(lines []sourceLine, first int, base bulletLine, visit func(i int, 
 			return i
 		}
 		blankRun = 0
+		if end, ok := nested[i]; ok {
+			for k := i; k <= end; k++ {
+				visit(k, listContinuationLine, bulletLine{})
+			}
+			i = end
+			continue
+		}
 		if isBullet {
 			visit(i, listNestedBullet, b)
 		} else {
@@ -475,6 +490,18 @@ func walkList(lines []sourceLine, first int, base bulletLine, visit func(i int, 
 		}
 	}
 	return len(lines)
+}
+
+// nestedConstructEnds maps the opening line of every paired `#+BEGIN_` block
+// and LaTeX environment in the body to its closing line, by the package's one
+// pairing rule for each delimiter (pairedBlocks, latexEnvironments).
+func nestedConstructEnds(lines []sourceLine) map[int]int {
+	blocks, _ := pairedBlocks(lines)
+	ends := make(map[int]int)
+	for _, span := range append(blocks, latexEnvironments(lines)...) {
+		ends[span.begin] = span.end
+	}
+	return ends
 }
 
 // --- composition ------------------------------------------------------------
