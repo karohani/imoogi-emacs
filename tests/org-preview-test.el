@@ -243,3 +243,85 @@
       (should (integerp (alist-get 'cursor_byte payload)))
       (should-not (alist-get 'element_id payload))
       (should-not (alist-get 'range payload)))))
+
+(defun imoogi-org-preview-test--open-event (open)
+  "Return a server open EVENT carrying OPEN for the current preview buffer."
+  `((version . "org-preview/v1") (buffer_id . "buffer-open") (origin . "browser")
+    (event_id . ,(format "open-%s" (random))) (type . "open") (open . ,open)))
+
+(defmacro imoogi-org-preview-test--with-open-buffer (&rest body)
+  "Run BODY in an Org preview buffer visiting a file in a temp directory."
+  (declare (indent 0))
+  `(let* ((dir (file-name-as-directory (make-temp-file "imoogi-open-" t)))
+          (doc (expand-file-name "doc.org" dir))
+          opened messages)
+     (unwind-protect
+         (with-current-buffer (find-file-noselect doc)
+           (setq-local imoogi-org-preview--buffer-id "buffer-open")
+           (cl-letf (((symbol-function 'project-current) (lambda (&rest _) nil))
+                     ((symbol-function 'find-file-other-window)
+                      (lambda (file &rest _) (push file opened)))
+                     ((symbol-function 'message)
+                      (lambda (fmt &rest args) (push (apply #'format fmt args) messages))))
+             ,@body)
+           (set-buffer-modified-p nil)
+           (kill-buffer))
+       (delete-directory dir t))))
+
+(ert-deftest imoogi-org-preview-open-file-inside-roots ()
+  (imoogi-org-preview-test--with-open-buffer
+    (let ((other (expand-file-name "other.org" dir)))
+      (write-region "* x\n" nil other nil 'silent)
+      (let ((preview (current-buffer)))
+        (cl-letf (((symbol-function 'find-file-other-window)
+                   (lambda (file &rest _)
+                     (push file opened)
+                     (set-buffer (get-buffer-create " *imoogi-open-other*")))))
+          (imoogi-org-preview--handle-event
+           (imoogi-org-preview-test--open-event `((kind . "file") (path . ,other)))))
+        (should (eq (current-buffer) preview)))
+      (should (equal opened (list other))))))
+
+(ert-deftest imoogi-org-preview-open-refuses-missing-or-outside-files ()
+  (imoogi-org-preview-test--with-open-buffer
+    (let ((outside (make-temp-file "imoogi-outside-" nil ".org")))
+      (unwind-protect
+          (dolist (path (list (expand-file-name "missing.org" dir) outside))
+            (imoogi-org-preview--handle-event
+             (imoogi-org-preview-test--open-event `((kind . "file") (path . ,path)))))
+        (delete-file outside))
+      (should-not opened)
+      (should-not (file-exists-p (expand-file-name "missing.org" dir)))
+      (should (= (length messages) 2)))))
+
+(ert-deftest imoogi-org-preview-open-id-and-unavailable ()
+  (imoogi-org-preview-test--with-open-buffer
+    (let ((target (generate-new-buffer "*imoogi-open-target*"))
+          (preview (current-buffer))
+          popped)
+      (unwind-protect
+          (progn
+            ;; Narrowed away from the target heading: the jump must still land.
+            (with-current-buffer target (org-mode) (insert "* a\n* b\n") (narrow-to-region 1 4))
+            (cl-letf (((symbol-function 'org-id-find)
+                       (lambda (id &optional _)
+                         (when (equal id "KNOWN")
+                           (with-current-buffer target (copy-marker 5)))))
+                      ((symbol-function 'pop-to-buffer)
+                       (lambda (buffer &rest _) (setq popped buffer) (set-buffer buffer))))
+              (imoogi-org-preview--handle-event
+               (imoogi-org-preview-test--open-event '((kind . "id") (id . "KNOWN"))))
+              (should (eq popped target))
+              (should (= (with-current-buffer target (point)) 5))
+              ;; SSE processing continues in the preview buffer.
+              (should (eq (current-buffer) preview))
+              (setq popped nil)
+              (with-current-buffer preview
+                (imoogi-org-preview--handle-event
+                 (imoogi-org-preview-test--open-event '((kind . "id") (id . "MISSING"))))
+                (imoogi-org-preview--handle-event
+                 (imoogi-org-preview-test--open-event '((kind . "unavailable") (target . "x.org")))))
+              (should-not popped)))
+        (kill-buffer target)
+        (set-buffer preview))
+      (should (= (length messages) 2)))))
