@@ -769,7 +769,7 @@ tests/assert-boot.el 이 잘못 읽는다(실제로 발생했던 버그).
 (ert-deftest imoogi-transient-org-agenda-heading-actions-follow-context ()
   (with-temp-buffer
     (should (equal (imoogi-test--inapt-keys 'imoogi-org-agenda-transient)
-                   '("T" "V" "c" "d" "s" "v" "x")))
+                   '("C" "T" "V" "c" "d" "s" "v" "x")))
     (insert "* TODO Task\nBody\n")
     (org-mode)
     (goto-char (point-min))
