@@ -1,7 +1,7 @@
 ---
 id: SPEC-PERSPPIN-001
 title: "Pin a project Perspective fully to its project"
-version: "0.1.0"
+version: "0.1.1"
 status: draft
 created: 2026-10-13
 updated: 2026-10-13
@@ -16,6 +16,15 @@ related_specs: [SPEC-TRANSIENT-001]
 ---
 
 ## HISTORY
+
+### v0.1.1 (2026-10-13)
+- DECIDED (lane-3): plan.md D-1 keeps the `f`/`s`/`d` vs `b`/`c`/`k`
+  precedence asymmetry, and D-6 accepts that `c`/`k` still prompt from a
+  project-notes buffer (now a known limitation and out of scope). Both
+  plan-phase clarification markers in plan.md are resolved.
+- ADDED: plan.md D-7 fixes the refresh trigger points for the notes-directory
+  list by function name. REQ-PIN-008 states them, and AC-PIN-010 gains a
+  refresh-trigger clause.
 
 ### v0.1.0 (2026-10-13)
 - INITIAL: SPEC created for card t35 (Class C, feature), the follow-up the t34
@@ -154,7 +163,12 @@ project-notes commands keep resolving them through their own entry), so
 redirected to the Perspective's root. The notes-context determination shall not
 read the notes registry, folder metadata files, or mounted roots on each lookup,
 because the lookup runs on every tab-bar redisplay; it shall rely on buffer-local
-state and an in-memory list of notes directories.
+state and an in-memory list of notes directories that is refreshed when the
+registry or mounted state is written, when mounted roots are rescanned, when a
+mounted note is detached, after an unmount, on a Perspective switch, and at
+startup (plan.md D-7). Decided (lane-3, 2026-10-13):
+the resulting gap — `c`/`k` still prompt from a notes buffer — is a known
+limitation (§ 5).
 
 ### 3.2 The project transient (`C-c h p`)
 
@@ -210,8 +224,11 @@ The remaining `C-c h p` entries shall keep their current resolution:
    project resolution and are untouched.
 
 Decision recorded: this preserves an existing asymmetry — in Perspective A, a
-buffer of project B gets A's files from `f` but B's buffers from `b`. Unifying
-the two regimes is a separate decision (plan.md § B, open clarification).
+buffer of project B gets A's files from `f` but B's buffers from `b`.
+**Decided (lane-3, 2026-10-13):** the asymmetry is kept as written; unifying in
+either direction regresses a tested behaviour or t34's card-review lesson, and
+the card's goal is met without it (plan.md D-1). Unification is out of scope
+(§ 5).
 
 ### 3.3 Compatibility with t34
 
@@ -248,7 +265,8 @@ the project-only lists and no error shall be shown.
 
 ### Out of Scope — Unifying the transient's two precedence regimes
 - Changing `f`/`s`/`d` to prefer the buffer's own project, or `b`/`c`/`k` to
-  prefer the Perspective. Recorded as an open clarification in plan.md.
+  prefer the Perspective. Decided (lane-3, 2026-10-13): the asymmetry is kept
+  as written (plan.md D-1).
 
 ### Out of Scope — Commands outside `C-c h p`
 - Notes inclusion for `C-x p b` (`consult-project-buffer`), `C-x b`
@@ -258,7 +276,11 @@ the project-only lists and no error shall be shown.
 
 ### Out of Scope — Notes-context buffers
 - Prompt removal for `c`/`k` invoked from a notes-context buffer (REQ-PIN-008
-  keeps those buffers on their current resolution).
+  keeps those buffers on their current resolution). Decided (lane-3,
+  2026-10-13): accepted as a known limitation — `C-c h p c` and `k` still
+  prompt from a project-notes buffer, because claiming notes buffers would
+  redirect `--current-source-root` for worktree-opened notes and the card names
+  projectless buffers (scratch), not notes buffers (plan.md D-6).
 - Making a notes directory a project, or adding notes to `project-files` /
   `project-buffers` / `project-external-roots`.
 

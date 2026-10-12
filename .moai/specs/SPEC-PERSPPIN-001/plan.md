@@ -81,9 +81,11 @@ behaviour; making `b`/`c`/`k` Perspective-first contradicts the t34
 card-review lesson the card itself carries. This card's goal (no prompt from
 projectless buffers, pinned candidate lists) is met without choosing.
 
-[NEEDS CLARIFICATION: unify transient precedence — should `C-c h p` use one
-regime for all entries, and if so which (Perspective-first like `f`, or
-own-project-first like `b`)?]
+**Decided (lane-3, 2026-10-13):** keep the asymmetry as written — `f`/`s`/`d`
+stay Perspective-first, `b`/`c`/`k` stay own-project-first. Why: unifying in
+either direction regresses a tested behaviour or t34's card-review lesson, and
+the card's goal (no prompt from projectless buffers, pinned candidate lists) is
+met without unifying. Unification is out of scope (spec.md § 5).
 
 ### D-2 — Mechanism: a guarded finder at the end of `project-find-functions`
 
@@ -112,11 +114,9 @@ Guards, evaluated cheapest first, each a decline:
    hook variable owned by `04-projects.el`, so 04 never requires 26). The
    predicate short-circuits on the buffer-local notes variables, then on
    `buffer-file-name` (nil → not a notes file), then compares the file against
-   an in-memory list of notes directories. That list is built from
-   `--all-entries` off the hot path (first use, and refreshed when the
-   registry or mounted state is written, or on a Perspective switch); the
-   predicate never calls `--all-entries`, `--read-registry`, or
-   `--find-metadata-file` itself (AC-PIN-010, second part).
+   an in-memory list of notes directories (see D-7). The predicate never calls
+   `--all-entries`, `--read-registry`, or `--find-metadata-file` itself
+   (AC-PIN-010, second part).
 Then resolve the canonical root with the finder inhibited:
 `project--find-in-directory` on the root, else `(transient . ROOT)`. The whole
 body is wrapped so any error declines (REQ-PIN-007).
@@ -156,10 +156,51 @@ which differs when the notes buffer was opened from a worktree. Cost: `c`/`k`
 from a notes buffer still prompt (out of scope); `b`/`f` work there through D-3
 and the Perspective-first context.
 
-[NEEDS CLARIFICATION: notes-buffer prompt gap — accept that `C-c h p c` and `k`
-still prompt when invoked from a project-notes buffer, or extend the finder to
-claim notes buffers whose entry key equals the mapped root's identity key
-(accepting the worktree source-root redirection)?]
+**Decided (lane-3, 2026-10-13):** accept the gap — `C-c h p c` and `k` still
+prompt from a project-notes buffer, and the finder keeps declining notes
+buffers. Why: claiming them would redirect `--current-source-root` for
+worktree-opened notes, and the card names projectless buffers (scratch), not
+notes buffers. Recorded as a known limitation (acceptance.md § Residual Risk)
+and an out-of-scope item (spec.md § 5).
+
+### D-7 — Notes-directory list: concrete refresh trigger points
+
+**Decided (lane-3, 2026-10-13).** The in-memory list (canonical notes
+directories of every entry `imoogi-project-notes--all-entries` returns) is
+rebuilt eagerly, never lazily on the finder's path, at exactly these points,
+all in `modules/project/26-project-notes.el`:
+
+1. **Registry write** — at the end of `imoogi-project-notes--write-registry`
+   (line ~792). Its callers at `6feee71` are `imoogi-project-notes--save-entry`
+   (~1845, used by setup/setup-study/move/repair/copy) and
+   `imoogi-project-notes--remove-local-entry` (~3701).
+2. **Mounted-state write** — at the end of
+   `imoogi-project-notes--write-mounted-state` (line ~863). Its callers are
+   `imoogi-project-notes-raiseup` (~2775), `-reconnect-source` (~3068),
+   `-clear-source-override` (~3084), `-mounted-root-add` (~3191),
+   `-mounted-root-edit` (~3234), and `-mounted-root-remove` (~3248).
+3. **Explicit rescan** — at the end of
+   `imoogi-project-notes-mounted-root-refresh` (line ~3252), which rescans
+   mounted roots without writing state.
+4. **Session detach** — at the end of `imoogi-project-notes-detach` (line
+   ~3818), which changes `imoogi-project-notes--detached-instance-ids` without
+   writing a file.
+5. **Unmount** — after the executor succeeds in
+   `imoogi-project-notes-unmount-device` (line ~3920), which does not write
+   state either.
+6. **Perspective switch** — a function on `persp-switch-hook` (alongside the
+   members added at `04-projects.el:339`; registered from 26 under
+   `with-eval-after-load 'perspective`), which also picks up notes directories
+   created or mounted outside Emacs.
+7. **Startup** — once on `emacs-startup-hook` at a depth after
+   `imoogi-perspective-state-restore` (which runs at −50).
+
+Each rebuild calls `--all-entries` inside `condition-case`; on any error
+(corrupt registry, unreadable mount) the previous list is kept and nothing is
+displayed. Before the first rebuild (list never built), the predicate treats a
+file as a notes file when it is inside `imoogi-project-notes-directory` — a
+pure string-prefix check with no I/O. Rebuilds happen at the call sites (a
+direct call at the end of each function in 1-5), not via advice.
 
 ### B.3 Risks
 
@@ -171,9 +212,10 @@ claim notes buffers whose entry key equals the mapped root's identity key
   in-memory prefix comparison, and the VC lookup on the root is cached by
   `project-try-vc`. `imoogi-project-notes--all-entries` is NOT cached (it
   re-scans metadata, the registry JSON, and mounted roots each call), which is
-  why guard 8 must not call it. A stale notes-dir list can misclassify a notes
-  directory registered seconds ago until the next refresh — acceptable, since
-  the effect is only that the finder claims or declines that one buffer.
+  why guard 8 must not call it. A notes directory created outside Emacs (or a
+  mount appearing without `--write-mounted-state`) is unknown until the next
+  Perspective switch (D-7 trigger 6); until then the finder may claim a buffer
+  visiting it — acceptable, since the effect is limited to that one buffer.
 - Org preview allowed roots widen for `~/notes/scratch.org` in a mapped
   Perspective (the preview server may resolve links under R).
 - Prompted directory equal to the buffer's `default-directory`: inside
@@ -223,7 +265,8 @@ AC-PIN-001..009. Installer, guards D-2, inhibit in
 `imoogi-project-switch-perspective`.
 
 ### M2 — Notes-context exclusion and t34 compatibility
-AC-PIN-010, AC-PIN-016. Predicate hook from 26-project-notes.el.
+AC-PIN-010, AC-PIN-016. Predicate hook from 26-project-notes.el; the D-7
+notes-directory list and its seven refresh points.
 
 ### M3 — `b` command and candidate set
 AC-PIN-011 (b part), AC-PIN-012, AC-PIN-017 (b part); transient row change and

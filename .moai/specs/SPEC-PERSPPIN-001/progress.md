@@ -8,13 +8,13 @@ Pin a project Perspective fully to its project. Tier M, card t35.
 plan_status: audit-ready
 plan_complete_at: 2026-10-13
 spec_id: SPEC-PERSPPIN-001
-spec_version: "0.1.0"
+spec_version: "0.1.1"
 tier: M
 artifacts: [spec.md, plan.md, acceptance.md, progress.md]
 requirements: 15
 acceptance_criteria: 17
 baseline_head: 6feee71
-open_clarifications: 2  # plan.md D-1 (transient precedence), D-6 (notes-buffer prompt gap)
+open_clarifications: 0  # D-1, D-6 decided by lane-3 2026-10-13; D-7 refresh points fixed
 ```
 
 ## §E.2 Run-phase Evidence

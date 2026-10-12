@@ -121,8 +121,15 @@ same call returns with the finder removed from `project-find-functions`.
 projectless non-notes file buffer,
 **Then** no stub signals (the hot path reads no registry or metadata), the notes
 buffer still yields nil, and the non-notes buffer still yields R's project.
+**And** given the list built with only N, when a second notes directory N2 is
+registered through `imoogi-project-notes--write-registry` (and, separately,
+when `persp-switch-hook` runs after N2 appears on disk under a mounted root),
+**Then** a buffer visiting a file in N2 is immediately treated as a
+notes-context buffer (`project-current` yields nil), with no registry read on
+the lookup itself.
 Tests: `imoogi-persppin-notes-buffer-declined`,
-`imoogi-persppin-notes-check-reads-no-registry`.
+`imoogi-persppin-notes-check-reads-no-registry`,
+`imoogi-persppin-notes-list-refresh-triggers`.
 
 ### AC-PIN-011 — `b`, `c`, `k` do not prompt from scratch (REQ-PIN-009)
 **Given** R mapped and current, a projectless buffer, `compile` stubbed to
@@ -229,6 +236,13 @@ Test: `imoogi-persppin-no-notes-entry-project-only`.
   exit codes above.
 
 ## Residual Risk
+
+- Known limitation — Decided (lane-3, 2026-10-13): `C-c h p c` and `k` still
+  prompt when invoked from a project-notes buffer, because the finder declines
+  notes buffers (REQ-PIN-008, plan.md D-6). Not an AC failure; out of scope.
+- Decided (lane-3, 2026-10-13): the `f`/`s`/`d` vs `b`/`c`/`k` precedence
+  asymmetry is kept as written (plan.md D-1); AC-PIN-004 and AC-PIN-015 assert
+  each side as it stands.
 
 - Interactive driving of the real `C-c h p` key sequence is not automated; the
   ACs call the bound commands directly.
