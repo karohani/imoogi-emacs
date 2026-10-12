@@ -1233,6 +1233,17 @@ refresh must never break the command that triggered it."
 This also picks up notes directories created or mounted outside Emacs."
   (imoogi-project-notes--rebuild-context-directories))
 
+(defun imoogi-project-notes-directory-for-root (root)
+  "Return the notes directory registered for source ROOT, or nil.
+Worktrees of one repository share an identity key and so share notes.  Signals
+`user-error' for a remote ROOT, which the identity key refuses.  The project
+transient's `b' and `f' entries add this directory's buffers and files to
+their candidates; it never becomes a member of the project itself."
+  (let ((key (imoogi-project-notes--identity-key root)))
+    (when-let* ((entries (imoogi-project-notes--all-entries))
+                (entry (imoogi-project-notes--find-entry-by-key key entries)))
+      (imoogi-project-notes--alist-string 'notes-dir entry))))
+
 (defun imoogi-project-notes--context-buffer-p ()
   "Return non-nil when the current buffer is a notes-context buffer.
 That is a buffer carrying project-note buffer-local state, or visiting a file

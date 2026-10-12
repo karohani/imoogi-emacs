@@ -230,6 +230,68 @@ Imoogi context is mapped."
   (interactive)
   (imoogi-project-context-call #'project-dired))
 
+;;; Project transient `b': project buffers plus the project's own notes
+
+(defun imoogi-project--notes-directory (root)
+  "Return ROOT's project-notes directory, or nil.
+26-project-notes.el supplies the lookup; without it, or when it fails (no
+entry, a remote or missing root), the candidate lists stay project-only and
+nothing is shown."
+  (when (fboundp 'imoogi-project-notes-directory-for-root)
+    (condition-case nil
+        (imoogi-project-notes-directory-for-root root)
+      (error nil))))
+
+(defun imoogi-project--buffer-project ()
+  "Return the project `b' lists buffers for.
+The buffer's own project wins, then the Perspective's root (which also covers
+notes buffers, where the finder declines), then the normal prompt."
+  (or (project-current nil)
+      (when-let* (((bound-and-true-p persp-mode))
+                  (root (imoogi-project--perspective-root)))
+        (imoogi-project-resolve-root root))
+      (project-current t)))
+
+(defun imoogi-project-buffer-candidates (project)
+  "Return the live buffers the project transient's `b' offers for PROJECT.
+These are PROJECT's own buffers, as `project-switch-to-buffer' filters them,
+plus the buffers visiting a file inside the project's notes directory.  The
+notes buffers stay out of `project-buffers', so `k' never kills them."
+  (let* ((notes (imoogi-project--notes-directory (project-root project)))
+         (own (cl-remove-if
+               (lambda (buffer)
+                 (project--buffer-check buffer project-ignore-buffer-conditions))
+               (project-buffers project)))
+         (notes-buffers
+          (when notes
+            (cl-remove-if-not
+             (lambda (buffer)
+               (when-let* ((file (buffer-file-name buffer)))
+                 (file-in-directory-p file notes)))
+             (buffer-list)))))
+    (delete-dups (append own notes-buffers))))
+
+(defun imoogi-project-switch-to-buffer (buffer-or-name)
+  "Switch to BUFFER-OR-NAME among the current project's buffers and notes.
+Interactively, offer `imoogi-project-buffer-candidates' for the buffer's own
+project or, in a buffer without one, for the current Perspective's project,
+so scratch and notes buffers do not prompt for a project."
+  (interactive
+   (let* ((project (imoogi-project--buffer-project))
+          (candidates (imoogi-project-buffer-candidates project))
+          (other (other-buffer (current-buffer)))
+          (name (read-buffer "Switch to buffer: "
+                             (when (memq other candidates)
+                               (buffer-name other))
+                             nil
+                             (lambda (entry) (memq (cdr entry) candidates)))))
+     ;; Like `project-switch-to-buffer', a new name creates a buffer at the
+     ;; project root.
+     (list (or (get-buffer name)
+               (let ((default-directory (project-root project)))
+                 (get-buffer-create name))))))
+  (switch-to-buffer buffer-or-name))
+
 (defun imoogi-project--canonical-root (root)
   "Return ROOT as a canonical directory name."
   (file-name-as-directory (file-truename (expand-file-name root))))
