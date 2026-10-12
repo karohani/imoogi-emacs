@@ -54,6 +54,8 @@ type Server struct {
 	mu       sync.Mutex
 	sessions map[string]*sessionState
 	roots    []string
+	// touchSeq orders buffer updates across buffers; guarded by mu.
+	touchSeq uint64
 }
 
 type sessionState struct {
@@ -73,6 +75,7 @@ type bufferState struct {
 	generation   uint64
 	browserView  string
 	assetHandles map[string]string
+	touched      uint64
 }
 
 type browserClient struct {
@@ -151,6 +154,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/emacs/navigation", s.handleEmacsNavigation)
 	s.mux.HandleFunc("/api/sessions/", s.handleSessionRender)
 	s.mux.HandleFunc("/api/file-preview", s.handleFilePreview)
+	s.mux.HandleFunc("/api/recent", s.handleRecentFiles)
 	s.mux.HandleFunc("/ws/browser", s.handleBrowserWebSocket)
 	s.mux.HandleFunc("/asset", s.handleAsset)
 	s.mux.HandleFunc("/static/mermaid.min.js", s.handleMermaidJS)
@@ -798,6 +802,8 @@ func (s *Server) commitRevision(req RevisionRequest, doc Document, html string, 
 		roots: roots, exactAssets: req.AssetMap, generation: req.Generation,
 		browserView: view, assetHandles: handles,
 	}
+	s.touchSeq++
+	state.buffers[req.BufferID].touched = s.touchSeq
 	return true
 }
 
@@ -1089,6 +1095,7 @@ pre,code{border-radius:6px;background:#11151b}code{padding:2px 5px;color:#cdd6e3
 table{width:100%;border-collapse:collapse;margin:1.1em 0;overflow:hidden;border-radius:7px}td{border:1px solid var(--line);padding:7px 10px}
 [data-org-id].active-block{outline:2px solid var(--active);outline-offset:5px;background-color:rgba(137,221,255,.07)}
 .toc-item.active,.overview-item.active{background:rgba(137,221,255,.10);box-shadow:inset 2px 0 0 var(--active)}
+.recent-item{display:block;border-radius:6px;padding:7px 8px;color:var(--text);text-decoration:none;font-size:13px;line-height:1.35}.recent-item:hover{background:rgba(255,255,255,.055)}.recent-item.current{background:rgba(137,221,255,.10);box-shadow:inset 2px 0 0 var(--active)}.recent-title,.recent-dir{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.recent-dir{color:var(--muted);font-size:11px}
 @media (max-width:980px){#app{display:block;padding:18px 14px 42px}.preview-sidebar{position:relative;top:auto;margin:0 0 18px;max-height:none}.panel{max-height:240px}.org-preview{padding:24px 22px}.org-preview h1,.org-preview h2,.org-preview h3,.org-preview h4,.org-preview h5,.org-preview h6{margin-left:-10px;margin-right:-10px;padding-left:10px;padding-right:10px}}
 </style>
 <div id="app">
@@ -1097,9 +1104,11 @@ table{width:100%;border-collapse:collapse;margin:1.1em 0;overflow:hidden;border-
     <nav class="tabs" aria-label="Preview navigation">
       <button class="tab active" data-panel="toc" type="button">목차</button>
       <button class="tab" data-panel="overview" type="button">개요</button>
+      <button class="tab" data-panel="recent" type="button">최근</button>
     </nav>
     <section id="toc" class="panel active" aria-label="Table of contents"></section>
     <section id="overview" class="panel" aria-label="Document overview"></section>
+    <section id="recent" class="panel" aria-label="Recent files"></section>
   </aside>
   <div id="root"></div>
 </div>
@@ -1136,7 +1145,7 @@ const palette = ['red','blue','green','yellow'];
 function wsURL(){const u=new URL('/ws/browser', location.href);u.protocol=location.protocol==='https:'?'wss:':'ws:';u.searchParams.set('session', sessionID || '');u.searchParams.set('buffer', bufferID || '');u.searchParams.set('generation', generation);u.searchParams.set('view', view);return u;}
 function connect(){
   const ws = new WebSocket(wsURL());
-  ws.onopen = () => { navigationSocket = ws; statusEl.textContent = 'connected'; };
+  ws.onopen = () => { navigationSocket = ws; statusEl.textContent = 'connected'; refreshRecent(); };
   ws.onclose = () => { if (navigationSocket === ws) navigationSocket = null; statusEl.textContent = 'reconnecting'; setTimeout(connect, 500); };
   ws.onmessage = event => {
     const msg = JSON.parse(event.data);
@@ -1188,6 +1197,7 @@ function renderRevision(msg){
   window.scrollTo(x, y);
   restoreActive();
   renderMermaid(revision);
+  refreshRecent();
 }
 async function renderMermaid(targetRevision){
   await mermaidDiagnostics.render(root.querySelectorAll('.mermaid'), targetRevision);
@@ -1313,6 +1323,52 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.panel').forEach(n => n.classList.toggle('active', n.id === tab.dataset.panel));
   });
 });
+const recentPanel = document.getElementById('recent');
+let recentRequest = 0;
+// Files previewed in this Emacs session; each entry opens its live preview.
+async function refreshRecent(){
+  if (linkedFileID || !sessionID || !bufferID) { fillRecent([]); return; }
+  const ticket = ++recentRequest;
+  const endpoint = new URL('/api/recent', location.href);
+  endpoint.searchParams.set('session', sessionID);
+  endpoint.searchParams.set('buffer', bufferID);
+  endpoint.searchParams.set('generation', generation);
+  endpoint.searchParams.set('view', view);
+  try {
+    const response = await fetch(endpoint);
+    if (!response.ok) throw new Error('recent files unavailable');
+    const payload = await response.json();
+    if (ticket === recentRequest) fillRecent(payload.files || []);
+  } catch (_) {
+    if (ticket === recentRequest) fillRecent([]);
+  }
+}
+function fillRecent(files){
+  recentPanel.replaceChildren();
+  if (!files.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'No recent files';
+    recentPanel.appendChild(empty);
+    return;
+  }
+  files.forEach(file => {
+    const link = document.createElement('a');
+    link.className = 'recent-item' + (file.current ? ' current' : '');
+    link.href = file.url;
+    link.title = file.path;
+    if (file.current) link.setAttribute('aria-current', 'page');
+    const title = document.createElement('span');
+    title.className = 'recent-title';
+    title.textContent = file.title;
+    const dir = document.createElement('span');
+    dir.className = 'recent-dir';
+    dir.textContent = file.path.slice(0, Math.max(0, file.path.length - file.title.length)).replace(/[\\/]+$/, '');
+    link.append(title, dir);
+    recentPanel.appendChild(link);
+  });
+}
+document.querySelector('.tab[data-panel="recent"]').addEventListener('click', refreshRecent);
 function bootEmpty(){
   root.innerHTML = '<main class="org-preview"><p>Waiting for Emacs buffer...</p></main>';
   rebuildSidebars();
