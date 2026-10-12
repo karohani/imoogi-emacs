@@ -325,3 +325,26 @@
         (kill-buffer target)
         (set-buffer preview))
       (should (= (length messages) 2)))))
+
+(ert-deftest imoogi-org-preview-allows-project-notes-assets-from-artifacts ()
+  "Pasted images in a project-notes artifact live in the sibling assets dir."
+  (let* ((notes (file-name-as-directory (make-temp-file "imoogi-notes-" t)))
+         (assets (expand-file-name "assets/" notes))
+         (document (expand-file-name "artifacts/doc.org" notes))
+         buffer)
+    (unwind-protect
+        (progn
+          (make-directory assets t)
+          (make-directory (file-name-directory document) t)
+          (cl-letf (((symbol-function 'project-current) (lambda (&rest _) nil))
+                    ((symbol-function 'imoogi-project-notes--read-registry)
+                     (lambda () nil)))
+            (setq buffer (find-file-noselect document))
+            (with-current-buffer buffer
+              (setq-local imoogi-project-notes-directory-local notes)
+              (should (seq-some (lambda (root) (file-in-directory-p assets root))
+                                (imoogi-org-preview--allowed-roots))))))
+      (when (buffer-live-p buffer)
+        (with-current-buffer buffer (set-buffer-modified-p nil))
+        (kill-buffer buffer))
+      (delete-directory notes t))))

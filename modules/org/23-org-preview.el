@@ -17,6 +17,8 @@
 (declare-function imoogi-org-color-preview-map "14-org")
 (declare-function org-id-find "org-id")
 (declare-function org-fold-show-context "org-fold")
+(declare-function imoogi-clipboard--owner "28-clipboard")
+(declare-function imoogi-clipboard--owner-asset-root "28-clipboard")
 
 (defgroup imoogi-org-preview nil
   "Live Org/Markdown preview backed by the local imoogi-org-preview server."
@@ -439,8 +441,21 @@ The preview scrolls only when that paragraph is off screen."
          (list (when-let* ((root (imoogi-org-preview--project-root)))
                  (expand-file-name root))
                (when buffer-file-name
-                 (file-name-directory (expand-file-name buffer-file-name)))))
+                 (file-name-directory (expand-file-name buffer-file-name)))
+               (imoogi-org-preview--clipboard-asset-root)))
    #'string=))
+
+(defun imoogi-org-preview--clipboard-asset-root ()
+  "Return the clipboard asset directory owning this buffer's pasted files.
+Project-notes artifacts link to a sibling assets directory outside both the
+document directory and any VCS project, so it must be allowed explicitly."
+  (when (and buffer-file-name (fboundp 'imoogi-clipboard--owner))
+    (condition-case nil
+        (when-let* ((root (imoogi-clipboard--owner-asset-root
+                           (imoogi-clipboard--owner)
+                           (expand-file-name buffer-file-name))))
+          (file-name-as-directory (expand-file-name root)))
+      (error nil))))
 
 (defun imoogi-org-preview--cursor-byte ()
   "Return zero-based UTF-8 byte offset for current point."
