@@ -84,6 +84,32 @@ func TestPropertyDrawerRendersAsEscapedInformationTable(t *testing.T) {
 	}
 }
 
+func TestOrgIDLinkRendersDescriptionNotSource(t *testing.T) {
+	source := "- [[id:E17712CF-ECC8-436F-9E49-C920A209BA52][bug <preview> note]]\n"
+	doc, err := FallbackParser{}.Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := Renderer{}.Render(doc)
+	for _, unwanted := range []string{"[[", "]]", "id:E17712CF"} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("id link leaked %q:\n%s", unwanted, out)
+		}
+	}
+	for _, want := range []string{
+		`data-org-kind="link"`,
+		`data-org-link-id="E17712CF-ECC8-436F-9E49-C920A209BA52"`,
+		`>bug &lt;preview&gt; note</a>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("id link missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "href=") {
+		t.Fatalf("id link must not carry an href until it is resolvable:\n%s", out)
+	}
+}
+
 func TestMalformedPropertyDrawerRemainsPlainText(t *testing.T) {
 	source := "* Task\n:PROPERTIES:\nnot-a-property\n:END:\n"
 	doc, err := FallbackParser{}.Parse(source)
