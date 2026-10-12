@@ -21,12 +21,25 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 )
 
 //go:embed web/mermaid.min.js
 var mermaidJS []byte
+
+//go:embed web/mermaid-diagnostics.js
+var mermaidDiagnosticsJS []byte
+
+// Read the bundled package's getVersion metadata, rather than a README version.
+var bundledMermaidVersion = sync.OnceValue(func() string {
+	matches := regexp.MustCompile(`version:"([0-9]+\.[0-9]+\.[0-9]+[^"\s]*)"\},[A-Za-z0-9_$]+=i\(\(\)=>[A-Za-z0-9_$]+\.version,"getVersion"\)`).FindAllSubmatch(mermaidJS, -1)
+	if len(matches) != 1 {
+		return "버전 정보 없음"
+	}
+	return string(matches[0][1])
+})
 
 type ServerConfig struct {
 	Token        string
@@ -141,6 +154,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/ws/browser", s.handleBrowserWebSocket)
 	s.mux.HandleFunc("/asset", s.handleAsset)
 	s.mux.HandleFunc("/static/mermaid.min.js", s.handleMermaidJS)
+	s.mux.HandleFunc("/static/mermaid-diagnostics.js", s.handleMermaidDiagnosticsJS)
 }
 
 func (s *Server) handleMermaidJS(w http.ResponseWriter, r *http.Request) {
@@ -152,6 +166,18 @@ func (s *Server) handleMermaidJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	_, _ = w.Write(mermaidJS)
+}
+
+func (s *Server) handleMermaidDiagnosticsJS(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	version, _ := json.Marshal(bundledMermaidVersion())
+	_, _ = fmt.Fprintf(w, "globalThis.OrgMermaidVersion=%s;\n", version)
+	_, _ = w.Write(mermaidDiagnosticsJS)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -1058,6 +1084,7 @@ body{margin:0;font:16px/1.65 ui-sans-serif,system-ui,-apple-system,BlinkMacSyste
 .org-preview .org-list-item{margin:.35em 0}.org-preview .list-row{display:flex;align-items:baseline;gap:.5rem;min-width:0}.org-preview .list-marker{flex:0 0 auto;min-width:1.35em;color:var(--active);font-variant-numeric:tabular-nums;text-align:right}.org-preview .list-content{min-width:0;overflow-wrap:anywhere}.org-preview .list-checkbox{flex:0 0 auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:700}.org-preview .checkbox-unchecked{color:var(--muted)}.org-preview .checkbox-partial{color:var(--yellow)}.org-preview .checkbox-checked{color:var(--green)}
 pre,code{border-radius:6px;background:#11151b}code{padding:2px 5px;color:#cdd6e3}pre{padding:14px 16px;overflow:auto;border:1px solid var(--line)}pre code{padding:0;background:transparent}
 .mermaid{margin:1.25em 0;padding:18px;overflow:auto;border:1px solid var(--line);border-radius:8px;background:#11151b;text-align:center}.mermaid svg{max-width:100%;height:auto}
+.mermaid-error{text-align:left}.mermaid-error pre,.mermaid-error p{white-space:pre-wrap}.mermaid-controls{display:flex;gap:8px;flex-wrap:wrap}.mermaid-controls button{padding:6px 10px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:4px;cursor:pointer}.mermaid-controls button:disabled{opacity:.6;cursor:default}.mermaid-copy{display:block;width:100%;min-height:180px;margin-top:8px;background:#11151b;color:var(--text)}
 table{width:100%;border-collapse:collapse;margin:1.1em 0;overflow:hidden;border-radius:7px}td{border:1px solid var(--line);padding:7px 10px}
 [data-org-id].active-block{outline:2px solid var(--active);outline-offset:5px;background-color:rgba(137,221,255,.07)}
 .toc-item.active,.overview-item.active{background:rgba(137,221,255,.10);box-shadow:inset 2px 0 0 var(--active)}
@@ -1076,6 +1103,7 @@ table{width:100%;border-collapse:collapse;margin:1.1em 0;overflow:hidden;border-
   <div id="root"></div>
 </div>
 <script src="/static/mermaid.min.js"></script>
+<script src="/static/mermaid-diagnostics.js"></script>
 <script>
 mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'dark'});
 const params = new URLSearchParams(location.search);
@@ -1090,19 +1118,32 @@ const generation = params.get('generation') || '';
 const view = params.get('view') || '';
 let revision = -1;
 let activeTarget = null;
+let navigationSocket = null;
+const mermaidDiagnostics = OrgMermaidDiagnostics.create({
+  document, runtime:mermaid, version:OrgMermaidVersion,
+  isCurrent:targetRevision => targetRevision === revision,
+  canNavigate:() => !linkedFileID,
+  navigate:node => {
+    const el = blockFor(node);
+    if (linkedFileID || !el || !sessionID || !bufferID || !navigationSocket || navigationSocket.readyState !== WebSocket.OPEN) return false;
+    sendNavigation(navigationSocket, el); return true;
+  },
+  clipboard:navigator.clipboard
+});
 const blockKinds = new Set(['heading','paragraph','property_drawer','list','list_item','code_block','table','image']);
 const palette = ['red','blue','green','yellow'];
 function wsURL(){const u=new URL('/ws/browser', location.href);u.protocol=location.protocol==='https:'?'wss:':'ws:';u.searchParams.set('session', sessionID || '');u.searchParams.set('buffer', bufferID || '');u.searchParams.set('generation', generation);u.searchParams.set('view', view);return u;}
 function connect(){
   const ws = new WebSocket(wsURL());
-  ws.onopen = () => statusEl.textContent = 'connected';
-  ws.onclose = () => { statusEl.textContent = 'reconnecting'; setTimeout(connect, 500); };
+  ws.onopen = () => { navigationSocket = ws; statusEl.textContent = 'connected'; };
+  ws.onclose = () => { if (navigationSocket === ws) navigationSocket = null; statusEl.textContent = 'reconnecting'; setTimeout(connect, 500); };
   ws.onmessage = event => {
     const msg = JSON.parse(event.data);
     if (msg.html) renderRevision(msg);
     markFromMessage(msg);
   };
   root.onclick = event => {
+    if (event.target.closest('[data-mermaid-controls]')) return;
     const el = blockFor(event.target.closest('[data-org-id]'));
     if (!el || !sessionID || !bufferID || ws.readyState !== WebSocket.OPEN) return;
     sendNavigation(ws, el);
@@ -1147,13 +1188,7 @@ function renderRevision(msg){
   requestAnimationFrame(() => window.scrollTo(x, y));
 }
 async function renderMermaid(targetRevision){
-  const nodes = root.querySelectorAll('.mermaid:not([data-processed])');
-  if (!nodes.length) return;
-  try {
-    await mermaid.run({nodes:nodes,suppressErrors:true});
-  } catch (_) {
-    nodes.forEach(node => node.classList.add('mermaid-error'));
-  }
+  await mermaidDiagnostics.render(root.querySelectorAll('.mermaid'), targetRevision);
   if (targetRevision === revision) restoreActive();
 }
 function markFromMessage(msg){
