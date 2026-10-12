@@ -2,9 +2,9 @@
 id: SPEC-ANKICARD-004
 title: "Swift arrow card rendering"
 version: "0.1.4"
-status: in-progress
+status: completed
 created: 2026-09-21
-updated: 2026-10-12
+updated: 2026-10-13
 author: jay
 priority: P2
 phase: "v0.2.0 target"

@@ -268,4 +268,30 @@ deferred: [M6 README — manager-docs]
 
 ## §E.4 Sync-phase Audit-Ready Signal
 
-_<pending sync-phase>_
+Sync phase, card t15, worktree `.moai/worktrees/t15` (branch
+`WT-anki-swift-arrow`, base `5abcc4d`). Docs-only: README § "Anki 화살표 카드"
+(milestone M6, deferred from run) plus the intro line of § "Anki 카드 옵션
+속성", and the t15 row of `.moai/reports/anki-card-types-plan-20260920.md`.
+Logs under `.moai/state/verify/t15-sync/` (ignored by git).
+
+```yaml
+sync_complete_at: 2026-10-13
+sync_commit_sha: see `git log -1` on WT-anki-swift-arrow  # this commit; a file cannot name its own SHA
+sync_status: complete
+m6_readme: done
+changelog: not-applicable  # repository has no CHANGELOG.md; none created
+b12_self_test_a: not-applicable  # no CHANGELOG to grep
+b12_self_test_b: {acceptance_distinct_ac_ids: 15}  # grep -oE 'AC-([A-Z0-9]+-)*[0-9]+' acceptance.md | sort -u | wc -l
+b12_self_test_c: not-applicable  # no CHANGELOG entry
+changelog_entry_position: not-applicable
+frontmatter_status_transitions:
+  spec.md: "in-progress -> implemented -> completed (updated: 2026-10-13)"
+  plan.md: no-frontmatter
+  acceptance.md: no-frontmatter
+  progress.md: no-frontmatter
+verification:
+  go_test_anki: "go test ./internal/anki/... -count=1 -> exit 0, 8 packages ok"
+  elisp: "make test-elisp -> Ran 658 tests, 647 results as expected, 0 unexpected, 11 skipped"
+  spec_lint: "moai spec lint spec.md -> 0 error(s), 0 warning(s) (1 INFO OwnershipTransitionUnmeasured)"
+pushed: false
+```

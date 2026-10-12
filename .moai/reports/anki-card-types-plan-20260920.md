@@ -224,7 +224,7 @@ SPEC-ANKICARD-003으로 진행. plan-audit 3회(FAIL 0.63 → FAIL 0.706 → **P
 | t12 | `5d3868f` | `#+BEGIN_EXTRA` → Back Extra, 스톡 Cloze 필드 별칭 |
 | t13 | `6f3ae6c` | 카드 옵션 속성 + 프로토콜 v2 + 검증 게이트 |
 | t14 | `08f7504` | Multiline Q/A 카드 |
-| t15 | 진행 중 | Swift 화살표 카드 (SPEC-ANKICARD-004) |
+| t15 | `ea44ff8`–`c72ef69` | Swift 화살표 카드 (SPEC-ANKICARD-004). 워크트리 브랜치 `WT-anki-swift-arrow`에 커밋, push는 하지 않음 |
 | t16 | 백로그 | 보조 블록 중첩/비대칭 처리 |
 
 모두 `main`에 커밋, push는 하지 않음.
