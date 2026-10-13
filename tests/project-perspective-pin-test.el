@@ -1000,4 +1000,18 @@ metadata, truename, or existence check."
           (should-not (imoogi-project-notes--context-buffer-p))))
       (should-not log))))
 
+(defconst imoogi-persppin-test--boot-advised
+  (advice-member-p #'imoogi-project--mark-explicit-lookup 'project-current)
+  "Whether the explicit-lookup advice was on `project-current' at load time.
+tests/run.el loads boot.el before the test files, so this records the state
+of a normal boot, before any sandbox installs the advice again.")
+
+(ert-deftest imoogi-persppin-finder-installed-at-boot ()
+  "O8: a normal boot installs the finder and the explicit-lookup advice.
+Sandboxes bind `project-find-functions' and install both again, so this
+reads the global value and a load-time record instead."
+  (should (memq #'imoogi-project-perspective-find
+                (default-value 'project-find-functions)))
+  (should imoogi-persppin-test--boot-advised))
+
 ;;; project-perspective-pin-test.el ends here
