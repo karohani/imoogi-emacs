@@ -74,7 +74,8 @@
   - N2 (advice forwards exactly 2 args; fine for project.el 0.11.1) and N4 (exclude-functions docstring should also forbid calling `project-current`): follow-ups, not fixed here.
   - N3 (pre-first-rebuild window for non-file buffers) and N5 (Dired-on-notes tab name falls back to the default): no action, consistent with D-6/D-7.
 - [x] card-review CR1–CR3 closed (see rework and sync-audit pass 2)
-- [ ] final worktree commit (README N1 + t35 reports) → report to leader. No push / PR / merge. in parallel (read-only codex_task job-20261013T001423Z-6f489bc0 on `git diff 641cc35 565e15b -- modules tests`; codex_review scope=card is not used because the worktree has no git-strategy.yaml, same as t15) → sync-audit
+- [x] final worktree commit 493899e (README N1 + t35 reports); 28 commits on top of origin/main 6feee71; core.bare=false; `git status` clean. Reported to leader. Not pushed, no PR, no main merge (leader stop). Factory stage/complete not run (ruling d-20261012T222845Z-e4bf).
+  Follow-ups (not lane work): N2 (advice `&rest args` hardening), N4 (exclude-functions docstring), the lint warning StatusTransitionInvalid (accepted, history), and the residual limitations in SPEC §5 (c/k prompt from notes-context buffers; git init in a pinned non-VC root until the next switch). in parallel (read-only codex_task job-20261013T001423Z-6f489bc0 on `git diff 641cc35 565e15b -- modules tests`; codex_review scope=card is not used because the worktree has no git-strategy.yaml, same as t15) → sync-audit
 - [ ] run (manager-develop, tdd)
 - [ ] sync (manager-docs) → sync-audit
 - [ ] card-review → worktree commit → report to leader
