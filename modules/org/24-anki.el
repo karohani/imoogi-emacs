@@ -392,10 +392,14 @@ swift 를 끄면 사용자가 요청하지 않은 변경이다.
 (defun imoogi-anki--write-card-option (property value)
   "PROPERTY 를 VALUE 로 쓴다.  노트 타입 계약과 swift 충돌을 먼저 확인한다.
 
-두 확인 모두 통과해야 무엇이든 쓴다.  swift 확인을 노트 타입보다 먼저 두는
-이유는, 거절했을 때 노트 타입조차 남지 않아야 하기 때문이다."
+두 확인 모두 통과해야 무엇이든 쓴다.  순서가 요점이다: 타입 판정
+(쓰지 않는다) → swift 충돌 해소 (ANKI_SWIFT 를 끌 수 있다) → 노트 타입
+달기.  판정이 충돌 해소보다 늦으면 거부될 heading 의 swift 가 이미 꺼져
+있고 (카드 t36, `imoogi-anki-toggle-swift' 의 t15 발견 3 과 같은 유형),
+노트 타입 달기가 swift 확인보다 이르면 거절했을 때 노트 타입이 남는다."
   (imoogi-anki--at-heading)
-  (when (and (imoogi-anki--resolve-swift-conflict)
+  (when (and (imoogi-anki--cloze-type-acceptable-p)
+             (imoogi-anki--resolve-swift-conflict)
              (imoogi-anki--ensure-cloze-type))
     (org-set-property property value)
     t))
