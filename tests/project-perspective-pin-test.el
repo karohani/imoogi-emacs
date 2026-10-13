@@ -823,4 +823,31 @@ remote name (REQ-PIN-006)."
     (imoogi-persppin-test--prompted
       (call-interactively (imoogi-persppin-test--suffix "F")))))
 
+;;; Rework after review — card-review CR1–CR3, sync-audit F1 and O8
+
+(ert-deftest imoogi-persppin-explicit-default-directory-not-claimed ()
+  "CR1, AC-PIN-006: an explicit DIRECTORY equal to `default-directory' is explicit.
+The implicit lookup from the same buffer still resolves to the Perspective."
+  (imoogi-persppin-test--isolated
+    (push (cons (imoogi-persppin-test--canonical root) "src")
+          imoogi-project-perspective-alist)
+    (setq current-perspective "src")
+    ;; Explicit first, so the memo is not filled yet.
+    (should-not (project-current nil default-directory))
+    (should-not (project-current nil (directory-file-name default-directory)))
+    (imoogi-persppin-test--prompted (project-current t default-directory))
+    (should (equal (project-root (project-current nil))
+                   (imoogi-persppin-test--canonical root)))
+    (should-not (project-current nil default-directory))
+    ;; Installing again adds neither a second advice nor a second member.
+    (imoogi-project-install-perspective-finder)
+    (let ((advices 0))
+      (advice-mapc (lambda (function _props)
+                     (when (eq function #'imoogi-project--mark-explicit-lookup)
+                       (setq advices (1+ advices))))
+                   'project-current)
+      (should (= advices 1)))
+    (should (= (cl-count #'imoogi-project-perspective-find project-find-functions)
+               1))))
+
 ;;; project-perspective-pin-test.el ends here

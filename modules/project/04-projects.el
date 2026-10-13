@@ -102,6 +102,13 @@
 Explicit project selection binds it, and so does the finder's own resolution
 of the mapped root, which therefore cannot re-enter the finder.")
 
+(defvar imoogi-project--explicit-lookup nil
+  "Non-nil while `project-current' runs for an explicit DIRECTORY argument.
+`imoogi-project--mark-explicit-lookup' binds it.  `project-current' replaces
+an omitted DIRECTORY with `default-directory' before it runs the finders, so
+without this marker a DIRECTORY passed by code that equals
+`default-directory' would look implicit to the Perspective finder.")
+
 (defvar imoogi-project--perspective-finder-memo nil
   "Projects the Perspective finder resolved, as an alist (KEY . PROJECT).
 KEY is (PERSPECTIVE-NAME . RAW-ROOT), RAW-ROOT being the string stored in
@@ -146,6 +153,7 @@ Perspective, a missing root, and excluded buffers.  Inside
 `imoogi-project-context-call', a lookup of its context root is answered
 before the Perspective guards (the context-call clause)."
   (unless (or imoogi-project--perspective-finder-inhibit
+              imoogi-project--explicit-lookup
               (bound-and-true-p eglot-lsp-context)
               ;; On the raw strings first: `expand-file-name' would already
               ;; enter the TRAMP handler.
@@ -196,13 +204,26 @@ declines, because `project--find-in-directory' only absorbs
   "Forget every project the Perspective finder memoized."
   (setq imoogi-project--perspective-finder-memo nil))
 
+(defun imoogi-project--mark-explicit-lookup (function &optional maybe-prompt directory)
+  "Call FUNCTION, `project-current', with MAYBE-PROMPT and DIRECTORY.
+Bind `imoogi-project--explicit-lookup' to whether DIRECTORY was given, so the
+Perspective finder declines an explicit lookup even when DIRECTORY equals
+`default-directory'.  An implicit lookup nested in an explicit one binds it
+back to nil."
+  (let ((imoogi-project--explicit-lookup (and directory t)))
+    (funcall function maybe-prompt directory)))
+
 (defun imoogi-project-install-perspective-finder ()
   "Add the Perspective finder to `project-find-functions' at depth 95.
 `add-hook' with APPEND means depth 90, and at equal depth a newer member
 sorts after an older one, so 95 keeps every member added at default depth or
 with APPEND, before or after this call, ahead of the finder.  95 rather than
-100 leaves room for a member that deliberately wants to be last."
-  (add-hook 'project-find-functions #'imoogi-project-perspective-find 95))
+100 leaves room for a member that deliberately wants to be last.
+Also install the advice that marks explicit `project-current' lookups.
+Calling this again changes nothing: both `add-hook' and `advice-add' skip a
+function that is already present."
+  (add-hook 'project-find-functions #'imoogi-project-perspective-find 95)
+  (advice-add 'project-current :around #'imoogi-project--mark-explicit-lookup))
 
 (defun imoogi-project-context-root ()
   "Return the root for the current Imoogi project context.
