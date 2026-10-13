@@ -2279,7 +2279,11 @@ or failed with \"arrayp, nil\" (a window showing another workspace)."
   (if mounted-state-before
       (with-temp-file mounted-state-file (insert mounted-state-before))
     (when (file-exists-p mounted-state-file)
-      (delete-file mounted-state-file))))
+      (delete-file mounted-state-file)))
+  ;; The direct writes above bypass `--write-registry' and
+  ;; `--write-mounted-state', so rebuild the notes-directory list here, or it
+  ;; keeps describing the rename that the commit already recorded.
+  (imoogi-project-notes--rebuild-context-directories))
 
 (defun imoogi-project-notes--rename-entry-directory
     (entry old-root new-root &optional commit allow-pending-repair)

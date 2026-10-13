@@ -908,4 +908,33 @@ remote name either."
       (should-not candidates)
       (should-not io))))
 
+(ert-deftest imoogi-persppin-rename-rollback-rebuilds-notes-list ()
+  "CR3, AC-PIN-010: a rolled-back rename leaves the restored N notes context.
+The commit writes the registry, which rebuilds the list for N2; the failure
+after the commit restores the registry and N, so the list must follow."
+  (imoogi-persppin-test--isolated
+    (let* ((directory (file-name-as-directory (imoogi-project-notes-setup root)))
+           (renamed (file-name-as-directory
+                     (expand-file-name "renamed-notes/"
+                                       imoogi-project-notes-directory)))
+           (entry (imoogi-project-notes--find-entry-by-key
+                   (imoogi-project-notes--identity-key root)
+                   (imoogi-project-notes--read-registry))))
+      (should entry)
+      (push (cons (imoogi-persppin-test--canonical root) "src")
+            imoogi-project-perspective-alist)
+      (setq current-perspective "src")
+      (imoogi-project-notes--rebuild-context-directories)
+      (cl-letf (((symbol-function 'imoogi-project-notes--replace-treemacs-root)
+                 (lambda (&rest _) (error "Failure after the commit"))))
+        (should-error
+         (imoogi-project-notes--rename-entry-directory
+          entry directory renamed #'imoogi-project-notes--save-entry)))
+      (should (file-directory-p directory))
+      (should-not (file-exists-p renamed))
+      (with-current-buffer
+          (imoogi-persppin-test--visit (expand-file-name "fresh.txt" directory))
+        (should (imoogi-project-notes--context-buffer-p))
+        (should-not (project-current nil))))))
+
 ;;; project-perspective-pin-test.el ends here
