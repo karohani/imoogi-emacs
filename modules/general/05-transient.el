@@ -319,7 +319,7 @@ Window parameters stay in place, so Treemacs side-window layouts remain valid."
     ("f" "파일찾기" imoogi-project-find-file)
     ("s" "검색(grep)" imoogi-project-find-regexp)
     ("d" "dired" imoogi-project-dired)
-    ("b" "버퍼" project-switch-to-buffer)
+    ("b" "버퍼" imoogi-project-switch-to-buffer)
     ("m" "프로젝트 기록" imoogi-project-notes-transient)]
    ;; 이미 열려 있는 작업공간 사이를 오가는 쪽. n/N 은 훑어보는 동작이라
    ;; 메뉴를 열어 둔 채 반복할 수 있게 :transient t 를 준다.

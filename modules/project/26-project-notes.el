@@ -793,11 +793,13 @@ NOERROR is non-nil."
   "Write ENTRIES to the project notes registry."
   (let ((file (imoogi-project-notes--registry-file)))
     (make-directory (file-name-directory file) t)
-    (with-temp-file file
-      (let ((json-encoding-pretty-print t))
-        (insert (json-encode `((version . 1)
-                               (projects . ,entries))))
-        (insert "\n")))))
+    (prog1
+        (with-temp-file file
+          (let ((json-encoding-pretty-print t))
+            (insert (json-encode `((version . 1)
+                                   (projects . ,entries))))
+            (insert "\n")))
+      (imoogi-project-notes--rebuild-context-directories))))
 
 (defun imoogi-project-notes--empty-mounted-state ()
   "Return a new empty mounted roots registry value."
@@ -876,14 +878,16 @@ return an empty state instead of signaling for malformed data."
     (let ((temporary (make-temp-file
                       (expand-file-name ".project-notes-mounted-roots-"
                                         (file-name-directory file)))))
-      (unwind-protect
-          (progn
-            (with-temp-file temporary
-              (let ((json-encoding-pretty-print t))
-                (insert (json-encode state) "\n")))
-            (rename-file temporary file t))
-        (when (file-exists-p temporary)
-          (delete-file temporary))))))
+      (prog1
+          (unwind-protect
+              (progn
+                (with-temp-file temporary
+                  (let ((json-encoding-pretty-print t))
+                    (insert (json-encode state) "\n")))
+                (rename-file temporary file t))
+            (when (file-exists-p temporary)
+              (delete-file temporary)))
+        (imoogi-project-notes--rebuild-context-directories)))))
 
 (defun imoogi-project-notes--canonical-directory (directory)
   "Return existing local DIRECTORY in canonical directory form."
@@ -1189,6 +1193,85 @@ remain distinct through their `instance-id'."
           (push instance-id seen)
           (push entry result))))
     (nreverse result)))
+
+;;; Notes-context buffers and the Perspective finder
+;;
+;; 04-projects.el resolves a buffer with no project of its own to the project
+;; of its Perspective.  Notes buffers must keep their own resolution, otherwise
+;; `imoogi-project-notes--current-source-root' would follow the Perspective
+;; root instead of the worktree the notes were opened from.  The check runs on
+;; every tab-bar redisplay, so it reads only buffer-local state and an
+;; in-memory list that is rebuilt where the registry or mounted state changes.
+
+(defvar imoogi-project-notes--context-directories 'unbuilt
+  "Truenames of every known notes directory, as directory names.
+The symbol `unbuilt' until the first rebuild.  Rebuilt eagerly by
+`imoogi-project-notes--rebuild-context-directories', never on the lookup
+path.")
+
+(defun imoogi-project-notes--rebuild-context-directories (&optional entries)
+  "Rebuild `imoogi-project-notes--context-directories' from ENTRIES.
+ENTRIES defaults to `imoogi-project-notes--all-entries'.  On any error (a
+corrupt registry, an unreadable mount) the previous list is kept, because a
+refresh must never break the command that triggered it."
+  (condition-case nil
+      (setq imoogi-project-notes--context-directories
+            (delete-dups
+             (delq nil
+                   (mapcar
+                    (lambda (entry)
+                      (when-let* ((directory (imoogi-project-notes--alist-string
+                                              'notes-dir entry)))
+                        (file-name-as-directory
+                         (imoogi-project-notes--truename-if-present directory))))
+                    (or entries (imoogi-project-notes--all-entries))))))
+    (error nil))
+  nil)
+
+(defun imoogi-project-notes--refresh-context-directories ()
+  "Rebuild the notes-directory list on a Perspective switch.
+This also picks up notes directories created or mounted outside Emacs."
+  (imoogi-project-notes--rebuild-context-directories))
+
+(defun imoogi-project-notes-directory-for-root (root)
+  "Return the notes directory registered for source ROOT, or nil.
+Worktrees of one repository share an identity key and so share notes.  Signals
+`user-error' for a remote ROOT, which the identity key refuses.  The project
+transient's `b' and `f' entries add this directory's buffers and files to
+their candidates; it never becomes a member of the project itself."
+  (let ((key (imoogi-project-notes--identity-key root)))
+    (when-let* ((entries (imoogi-project-notes--all-entries))
+                (entry (imoogi-project-notes--find-entry-by-key key entries)))
+      (imoogi-project-notes--alist-string 'notes-dir entry))))
+
+(defun imoogi-project-notes--context-buffer-p ()
+  "Return non-nil when the current buffer is a notes-context buffer.
+That is a buffer carrying project-note buffer-local state, visiting a file
+whose truename lies inside a known notes directory, or visiting no file (Dired,
+compilation, shell) with its `default-directory' inside one.  No file I/O:
+`default-directory' is only expanded, not resolved to a truename, and before
+the first rebuild only `imoogi-project-notes-directory' is compared, as a
+string prefix."
+  (or imoogi-project-notes-source-root
+      imoogi-project-notes-directory-local
+      imoogi-project-notes-entry-instance-id
+      (when-let* ((file (cond
+                         (buffer-file-truename
+                          (expand-file-name buffer-file-truename))
+                         ;; Checked on the raw string: `expand-file-name'
+                         ;; would enter the TRAMP handler.
+                         ((and (not buffer-file-name)
+                               (stringp default-directory)
+                               (not (file-remote-p default-directory)))
+                          (file-name-as-directory
+                           (expand-file-name default-directory))))))
+        (let ((directories
+               (if (listp imoogi-project-notes--context-directories)
+                   imoogi-project-notes--context-directories
+                 (list (file-name-as-directory
+                        (expand-file-name imoogi-project-notes-directory))))))
+          (cl-some (lambda (directory) (string-prefix-p directory file))
+                   directories)))))
 
 (defun imoogi-project-notes--root-number-id-entries (root origin &optional label)
   "Return numbering id entries discovered directly below ROOT."
@@ -2206,7 +2289,11 @@ or failed with \"arrayp, nil\" (a window showing another workspace)."
   (if mounted-state-before
       (with-temp-file mounted-state-file (insert mounted-state-before))
     (when (file-exists-p mounted-state-file)
-      (delete-file mounted-state-file))))
+      (delete-file mounted-state-file)))
+  ;; The direct writes above bypass `--write-registry' and
+  ;; `--write-mounted-state', so rebuild the notes-directory list here, or it
+  ;; keeps describing the rename that the commit already recorded.
+  (imoogi-project-notes--rebuild-context-directories))
 
 (defun imoogi-project-notes--rename-entry-directory
     (entry old-root new-root &optional commit allow-pending-repair)
@@ -3256,9 +3343,11 @@ no enabled mounted root is currently attached."
          (roots (cl-count-if
                  (lambda (root) (not (eq (alist-get 'enabled root) :json-false)))
                  (alist-get 'roots state)))
+         (all-entries (imoogi-project-notes--all-entries))
          (entries (cl-count-if
                    (lambda (entry) (eq (alist-get 'origin entry) 'mounted))
-                   (imoogi-project-notes--all-entries))))
+                   all-entries)))
+    (imoogi-project-notes--rebuild-context-directories all-entries)
     (message "imoogi: 외장 루트 %d개에서 노트 %d개를 찾았습니다" roots entries)
     entries))
 
@@ -3825,6 +3914,7 @@ Agenda paths are changed and the original directory is removed."
       (user-error "외장 노트만 세션에서 분리할 수 있습니다"))
     (cl-pushnew instance-id imoogi-project-notes--detached-instance-ids
                 :test #'string=)
+    (imoogi-project-notes--rebuild-context-directories)
     (message "imoogi: 외장 노트를 현재 세션 목록에서 분리했습니다")))
 
 (defun imoogi-project-notes--command-output (&rest command)
@@ -3942,6 +4032,7 @@ Agenda paths are changed and the original directory is removed."
     ;; proven; Treemacs may contain user-added roots outside this device.
     (unless (funcall imoogi-project-notes-unmount-executor-function descriptor)
       (user-error "장치를 unmount하지 못했습니다"))
+    (imoogi-project-notes--rebuild-context-directories)
     (message "imoogi: 변경 파일 %d개를 저장하고 %s를 unmount했습니다"
              (length dirty) mount-point)
     t))
@@ -6478,6 +6569,18 @@ opens the new file below the project's artifacts directory."
   (imoogi-project-notes--restore-agenda-files))
 
 (imoogi-project-notes--install-refile-guards)
+
+;; Keep notes buffers away from the Perspective finder (04-projects.el owns the
+;; hook, so neither module requires the other), and keep the notes-directory
+;; list fresh.  The startup rebuild sits on `window-setup-hook', which Emacs
+;; runs after `emacs-startup-hook' and so after
+;; `imoogi-perspective-state-restore'.  `emacs-startup-hook' itself stays
+;; exactly that one restore function (workspace-bridge-test.el pins it).
+(add-hook 'imoogi-project-perspective-finder-exclude-functions
+          #'imoogi-project-notes--context-buffer-p)
+(add-hook 'window-setup-hook #'imoogi-project-notes--rebuild-context-directories)
+(with-eval-after-load 'perspective
+  (add-hook 'persp-switch-hook #'imoogi-project-notes--refresh-context-directories))
 
 (provide 'imoogi-project-notes)
 ;;; 26-project-notes.el ends here
