@@ -1246,16 +1246,26 @@ their candidates; it never becomes a member of the project itself."
 
 (defun imoogi-project-notes--context-buffer-p ()
   "Return non-nil when the current buffer is a notes-context buffer.
-That is a buffer carrying project-note buffer-local state, or visiting a file
-whose truename lies inside a known notes directory.  No file I/O: before the
-first rebuild only `imoogi-project-notes-directory' is compared, as a string
-prefix."
+That is a buffer carrying project-note buffer-local state, visiting a file
+whose truename lies inside a known notes directory, or visiting no file (Dired,
+compilation, shell) with its `default-directory' inside one.  No file I/O:
+`default-directory' is only expanded, not resolved to a truename, and before
+the first rebuild only `imoogi-project-notes-directory' is compared, as a
+string prefix."
   (or imoogi-project-notes-source-root
       imoogi-project-notes-directory-local
       imoogi-project-notes-entry-instance-id
-      (when buffer-file-truename
-        (let ((file (expand-file-name buffer-file-truename))
-              (directories
+      (when-let* ((file (cond
+                         (buffer-file-truename
+                          (expand-file-name buffer-file-truename))
+                         ;; Checked on the raw string: `expand-file-name'
+                         ;; would enter the TRAMP handler.
+                         ((and (not buffer-file-name)
+                               (stringp default-directory)
+                               (not (file-remote-p default-directory)))
+                          (file-name-as-directory
+                           (expand-file-name default-directory))))))
+        (let ((directories
                (if (listp imoogi-project-notes--context-directories)
                    imoogi-project-notes--context-directories
                  (list (file-name-as-directory

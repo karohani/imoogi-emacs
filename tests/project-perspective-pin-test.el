@@ -392,6 +392,8 @@ Prompting signals \"prompted\", and `compile' records its directory in
       (imoogi-project-notes--rebuild-context-directories)
       (let ((notes (imoogi-persppin-test--visit
                     (expand-file-name "project.org" directory)))
+            ;; F1: a buffer visiting no file, inside the notes directory.
+            (tree (dired-noselect directory))
             (plain (imoogi-persppin-test--visit
                     (expand-file-name "plain.txt" elsewhere))))
         (imoogi-persppin-test--recording
@@ -400,6 +402,8 @@ Prompting signals \"prompted\", and `compile' records its directory in
              imoogi-project-notes--find-metadata-file)
             log
           (with-current-buffer notes
+            (should-not (project-current nil)))
+          (with-current-buffer tree
             (should-not (project-current nil)))
           (with-current-buffer plain
             (should (equal (project-root (project-current nil))
@@ -936,5 +940,64 @@ after the commit restores the registry and N, so the list must follow."
           (imoogi-persppin-test--visit (expand-file-name "fresh.txt" directory))
         (should (imoogi-project-notes--context-buffer-p))
         (should-not (project-current nil))))))
+
+(ert-deftest imoogi-persppin-dired-on-other-notes-keeps-source-root ()
+  "F1, REQ-PIN-008: Dired on another project's notes is notes context.
+In Perspective \"src\" (mapped to ROOT), the journal opened from a Dired buffer
+on X's notes keeps X's root as its source root and gets no heading for ROOT."
+  (imoogi-persppin-test--isolated
+    (let* ((xroot (file-name-as-directory (expand-file-name "xproj/" sandbox)))
+           (xnotes (progn (make-directory xroot t)
+                          (file-name-as-directory
+                           (imoogi-project-notes-setup xroot))))
+           (tree nil)
+           (journal nil))
+      (imoogi-project-notes-setup root)
+      (push (cons (imoogi-persppin-test--canonical root) "src")
+            imoogi-project-perspective-alist)
+      (setq current-perspective "src")
+      (imoogi-project-notes--rebuild-context-directories)
+      (setq tree (dired-noselect xnotes))
+      (cl-letf (((symbol-function 'imoogi-treemacs-open-workspace-roots) #'ignore))
+        (with-current-buffer tree
+          (setq journal (imoogi-project-notes-journal))))
+      (with-current-buffer journal
+        (should (file-in-directory-p buffer-file-name xnotes))
+        (should-not (string-match-p (regexp-quote root) (buffer-string)))
+        (should (file-equal-p imoogi-project-notes-source-root xroot))
+        (set-buffer-modified-p nil))
+      (with-current-buffer tree
+        (should (imoogi-project-notes--context-buffer-p))
+        (should-not (project-current nil))))))
+
+(ert-deftest imoogi-persppin-non-file-notes-check-no-io ()
+  "F1, AC-PIN-010: the check for a buffer visiting no file reads nothing.
+It compares `default-directory' with the in-memory list only: no registry,
+metadata, truename, or existence check."
+  (imoogi-persppin-test--isolated
+    (let* ((directory (file-name-as-directory (imoogi-project-notes-setup root)))
+           (subdirectory (expand-file-name "sub/" directory))
+           (log nil)
+           (tree (dired-noselect directory)))
+      (make-directory subdirectory t)
+      (push (cons (imoogi-persppin-test--canonical root) "src")
+            imoogi-project-perspective-alist)
+      (setq current-perspective "src")
+      (imoogi-project-notes--rebuild-context-directories)
+      (imoogi-persppin-test--recording
+          (imoogi-project-notes--all-entries
+           imoogi-project-notes--read-registry
+           imoogi-project-notes--find-metadata-file
+           file-truename file-exists-p file-directory-p file-attributes)
+          log
+        (with-current-buffer tree
+          (should (imoogi-project-notes--context-buffer-p)))
+        (with-temp-buffer
+          (setq default-directory subdirectory)
+          (should (imoogi-project-notes--context-buffer-p)))
+        (with-temp-buffer
+          (setq default-directory elsewhere)
+          (should-not (imoogi-project-notes--context-buffer-p))))
+      (should-not log))))
 
 ;;; project-perspective-pin-test.el ends here
