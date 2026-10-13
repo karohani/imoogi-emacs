@@ -84,6 +84,12 @@ root has been deleted,
 **When** `(project-current nil)` runs in a projectless buffer,
 **Then** it returns nil without error, and `(project-current t)` reaches the
 stubbed prompter (the test asserts the `"prompted"` error).
+
+Case (b) hardening (review rework, commit `816b791`): the test binds
+`persp-mode` to nil while `persp-current-name` is stubbed to **answer the
+mapped name** and count its calls. So only the `persp-mode` check can decline,
+and the test asserts the name function was called 0 times. It fails if the
+`persp-mode` guard is removed or moved after the name lookup.
 Test: `imoogi-persppin-unmapped-off-or-stale-declines`.
 
 ### AC-PIN-006 — Explicit lookups are not claimed (REQ-PIN-004)
@@ -95,7 +101,16 @@ under `project-current-directory-override` bound to E; (c)
 return D (`persp-switch`, `project-dired`, and Treemacs stubbed),
 **Then** (a) and (b) return nil, never R's project; and (c) remembers and
 switches to the Perspective of D, not of R.
-Test: `imoogi-persppin-explicit-lookups-not-claimed`.
+
+**And** (d), review rework CR1: in a buffer of the mapped Perspective,
+`(project-current nil default-directory)` — DIRECTORY passed, equal to
+`default-directory` — returns nil, as does the same call with
+`(directory-file-name default-directory)`, while `(project-current nil)` in the
+same buffer resolves to R's project. The test also asserts that installing the
+finder again leaves exactly one finder in `project-find-functions` and exactly
+one `imoogi-project--mark-explicit-lookup` advice on `project-current`.
+Tests: `imoogi-persppin-explicit-lookups-not-claimed`,
+`imoogi-persppin-explicit-default-directory-not-claimed`.
 
 ### AC-PIN-007 — Eglot context is declined (REQ-PIN-005)
 **Given** R mapped and current,
@@ -176,10 +191,22 @@ only `imoogi-perspective-state-restore`. The test asserts three things:
 - the rebuild function **is** a member of `window-setup-hook`.
 
 So the rebuild runs once at startup, after the restore.
+
+**And** (review rework) two non-file and rollback rows:
+
+| Row | Given / When | Then |
+|-----|--------------|------|
+| Dired on another project's notes | Perspective "src" mapped to R; project X with its own notes directory XN; a Dired buffer on XN; the journal (`imoogi-project-notes-journal`) is opened from that Dired buffer | the journal file lies in XN, its source root is X's root (`imoogi-project-notes-source-root` equals X), and it contains no heading for R. The Dired buffer is a notes-context buffer and `(project-current nil)` there returns nil. |
+| Non-file check does no I/O | a Dired buffer on N, a temp buffer whose `default-directory` is a subdirectory of N, and one outside every notes directory; `imoogi-project-notes--all-entries`, `--read-registry`, `--find-metadata-file`, `file-truename`, `file-exists-p`, `file-directory-p`, `file-attributes` recorded | the first two are notes context, the third is not, and none of the recorded functions was called. The existing no-registry test also gains a Dired row: `(project-current nil)` in a Dired buffer on N returns nil with no registry or metadata read. |
+| Rename rollback | N registered; a rename of N to N2 that fails after the commit (the Treemacs root replacement is stubbed to signal), so `imoogi-project-notes--rollback-rename` restores N | N exists again, N2 does not, and a fresh file visited under the restored N is a notes-context buffer (`(project-current nil)` yields nil) — the rollback rebuilt the list (plan.md D-7 trigger 8). |
+
 Tests: `imoogi-persppin-notes-buffer-declined`,
-`imoogi-persppin-notes-check-reads-no-registry`,
+`imoogi-persppin-notes-check-reads-no-registry` (including its Dired row),
 `imoogi-persppin-notes-list-refresh-triggers`,
-`imoogi-persppin-notes-list-startup-registered`.
+`imoogi-persppin-notes-list-startup-registered`,
+`imoogi-persppin-dired-on-other-notes-keeps-source-root`,
+`imoogi-persppin-non-file-notes-check-no-io`,
+`imoogi-persppin-rename-rollback-rebuilds-notes-list`.
 
 ### AC-PIN-011 — `b`, `c`, `k` do not prompt from scratch (REQ-PIN-009)
 **Given** R mapped and current; a live buffer P1 visiting `R/a.txt` (so `k`
@@ -283,13 +310,27 @@ Command:
 EMACS=/Applications/Emacs.app/Contents/MacOS/Emacs IMOOGI_ERT_SELECTOR='\(imoogi-project-notes-\(scratch-resolves\|unmapped-perspective\|buffer-project-beats\|unregistered-project\)\|imoogi-persppin-t34-fallback-retained\)' ./tests/run.sh
 ```
 
-### AC-PIN-017 — No notes entry, or a remote root: project-only lists (REQ-PIN-015)
+### AC-PIN-017 — No notes entry, or a remote root: project-only lists or the prompt (REQ-PIN-015, REQ-PIN-006)
 **Given** R mapped and current with no notes entry,
 **When** the `b` and `f` candidate collections are captured,
 **Then** they equal the project-only sets of AC-PIN-012 / AC-PIN-013 and no
 message or error is emitted; and with the notes identity-key function stubbed
 to signal `user-error` (the remote refusal), the same holds.
-Test: `imoogi-persppin-no-notes-entry-project-only`.
+
+**And** (review rework CR2, REQ-PIN-006) with `file-directory-p`,
+`file-truename` and the other file operations stubbed to record and signal on
+a remote name:
+
+| Row | Given | Then |
+|-----|-------|------|
+| Remote buffer | R mapped and current; `b` invoked from a buffer whose `default-directory` is `"/ssh:host:/tmp/"` | `b` reaches the prompter (the `"prompted"` error), captures no candidates, and performs no remote file operation |
+| Remote mapped root | the alist maps `"/ssh:host:/srv/app/"` to "remote", which is current; `b` invoked | the same: prompt, no candidates, no remote file operation |
+| Remote context root (O3-d) | `imoogi-project-context-root` returns `"/ssh:host:/srv/app/"`; `f` invoked | `f` builds no transient project, does not search, and reaches the prompter with no remote file operation |
+
+Tests: `imoogi-persppin-no-notes-entry-project-only`,
+`imoogi-persppin-switch-buffer-remote-buffer-prompts`,
+`imoogi-persppin-switch-buffer-remote-root-prompts`,
+`imoogi-persppin-find-file-remote-context-root-prompts`.
 
 ### AC-PIN-018 — The finder memoizes per pinned root (REQ-PIN-001, plan.md D-8)
 **Given** R not under VC, mapped to "src", "src" current, and `project-try-vc`
@@ -325,7 +366,9 @@ Test: `imoogi-persppin-finder-memo`.
 
 - **Gate: `make test-elisp`** (the full elisp suite: `./tests/run.sh` with no
   selector, i.e. check-parens + offline boot + every ERT test) exits 0 with
-  unexpected = 0 (skips limited to the pre-existing `cli-cache-*`).
+  unexpected = 0. Skips are limited to the 11 environment-dependent ones
+  (sync-audit O5): 7 `cli-cache-*`, 2 GUI-only `org-calendar` tests, and 2
+  toolchain tests that need tools absent in batch.
   Decided (lane-3, 2026-10-13, run deviation): the full suite replaces the
   earlier selector run
   `IMOOGI_ERT_SELECTOR='\(project-notes\|transient\|imoogi-project-\|perspective\|persppin\|workspace\)'`,
@@ -339,7 +382,13 @@ Test: `imoogi-persppin-finder-memo`.
 
 ## Definition of Done
 
-- All eighteen ACs pass with their named tests.
+- All eighteen ACs pass with their named tests, including the review-rework
+  tests named in AC-PIN-005, -006, -010 and -017.
+- A normal boot installs the finder and its explicit-lookup advice:
+  `imoogi-persppin-finder-installed-at-boot` checks that the global
+  `project-find-functions` contains the finder, and that the advice was
+  already on `project-current` when the test file loaded, which is after
+  `boot.el` and before any sandbox reinstalls it.
 - The four t34 tests pass unmodified.
 - Edits to existing tests are exactly these three, per plan.md § A.4, and no
   others:

@@ -1,7 +1,7 @@
 ---
 id: SPEC-PERSPPIN-001
 title: "Pin a project Perspective fully to its project"
-version: "0.1.4"
+version: "0.1.5"
 status: completed
 created: 2026-10-13
 updated: 2026-10-13
@@ -16,6 +16,34 @@ related_specs: [SPEC-TRANSIENT-001]
 ---
 
 ## HISTORY
+
+### v0.1.5 (2026-10-13)
+- POST-RUN TEXT ALIGNMENT with the review rework at `2172fe7` (status stays
+  `completed`). Each item was verified against `04-projects.el`,
+  `26-project-notes.el`, and `tests/project-perspective-pin-test.el`.
+  - § 2: Implicit lookup means DIRECTORY omitted. A DIRECTORY passed explicitly
+    is an explicit lookup, even one equal to `default-directory`.
+    Notes-context buffers now include non-file buffers (Dired, compilation,
+    shell) whose expanded `default-directory` lies in a notes directory.
+  - Explicit-lookup mechanism (requirement 004), decided (lane-3,
+    2026-10-13, review rework CR1): an `:around` advice on `project-current`
+    binds `imoogi-project--explicit-lookup` while DIRECTORY is non-nil, and
+    the finder declines while it is set. The advice is installed idempotently
+    with the finder.
+  - Remote guard (requirement 006): `b`'s Perspective fallback declines for a
+    remote buffer directory or a remote mapped root. `f`'s route (a) middle
+    branch applies only to a local context root (O3-d, also folded into
+    requirement 013.1).
+  - Notes-context determination (requirement 008): its inputs are spelled
+    out, and a notes-directory rename rollback is added as a refresh trigger.
+  - § 5: three known limitations — symlinked non-file paths, non-file
+    buffers in a study notes root, and a recursive exclude predicate
+    (sync-audit O6).
+  - acceptance.md: new AC-PIN-006(d); AC-PIN-010 rows for Dired on another
+    project's notes and for a rename rollback; AC-PIN-017 rows for remote
+    `b` (traced to REQ-PIN-006 as well); the AC-PIN-005(b) hardening; the
+    boot-registration test; the gate skip list is the 11
+    environment-dependent skips (sync-audit O5).
 
 ### v0.1.4 (2026-10-13)
 - POST-RUN TEXT ALIGNMENT with the implementation at `565e15b` (all 18 ACs
@@ -154,11 +182,12 @@ roots, and project-notes buffers.
   not a VCS root, `*Help*`, `*Messages*`). A notes-context buffer with no own
   project is governed by REQ-PIN-008, not by the requirements on projectless
   buffers.
-- **Implicit lookup** — a `project-current` call whose directory is the
-  current buffer's `default-directory` (the argument was omitted or equals it)
-  and that runs with `project-current-directory-override` nil.
-- **Explicit lookup** — any other `project-current` call: a directory the user
-  picked at a prompt, a directory passed by code, or a call under
+- **Implicit lookup** — a `project-current` call with its DIRECTORY argument
+  omitted (nil), run with `project-current-directory-override` nil.
+  `project-current` then looks up the current buffer's `default-directory`.
+- **Explicit lookup** — any other `project-current` call: one with DIRECTORY
+  passed, even a DIRECTORY equal to `default-directory`; a directory picked at
+  a `project-prompter` prompt; or a call under
   `project-current-directory-override`.
 - **Notes entry** — the project-notes registry entry whose identity key
   (`imoogi-project-notes--identity-key`) matches a project root; its
@@ -168,7 +197,11 @@ roots, and project-notes buffers.
   (compared by truename), or in which any of the buffer-local variables
   `imoogi-project-notes-source-root`, `imoogi-project-notes-directory-local`, or
   `imoogi-project-notes-entry-instance-id` is non-nil
-  (`26-project-notes.el:48-54`). Folder metadata files are not consulted.
+  (`26-project-notes.el:48-54`), or a buffer visiting no file (Dired,
+  compilation, shell) whose local `default-directory`, expanded but not resolved
+  to a truename, lies inside a registered notes directory. A remote
+  `default-directory` is never compared. Folder metadata files are not
+  consulted.
 
 ## 3. Requirements (GEARS)
 
@@ -227,7 +260,26 @@ The Perspective finder shall not claim an explicit lookup. In particular:
    `project-switch-project` shall resolve on its own merits;
 2. the root selected in `imoogi-project-switch-perspective` (`C-c h p p`,
    `C-x p p`) shall resolve to the selected root even when it is not under VC
-   and even when it equals the current buffer's `default-directory`.
+   and even when it equals the current buffer's `default-directory`;
+3. a call that passes DIRECTORY, even one equal to `default-directory`
+   (`(project-current nil default-directory)`), shall resolve on its own
+   merits.
+
+Mechanism, decided (lane-3, 2026-10-13, review rework CR1): `project-current`
+substitutes `default-directory` for an omitted DIRECTORY before it runs the
+finders, so the finder cannot tell the two apart from its argument. An `:around`
+advice on `project-current` (`imoogi-project--mark-explicit-lookup`) therefore
+binds the marker `imoogi-project--explicit-lookup` to non-nil while DIRECTORY
+is non-nil (and to nil for a nested implicit call). The finder declines while
+the marker is set. The advice is installed together with the finder by
+`imoogi-project-install-perspective-finder`, and installing again changes
+nothing (`advice-add` and `add-hook` skip a function already present).
+
+Consequence: `project-uniquify-dirname-transform` and every other
+`(project-current nil DIR)` caller resolve on their own merits. The only
+explicit callers in `modules/` — `imoogi-project-resolve-root` and
+`imoogi-project-switch-perspective` — already bind the finder inhibit, so
+their behaviour does not change.
 
 #### REQ-PIN-005 [Ubiquitous — negated]
 The Perspective finder shall not claim a lookup made while `eglot-lsp-context`
@@ -240,7 +292,12 @@ name: it shall decline, before any existence or truename check, when the mapped
 root is remote (`file-remote-p`) or when the lookup directory itself is remote
 (a TRAMP buffer in a local Perspective is never claimed, so `c` never compiles
 it locally in R). `project-current` runs on every tab-bar redisplay
-(`imoogi-tab-name`).
+(`imoogi-tab-name`). The same guard applies to `b`'s Perspective fallback
+(REQ-PIN-010, plan.md D-3). When the buffer's `default-directory` or the raw
+mapped root is remote, checked on the raw strings before any file operation,
+the fallback declines and `b` falls through to the normal prompt. The route (a)
+middle branch of `f` likewise applies only for a local context root
+(REQ-PIN-013.1).
 
 #### REQ-PIN-007 [Event-driven]
 When any error is signalled while the Perspective finder evaluates a lookup,
@@ -262,12 +319,24 @@ project-notes commands keep resolving them through their own entry), so
 `imoogi-project-notes--current-source-root` and journal resume sections are not
 redirected to the Perspective's root. The notes-context determination shall not
 read the notes registry, folder metadata files, or mounted roots on each lookup,
-because the lookup runs on every tab-bar redisplay; it shall rely on buffer-local
-state and an in-memory list of notes directories that is refreshed when the
-registry or mounted state is written, when mounted roots are rescanned, when a
-mounted note is detached, after an unmount, on a Perspective switch, and once
-at startup after the Perspective state restore (on `window-setup-hook`; plan.md
-D-7). The resulting prompt from `c`/`k` in notes-context
+because the lookup runs on every tab-bar redisplay. It shall rely on:
+- buffer-local state;
+- the visited file's truename, or, for a buffer visiting no file, its
+  `default-directory`, expanded but not resolved to a truename;
+- an in-memory list of notes directories.
+
+The list is refreshed:
+- when the registry or mounted state is written;
+- when mounted roots are rescanned;
+- when a mounted note is detached;
+- after an unmount;
+- after a notes-directory rename is rolled back
+  (`imoogi-project-notes--rollback-rename`);
+- on a Perspective switch;
+- once at startup, after the Perspective state restore (on
+  `window-setup-hook`).
+
+See plan.md D-7. The resulting prompt from `c`/`k` in notes-context
 buffers is a known limitation (§ 5, plan.md D-6).
 
 ### 3.2 The project transient (`C-c h p`)
@@ -318,13 +387,16 @@ The remaining `C-c h p` entries shall keep their current resolution:
    `04-projects.el:93`; the workspace-bridge tests pin that `f` follows the
    context root across a Perspective switch and falls back to `project.el`
    when unmapped). One consequence changes. Today they prompt when the context
-   root is not under VC. After this SPEC, **whenever a context root exists**,
-   they do not prompt, from any buffer — projectless, notes-context, or a
-   buffer of another project — because they resolve the context root, falling
-   back to `(transient . CONTEXT-ROOT)` (decided lane-3, 2026-10-13; plan.md
-   D-4 route (a) for `f`, D-2's context-call clause for `s`/`d`, which share
-   `f`'s helper). When no context root exists (unmapped Perspective and no own
-   project), they prompt exactly as before (REQ-PIN-003);
+   root is not under VC. After this SPEC, **whenever a local context root
+   exists**, they do not prompt, from any buffer — projectless,
+   notes-context, or a buffer of another project — because they resolve the
+   context root, falling back to `(transient . CONTEXT-ROOT)` for a local
+   CONTEXT-ROOT (decided lane-3, 2026-10-13; plan.md D-4 route (a) for `f`,
+   D-2's context-call clause for `s`/`d`, which share `f`'s helper). When no
+   context root exists (unmapped Perspective and no own project), they prompt
+   exactly as before (REQ-PIN-003). When the context root is remote, they also
+   prompt, because route (a)'s middle branch requires a local root and the
+   finder declines remote directories (REQ-PIN-006);
 2. `p` (switch project) and `F` (forget project) keep prompting, because both
    are explicit selections and `F` is destructive;
 3. `m` (project notes) keeps the t34 entry resolution. One consequence
@@ -402,6 +474,25 @@ the project-only lists and no error shall be shown.
   design. Only projectless buffers such as scratch are pinned there for every
   command. This consequence of D-6 is accepted (decided lane-3, 2026-10-13).
   Changing it would need a new lane decision.
+- Non-file buffers in a study notes root (known limitation, extends D-6):
+  Dired, compilation, and shell buffers whose `default-directory` lies inside a
+  study Perspective's notes root are notes-context buffers too (§ 2). So
+  `C-c h p c`/`k` prompt there as well, exactly as from the note files.
+- Symlinked path to a notes directory from a non-file buffer (known
+  limitation): a buffer visiting no file is compared by its expanded
+  `default-directory`, not by its truename (no file I/O on the lookup path). A
+  Dired, compilation, or shell buffer that reaches a notes directory through a
+  symlinked path is therefore not recognised as notes context. That buffer
+  then gets the Perspective's project instead of declining. This is the same
+  class of gap as the window before the first notes-list rebuild (plan.md D-7).
+  File buffers are not affected, because they are compared by truename.
+- Recursive exclude predicate (known limitation, sync-audit O6): a predicate on
+  `imoogi-project-perspective-finder-exclude-functions` that itself calls
+  `project-current` re-enters the finder. The finder's error guard keeps any
+  error from escaping (REQ-PIN-007), but the recursion is slow until it ends
+  in that guard. The predicates shipped with this SPEC do not call
+  `project-current`. Guarding third-party predicates against re-entry is out
+  of scope.
 - Making a notes directory a project, or adding notes to `project-files` /
   `project-buffers` / `project-external-roots`.
 
@@ -409,8 +500,8 @@ the project-only lists and no error shall be shown.
 These changes follow from the finder and are accepted. Undoing them is out of
 scope:
 - `f`/`s`/`d` stop prompting when the context root is not under VC — from any
-  buffer, as long as a context root exists. With no context root they still
-  prompt (REQ-PIN-013.1).
+  buffer, as long as a local context root exists. With no context root, or a
+  remote one, they still prompt (REQ-PIN-013.1).
 - `C-c h p m s p` (project-notes setup) from a projectless buffer in a mapped
   Perspective uses the mapped root instead of prompting for the source folder
   (REQ-PIN-013.3).
@@ -514,5 +605,5 @@ three edits (plan.md § A.4), and no others:
 | AC-PIN-014 | REQ-PIN-012 |
 | AC-PIN-015 | REQ-PIN-013, REQ-PIN-008 |
 | AC-PIN-016 | REQ-PIN-014 |
-| AC-PIN-017 | REQ-PIN-015 |
+| AC-PIN-017 | REQ-PIN-015, REQ-PIN-006 |
 | AC-PIN-018 | REQ-PIN-001 |

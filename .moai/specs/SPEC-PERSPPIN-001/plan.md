@@ -133,7 +133,16 @@ member. Members added later at a depth above 95 are not covered (spec.md
 REQ-PIN-002).
 
 Guards, evaluated cheapest first, each a decline:
-1. inhibit variable bound (explicit selection) or re-entry;
+1. inhibit variable bound (explicit selection) or re-entry; or the
+   explicit-lookup marker `imoogi-project--explicit-lookup` set. Decided
+   (lane-3, 2026-10-13, review rework CR1): `project-current` replaces an
+   omitted DIRECTORY with `default-directory` before it runs the finders. So an
+   `:around` advice on `project-current`, `imoogi-project--mark-explicit-lookup`,
+   binds the marker to `(and directory t)`; a nested implicit call binds it
+   back to nil. `imoogi-project-install-perspective-finder` installs the
+   advice together with the finder, and calling the installer again changes
+   nothing. Without the marker, `(project-current nil default-directory)`
+   would look implicit (spec.md REQ-PIN-004.3);
 2. `(bound-and-true-p eglot-lsp-context)` — Eglot is `:commands`-deferred, so
    the variable may be unbound when the finder runs;
 3. DIR is remote — `file-remote-p` on the raw string, checked **first** within
@@ -163,10 +172,15 @@ nil, the clause does nothing, and the command prompts as before (REQ-PIN-003).
    hook variable owned by `04-projects.el`, so 04 never requires 26). The
    predicate short-circuits on the buffer-local variables
    `imoogi-project-notes-source-root`, `imoogi-project-notes-directory-local`,
-   `imoogi-project-notes-entry-instance-id`, then on `buffer-file-truename`
-   (nil → not a notes file). It then compares the expanded truename against
-   the in-memory list of truename notes directories (D-7), so a symlinked
-   `~/project-notes` still matches. The predicate never calls
+   `imoogi-project-notes-entry-instance-id`. For a file buffer it then
+   compares the expanded `buffer-file-truename` against the in-memory list of
+   truename notes directories (D-7), so a symlinked `~/project-notes` still
+   matches. For a buffer visiting no file (Dired, compilation, shell) it
+   compares the local `default-directory`, expanded but not resolved to a
+   truename (no I/O), and skips a remote `default-directory` on the raw string
+   (review rework, `26-project-notes.el` `--context-buffer-p`). A non-file
+   buffer that reaches a notes directory through a symlinked path is therefore
+   missed (spec.md § 5 known limitation). The predicate never calls
    `--all-entries`, `--read-registry`, or `--find-metadata-file` itself
    (AC-PIN-010, second part).
 Then return the memoized project for the pinned root (D-8). On a memo miss,
@@ -183,6 +197,12 @@ normal prompt), builds the set {`project-buffers` minus ignore conditions} ∪
 {live buffers visiting files under the root's notes directory}, and reads with
 `read-buffer` using that predicate, then `switch-to-buffer`. The t34-style
 fallback inside the command makes `b` work from notes-context buffers too.
+The fallback (`imoogi-project--buffer-project`) carries the finder's remote
+guards (review rework): it requires `persp-mode`, then declines when the
+buffer's `default-directory` or the raw mapped root is remote. Both are
+checked on the raw strings before any file operation. In that case `b` falls
+through to `(project-current t)` and prompts (spec.md REQ-PIN-006,
+acceptance.md AC-PIN-017).
 
 ### D-4 — `f` gains the notes directory as an extra search root
 
@@ -326,13 +346,17 @@ all in `modules/project/26-project-notes.el`:
    `04-projects.el:548`). Emacs runs `window-setup-hook` right after
    `emacs-startup-hook`, so the rebuild still happens once at startup, after
    the restore.
+8. **Rename rollback** — at the end of `imoogi-project-notes--rollback-rename`
+   (review rework, commit `e3c225e`). A failed notes-directory rename restores
+   the old directory, and without a rebuild the list would still name the
+   renamed path.
 
 Each rebuild calls `--all-entries` inside `condition-case`; on any error
 (corrupt registry, unreadable mount) the previous list is kept and nothing is
 displayed. Before the first rebuild (list never built), the predicate treats a
 file as a notes file when it is inside `imoogi-project-notes-directory` — a
 pure string-prefix check with no I/O. Rebuilds happen at the call sites (a
-direct call at the end of each function in 1-5), not via advice. Trigger 6 is a
+direct call at the end of each function in 1-5 and 8), not via advice. Trigger 6 is a
 named function, so the test can call it directly without running the other
 `persp-switch-hook` members (in the implementation it is
 `imoogi-project-notes--refresh-context-directories`). Trigger 7 cannot run in
@@ -479,7 +503,7 @@ because AC-PIN-001's non-VC root needs it.
 
 ### M2 — Notes-context exclusion and t34 compatibility
 AC-PIN-010, AC-PIN-016. Predicate hook from 26-project-notes.el; the D-7
-notes-directory list and its seven refresh points.
+notes-directory list and its eight refresh points (trigger 8, rename rollback, added by the review rework).
 
 ### M3 — `b` command and candidate set
 AC-PIN-011 (b part), AC-PIN-012, AC-PIN-017 (b part); the transient row change

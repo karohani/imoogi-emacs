@@ -8,7 +8,7 @@ Pin a project Perspective fully to its project. Tier M, card t35.
 plan_status: audit-ready
 plan_complete_at: 2026-10-13
 spec_id: SPEC-PERSPPIN-001
-spec_version: "0.1.4"  # v0.1.4 = post-run text alignment with 565e15b (no requirement change)
+spec_version: "0.1.5"  # v0.1.5 = post-run text alignment with the review rework at 2172fe7
 tier: M
 artifacts: [spec.md, plan.md, acceptance.md, progress.md]
 requirements: 15
