@@ -191,13 +191,19 @@ Prompting signals \"prompted\", and `compile' records its directory in
     (setq current-perspective "main")
     (should-not (project-current nil))
     (imoogi-persppin-test--prompted (project-current t))
-    ;; (b) `persp-mode' is off; `persp-current-name' would signal.
+    ;; (b) `persp-mode' is off.  The name stub answers the mapped name, so
+    ;; only the `persp-mode' check can decline, and it must do so before
+    ;; asking for the name (which signals for real while the mode is off).
     (setq current-perspective "src")
-    (let ((persp-mode nil))
+    (let ((persp-mode nil)
+          (name-calls 0))
       (cl-letf (((symbol-function 'persp-current-name)
-                 (lambda () (error "persp-mode-guard"))))
+                 (lambda ()
+                   (setq name-calls (1+ name-calls))
+                   "src")))
         (should-not (project-current nil))
-        (imoogi-persppin-test--prompted (project-current t))))
+        (imoogi-persppin-test--prompted (project-current t)))
+      (should (= name-calls 0)))
     ;; (c) the mapped root was deleted.
     (let ((gone (file-name-as-directory (expand-file-name "gone/" sandbox))))
       (make-directory gone t)
