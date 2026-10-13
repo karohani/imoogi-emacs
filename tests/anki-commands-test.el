@@ -332,6 +332,34 @@ Anki 의 cloze 정규식은 비탐욕(non-greedy)이라 첫 `}}' 에서 빈칸�
     (org-back-to-heading t)
     (should-not (org-entry-get (point) "ANKI_INCREMENTAL"))))
 
+(defmacro imoogi-anki-test--refused-unchanged (command)
+  "imoogi-Basic + swift heading 에서 COMMAND 를 실행하고, 거부되어 버퍼가 그대로인지 본다.
+
+swift 해제 확인에는 \"예\" 로 답하게 둔다.  노트 타입 확인이 swift 충돌
+해소보다 늦으면, 거부될 heading 의 ANKI_SWIFT 가 nil 로 바뀐 뒤에야
+거부된다 (카드 t36 -- t15 발견 3 과 같은 유형)."
+  `(imoogi-anki-test--with-org
+       "* 제목\n:PROPERTIES:\n:ANKI_NOTE_TYPE: imoogi-Basic\n:ANKI_SWIFT: t\n:END:\n\n- 답 하나\n"
+     (goto-char (point-max))
+     (let ((before (buffer-string))
+           said)
+       (cl-letf (((symbol-function 'yes-or-no-p) (lambda (&rest _) t))
+                 ((symbol-function 'message)
+                  (lambda (fmt &rest args) (push (apply #'format fmt args) said))))
+         ,command)
+       (should (seq-some (lambda (m) (string-match-p "imoogi-Basic" m)) said))
+       (should (equal (buffer-string) before)))
+     (org-back-to-heading t)
+     (should (equal (org-entry-get (point) "ANKI_SWIFT") "t"))))
+
+(ert-deftest imoogi-anki-set-direction-refuses-a-non-cloze-type-before-clearing-swift ()
+  "카드 t36: 다른 타입이면 swift 해제에 \"예\" 라고 답할 상황이어도 아무것도 바꾸지 않는다."
+  (imoogi-anki-test--refused-unchanged (imoogi-anki-set-direction "->")))
+
+(ert-deftest imoogi-anki-toggle-incremental-refuses-a-non-cloze-type-before-clearing-swift ()
+  "카드 t36: `imoogi-anki-set-direction' 과 같은 순서를 지킨다."
+  (imoogi-anki-test--refused-unchanged (imoogi-anki-toggle-incremental)))
+
 (ert-deftest imoogi-anki-multiline-property-names-are-completion-candidates ()
   "AC-ML-012e: 두 이름은 프로퍼티 이름 후보에 들어간다.
 
