@@ -314,8 +314,18 @@ all in `modules/project/26-project-notes.el`:
    members added at `04-projects.el:339`; registered from 26 under
    `with-eval-after-load 'perspective`), which also picks up notes directories
    created or mounted outside Emacs.
-7. **Startup** — once on `emacs-startup-hook` at a depth after
-   `imoogi-perspective-state-restore` (which runs at −50).
+7. **Startup** — once at startup, after `imoogi-perspective-state-restore`.
+   **Decided (lane-3, 2026-10-13, run deviation):** the plan placed this on
+   `emacs-startup-hook`. The implementation (commit `09e62b0`) registers
+   `imoogi-project-notes--rebuild-context-directories` on **`window-setup-hook`**
+   instead, with a plain `add-hook` at the end of `26-project-notes.el`. The
+   reason is the existing test
+   `imoogi-treemacs-does-not-auto-start-on-emacs-startup-hook`
+   (`tests/workspace-bridge-test.el:523`), which pins `emacs-startup-hook` to
+   contain only `imoogi-perspective-state-restore` (added at −50,
+   `04-projects.el:548`). Emacs runs `window-setup-hook` right after
+   `emacs-startup-hook`, so the rebuild still happens once at startup, after
+   the restore.
 
 Each rebuild calls `--all-entries` inside `condition-case`; on any error
 (corrupt registry, unreadable mount) the previous list is kept and nothing is
@@ -324,35 +334,45 @@ file as a notes file when it is inside `imoogi-project-notes-directory` — a
 pure string-prefix check with no I/O. Rebuilds happen at the call sites (a
 direct call at the end of each function in 1-5), not via advice. Trigger 6 is a
 named function, so the test can call it directly without running the other
-`persp-switch-hook` members. Trigger 7 cannot run in the batch runner
-(`tests/run.el` exits inside `-l`, so `emacs-startup-hook` never fires) and is
-verified by registration only (AC-PIN-010, third part).
+`persp-switch-hook` members (in the implementation it is
+`imoogi-project-notes--refresh-context-directories`). Trigger 7 cannot run in
+the batch runner (`tests/run.el` exits inside `-l`, so neither
+`emacs-startup-hook` nor `window-setup-hook` fires). It is verified by
+registration only (AC-PIN-010, third part): the rebuild is on
+`window-setup-hook`, it is not on `emacs-startup-hook`, and
+`imoogi-perspective-state-restore` is on `emacs-startup-hook`.
 
 ### D-8 — Memoize the finder's answer per pinned root
 
 **Decided (audit r1 D6).** `project-try-vc` caches only positive results, so a
 non-VC mapped root (the study-note case) would repeat a `locate-dominating-file`
 walk and a `hack-dir-local-variables` pass on every tab-bar redisplay. The
-finder therefore keeps a one-slot memo `(KEY . PROJECT)`, where KEY is
-(Perspective name, raw mapped root string from the alist):
+finder therefore keeps a memo keyed per Perspective.
 
-- **Hit**: KEY equals the current (name, raw root). Guards 1-8 still run first
-  on every call, including the `file-directory-p` of guard 7, so a deleted root
+**Decided (lane-3, 2026-10-13, run deviation):** the plan said one slot. The
+implementation keeps an alist, `imoogi-project--perspective-finder-memo`
+(`04-projects.el:105`), of `(KEY . PROJECT)` entries, where KEY is
+`(PERSPECTIVE-NAME . RAW-ROOT)` and RAW-ROOT is the string stored in
+`imoogi-project-perspective-alist`:
+
+- **Hit**: an entry for the current KEY exists. The guards still run first on
+  every call, including the `file-directory-p` of guard 7, so a deleted root
   still declines.
-- **Miss**: resolve as in D-2 and store.
-- **Invalidation**: KEY no longer matching (a remap or alist change) invalidates
-  it implicitly, and a named function on `persp-switch-hook` clears it
-  explicitly (the same hook as D-7 trigger 6).
+- **Miss**: resolve as in D-2 (`imoogi-project-resolve-root`) and push a new
+  entry.
+- **Invalidation**: a remap or alist change produces a new KEY, so the old
+  entry is simply never hit (implicit). `imoogi-project--perspective-finder-memo-clear`
+  on `persp-switch-hook` (`04-projects.el:552`) empties the whole alist on
+  every Perspective switch (explicit).
 
 Accepted staleness: running `git init` in a pinned non-VC root keeps the
 transient project until the next Perspective switch. Chosen over option (b)
 (accepting the uncached search) because the finder runs on redisplay.
 
-Accepted cost (O-f, recorded in acceptance.md § Residual Risk): with two frames
-showing different pinned Perspectives, alternating tab-bar redisplays alternate
-the KEY, so the one-slot memo misses on each switch between frames. That costs
-time only, never correctness. A small alist keyed the same way would remove it
-and is left as a run-phase option.
+O-f resolved by the run deviation: with two frames showing different pinned
+Perspectives, each frame's KEY has its own entry, so alternating tab-bar
+redisplays hit the memo and no longer evict each other. Entries accumulate
+only until the next Perspective switch clears the alist.
 
 Pinned by AC-PIN-018 (O-e): for a non-VC root, two lookups run the VC search
 once, and the D-8 clear function forces the next lookup to search again.
@@ -364,10 +384,31 @@ once, and the D-8 clear function forces the next lookup to search again.
   TRAMP buffer in a local Perspective) → declined by guard 3 (AC-PIN-008).
 - Study-note Perspectives: `C-c h p c`/`k` and generic `C-x p` commands prompt
   from every note file; `b`/`f`/`s`/`d` do not (D-6 consequence, accepted).
-- Context-call clause scope: while `f`/`s`/`d` run (including their minibuffer
-  reads), a lookup in a buffer whose `default-directory` is let-bound to the
-  context root resolves to that root. The effect ends with the command, and at
-  worst a redisplay in that buffer shows the root's project name meanwhile.
+- Context-call clause scope (O3-c): `imoogi-project--context-call-root` is bound
+  for the whole time `imoogi-project-context-call` runs. That covers more than
+  the minibuffer reads of `f`/`s`/`d`. It also covers everything the command
+  triggers before it returns, in particular the hooks run when `f` visits the
+  chosen file (`find-file-hook`, the major-mode hooks such as `org-mode-hook`,
+  `hack-local-variables-hook`) and `d`'s Dired setup hooks.
+
+  During that time, an implicit lookup from any buffer whose
+  `default-directory` equals the context root, and that no other finder
+  answers, resolves to `(transient . CONTEXT-ROOT)`. Two kinds of buffer
+  qualify:
+  - the buffer the command was invoked from, whose `default-directory` is
+    let-bound to the root;
+  - a newly visited file that sits directly in the context root.
+
+  Because the clause skips guard 8, this also holds for a notes-context buffer
+  when the context root is a study notes directory. Eglot is still declined
+  (guard 2).
+
+  Today no hook in `26-project-notes.el` calls
+  `imoogi-project-notes--current-source-root` or `project-current` from these
+  hooks (no `find-file-hook` or mode hook is added there), so the D-6
+  redirection does not occur. A future hook that does so would see the context
+  root while the command runs. The effect ends when the command returns. At
+  worst a redisplay meanwhile shows the root's project name.
 - savehist-restored alist with duplicate names → first match wins (existing).
 - Hot path: `project-current` runs on tab-bar redisplay. Guards 1-6 are pure
   Lisp, guard 7 is one `file-directory-p`, guard 8 is buffer-local plus an

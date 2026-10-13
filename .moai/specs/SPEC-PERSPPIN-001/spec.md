@@ -1,7 +1,7 @@
 ---
 id: SPEC-PERSPPIN-001
 title: "Pin a project Perspective fully to its project"
-version: "0.1.3"
+version: "0.1.4"
 status: draft
 created: 2026-10-13
 updated: 2026-10-13
@@ -16,6 +16,30 @@ related_specs: [SPEC-TRANSIENT-001]
 ---
 
 ## HISTORY
+
+### v0.1.4 (2026-10-13)
+- POST-RUN TEXT ALIGNMENT with the implementation at `565e15b` (all 18 ACs
+  pass; full suite 0 unexpected). No requirement changes beyond these.
+  Decided (lane-3, 2026-10-13, run deviation):
+  - Trigger 7 (startup notes-list rebuild) is registered on
+    `window-setup-hook`, not `emacs-startup-hook` (commit `09e62b0`). The
+    reason is that `tests/workspace-bridge-test.el:523` pins
+    `emacs-startup-hook` to contain only `imoogi-perspective-state-restore`.
+    The rebuild still runs once at startup, after the restore (REQ-PIN-008,
+    plan.md D-7, AC-PIN-010).
+  - The D-8 memo is keyed per Perspective: an alist
+    `imoogi-project--perspective-finder-memo` keyed
+    `(PERSPECTIVE-NAME . RAW-ROOT)` and cleared on a Perspective switch,
+    instead of one slot. Two frames no longer thrash it (REQ-PIN-001 wording,
+    O3-a; acceptance.md Residual Risk O-f).
+  - Quality gate: `make test-elisp` (the full suite) replaces the selector
+    run.
+- Round-3 optional findings taken:
+  - O3-b: REQ-PIN-003 cross-references the context-call clause.
+  - O3-c: REQ-PIN-008's exception spans the whole `imoogi-project-context-call`,
+    including find-file and mode hooks (plan.md B.3).
+  - O3-e: AC-PIN-015's `f` row asserts `R/a.txt` is in ALL-FILES.
+  - O3-f: the § 9 traceability row for AC-PIN-015 adds REQ-PIN-008.
 
 ### v0.1.3 (2026-10-13)
 - AUDIT r2 FIX (plan-audit FAIL, harmonic 0.832, D4 unresolved;
@@ -160,9 +184,11 @@ phase.
 While `persp-mode` is active and the current Perspective is mapped to a root
 that is an existing local directory, when an implicit lookup is made for a
 projectless buffer, the Perspective finder shall resolve the lookup to the
-project that `project.el` resolves for the mapped root — reusing that resolved
-project, without repeating the VC search, for repeated lookups until the next
-Perspective switch or a change of the mapping (plan.md D-8):
+project that `project.el` resolves for the mapped root — reusing, per
+Perspective, the project already resolved for that Perspective's mapping,
+without repeating the VC search, until the next Perspective switch or a change
+of that mapping, so lookups for different Perspectives (e.g. two frames) never
+evict each other (plan.md D-8):
 
 1. a VC project rooted at the mapped root when the root is under VC;
 2. a `transient` project rooted at the mapped root when it is not (study-note
@@ -188,7 +214,11 @@ While `persp-mode` is inactive, or the current Perspective is not mapped, or
 the mapped root is not an existing directory (deleted, unmounted), the
 Perspective finder shall decline, so every command behaves exactly as before
 this SPEC — including prompting — and no project is guessed from the
-Perspective name, the buffer list, or `default-directory`.
+Perspective name, the buffer list, or `default-directory`. The context-call
+clause (REQ-PIN-013.1, plan.md D-2) does not contradict this. It answers only
+for a context root that `imoogi-project-context-call` has already computed
+through `imoogi-project-context-root`, and it guesses nothing itself. When
+there is no context root, it does nothing and the command prompts.
 
 #### REQ-PIN-004 [Ubiquitous — negated]
 The Perspective finder shall not claim an explicit lookup. In particular:
@@ -222,8 +252,11 @@ escaping error would break every `project-current` caller.
 The Perspective finder shall not claim a lookup for a notes-context buffer,
 with one exception: a lookup of the context root made while
 `imoogi-project-context-call` runs `f`/`s`/`d` (REQ-PIN-013.1; plan.md D-2
-context-call clause). That exception is scoped to those commands, which never
-call `imoogi-project-notes--current-source-root`. Outside it, such buffers keep
+context-call clause). The exception lasts for the whole call. That includes
+the hooks the command triggers before it returns, such as `find-file-hook`
+and the major-mode hooks when `f` visits a file directly in the context root
+(plan.md B.3). The commands themselves never call
+`imoogi-project-notes--current-source-root`. Outside the call, such buffers keep
 the resolution they have before this SPEC (and the
 project-notes commands keep resolving them through their own entry), so
 `imoogi-project-notes--current-source-root` and journal resume sections are not
@@ -232,8 +265,9 @@ read the notes registry, folder metadata files, or mounted roots on each lookup,
 because the lookup runs on every tab-bar redisplay; it shall rely on buffer-local
 state and an in-memory list of notes directories that is refreshed when the
 registry or mounted state is written, when mounted roots are rescanned, when a
-mounted note is detached, after an unmount, on a Perspective switch, and at
-startup (plan.md D-7). The resulting prompt from `c`/`k` in notes-context
+mounted note is detached, after an unmount, on a Perspective switch, and once
+at startup after the Perspective state restore (on `window-setup-hook`; plan.md
+D-7). The resulting prompt from `c`/`k` in notes-context
 buffers is a known limitation (§ 5, plan.md D-6).
 
 ### 3.2 The project transient (`C-c h p`)
@@ -478,7 +512,7 @@ three edits (plan.md § A.4), and no others:
 | AC-PIN-012 | REQ-PIN-010 |
 | AC-PIN-013 | REQ-PIN-011 |
 | AC-PIN-014 | REQ-PIN-012 |
-| AC-PIN-015 | REQ-PIN-013 |
+| AC-PIN-015 | REQ-PIN-013, REQ-PIN-008 |
 | AC-PIN-016 | REQ-PIN-014 |
 | AC-PIN-017 | REQ-PIN-015 |
 | AC-PIN-018 | REQ-PIN-001 |

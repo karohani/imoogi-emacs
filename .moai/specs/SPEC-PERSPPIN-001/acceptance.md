@@ -162,9 +162,20 @@ visiting a file in N2 is a notes-context buffer (`project-current` yields nil),
 with no registry read during that lookup.
 
 Trigger 7 (startup) cannot run in the batch runner (`tests/run.el` exits inside
-`-l`, so `emacs-startup-hook` never fires). It is verified **by registration
-only**: its function is a member of `emacs-startup-hook` and sorts after
-`imoogi-perspective-state-restore`.
+`-l`, so neither `emacs-startup-hook` nor `window-setup-hook` fires). It is
+verified **by registration only**. **Decided (lane-3, 2026-10-13, run
+deviation):** the rebuild function
+(`imoogi-project-notes--rebuild-context-directories`) is registered on
+`window-setup-hook`, which Emacs runs right after `emacs-startup-hook`, not on
+`emacs-startup-hook` itself. The existing test
+`imoogi-treemacs-does-not-auto-start-on-emacs-startup-hook`
+(`tests/workspace-bridge-test.el:523`) pins `emacs-startup-hook` to contain
+only `imoogi-perspective-state-restore`. The test asserts three things:
+- `imoogi-perspective-state-restore` is a member of `emacs-startup-hook`;
+- the rebuild function is **not** a member of `emacs-startup-hook`;
+- the rebuild function **is** a member of `window-setup-hook`.
+
+So the rebuild runs once at startup, after the restore.
 Tests: `imoogi-persppin-notes-buffer-declined`,
 `imoogi-persppin-notes-check-reads-no-registry`,
 `imoogi-persppin-notes-list-refresh-triggers`,
@@ -247,7 +258,9 @@ exactly as scoped (REQ-PIN-013.1, .3):
     `project-files` stubbed to return `(R/a.txt)` so no grep or find process
     runs; R is checked from the project passed to `project-files`;
   - `imoogi-project-find-file`, with the AC-PIN-013 stub on
-    `project-read-file-name-function`.
+    `project-read-file-name-function`; the recorded ALL-FILES contains
+    `R/a.txt` (O3-e), which shows the candidates come from R and not from the
+    notes buffer's own directory.
 - With **no** context root (current Perspective "main" unmapped, projectless
   buffer), both `imoogi-project-find-file` and `imoogi-project-dired` reach
   the prompter (the `"prompted"` error), so the fallback is gated for the
@@ -310,10 +323,17 @@ Test: `imoogi-persppin-finder-memo`.
 
 ## Quality Gate Criteria
 
-- `./tests/run.sh` with `IMOOGI_ERT_SELECTOR='\(project-notes\|transient\|imoogi-project-\|perspective\|persppin\|workspace\)'`
-  exits 0, unexpected = 0 (skips limited to the pre-existing `cli-cache-*`).
-- Full `./tests/run.sh` offline boot stage passes (no boot-health warnings).
-- `check-parens` stage passes.
+- **Gate: `make test-elisp`** (the full elisp suite: `./tests/run.sh` with no
+  selector, i.e. check-parens + offline boot + every ERT test) exits 0 with
+  unexpected = 0 (skips limited to the pre-existing `cli-cache-*`).
+  Decided (lane-3, 2026-10-13, run deviation): the full suite replaces the
+  earlier selector run
+  `IMOOGI_ERT_SELECTOR='\(project-notes\|transient\|imoogi-project-\|perspective\|persppin\|workspace\)'`,
+  because that selector missed tests this SPEC can affect, such as
+  `imoogi-treemacs-*` and `imoogi-module-reload-*`. The selector stays useful
+  as a fast inner loop but is not the gate.
+- Within that run, the offline boot stage passes (no boot-health warnings) and
+  the `check-parens` stage passes.
 - No test writes outside its sandbox (verified by the sandbox macro's cleanup
   and by `project-list-file` binding).
 
@@ -348,11 +368,14 @@ Test: `imoogi-persppin-finder-memo`.
   (scratch, help) are pinned there for every command.
 - Finder memo (plan.md D-8): `git init` inside a pinned non-VC root keeps the
   transient project until the next Perspective switch.
-- Finder memo thrash (O-f, accepted): with two frames showing different pinned
-  Perspectives, alternating tab-bar redisplays alternate the memo key, so the
-  one-slot memo misses on every alternation and repeats the VC search for a
-  non-VC root. This costs time only, never correctness. A small alist keyed the
-  same way is a run-phase option.
+- Finder memo with two frames (O-f): **resolved by a run deviation, decided
+  (lane-3, 2026-10-13).** The memo `imoogi-project--perspective-finder-memo`
+  is an alist keyed `(PERSPECTIVE-NAME . RAW-ROOT)`, not a single slot. Two
+  frames showing different pinned Perspectives each hit their own entry, so
+  alternating tab-bar redisplays no longer thrash it. The residual cost is
+  that entries accumulate until the next Perspective switch clears the alist;
+  this is bounded by the number of Perspectives looked up since the last
+  switch.
 - Interactive driving of the real `C-c h p` key sequence is not automated; the
   ACs call the bound commands directly.
 - `imoogi-tab-name` and `imoogi-org-preview--allowed-roots` change for
