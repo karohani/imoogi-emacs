@@ -771,4 +771,56 @@ remote name (REQ-PIN-006)."
         (imoogi-persppin-test--prompted (imoogi-project-find-file)))
       (should-not io))))
 
+;;; M5 — non-membership and unchanged entries
+
+(ert-deftest imoogi-persppin-notes-not-project-members ()
+  "AC-PIN-014: notes stay out of the project outside the `b'/`f' lists."
+  (imoogi-persppin-test--isolated
+    (let* ((directory (imoogi-project-notes-setup root))
+           (p1 (imoogi-persppin-test--visit (expand-file-name "a.txt" root)))
+           (n1 (imoogi-persppin-test--visit
+                (expand-file-name "project.org" directory))))
+      (push (cons (imoogi-persppin-test--canonical root) "src")
+            imoogi-project-perspective-alist)
+      (setq current-perspective "src")
+      (let ((project (project-current nil)))
+        (should (file-equal-p (project-root project) root))
+        (should-not (cl-some (lambda (file)
+                               (file-in-directory-p (expand-file-name file root)
+                                                    directory))
+                             (project-files project)))
+        (should (memq p1 (project-buffers project)))
+        (should-not (memq n1 (project-buffers project)))
+        (project-kill-buffers t)
+        (should-not (buffer-live-p p1))
+        (should (buffer-live-p n1))))))
+
+(ert-deftest imoogi-persppin-transient-other-entries-unchanged ()
+  "AC-PIN-015: only `b' changes among the project transient's entries."
+  (dolist (row '(("p" . imoogi-project-switch-perspective)
+                 ("f" . imoogi-project-find-file)
+                 ("s" . imoogi-project-find-regexp)
+                 ("d" . imoogi-project-dired)
+                 ("b" . imoogi-project-switch-to-buffer)
+                 ("m" . imoogi-project-notes-transient)
+                 ("a" . imoogi-persp-new)
+                 ("l" . persp-switch-last)
+                 ("o" . persp-switch)
+                 ("n" . persp-next)
+                 ("N" . persp-prev)
+                 ("#" . persp-switch-by-number)
+                 ("r" . persp-rename)
+                 ("K" . persp-kill)
+                 ("c" . project-compile)
+                 ("k" . project-kill-buffers)
+                 ("F" . project-forget-project)
+                 ("q" . transient-quit-one)))
+    (should (eq (imoogi-persppin-test--suffix (car row)) (cdr row))))
+  (imoogi-persppin-test--isolated
+    (push (cons (imoogi-persppin-test--canonical root) "src")
+          imoogi-project-perspective-alist)
+    (setq current-perspective "src")
+    (imoogi-persppin-test--prompted
+      (call-interactively (imoogi-persppin-test--suffix "F")))))
+
 ;;; project-perspective-pin-test.el ends here
