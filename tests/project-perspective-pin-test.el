@@ -850,4 +850,56 @@ The implicit lookup from the same buffer still resolves to the Perspective."
     (should (= (cl-count #'imoogi-project-perspective-find project-find-functions)
                1))))
 
+(defmacro imoogi-persppin-test--remote-io-guarded (io &rest body)
+  "Run BODY with file checks on remote names pushed on IO and signalling.
+`project-find-functions' holds only the finder, so no VC backend touches a
+remote name either."
+  (declare (indent 1) (debug t))
+  `(let ((project-find-functions nil)
+         (guard (lambda (original)
+                  (lambda (file &rest args)
+                    (if (and (stringp file) (file-remote-p file))
+                        (progn (push file ,io) (error "Remote file I/O: %s" file))
+                      (apply original file args))))))
+     (imoogi-project-install-perspective-finder)
+     (cl-letf (((symbol-function 'file-directory-p)
+                (funcall guard (symbol-function 'file-directory-p)))
+               ((symbol-function 'file-truename)
+                (funcall guard (symbol-function 'file-truename)))
+               ((symbol-function 'file-exists-p)
+                (funcall guard (symbol-function 'file-exists-p))))
+       ,@body)))
+
+(ert-deftest imoogi-persppin-switch-buffer-remote-buffer-prompts ()
+  "CR2, REQ-PIN-006: `b' from a remote buffer never borrows the local root."
+  (imoogi-persppin-test--isolated
+    (let ((io nil)
+          (candidates nil))
+      (imoogi-persppin-test--visit (expand-file-name "a.txt" root))
+      (push (cons (imoogi-persppin-test--canonical root) "src")
+            imoogi-project-perspective-alist)
+      (setq current-perspective "src")
+      (imoogi-persppin-test--remote-io-guarded io
+        (imoogi-persppin-test--capturing-buffers candidates
+          (with-temp-buffer
+            (setq default-directory "/ssh:host:/tmp/")
+            (imoogi-persppin-test--prompted
+              (call-interactively (imoogi-persppin-test--suffix "b"))))))
+      (should-not candidates)
+      (should-not io))))
+
+(ert-deftest imoogi-persppin-switch-buffer-remote-root-prompts ()
+  "CR2, REQ-PIN-006: `b' falls back to the prompt for a remote mapped root."
+  (imoogi-persppin-test--isolated
+    (let ((io nil)
+          (candidates nil)
+          (imoogi-project-perspective-alist '(("/ssh:host:/srv/app/" . "remote"))))
+      (setq current-perspective "remote")
+      (imoogi-persppin-test--remote-io-guarded io
+        (imoogi-persppin-test--capturing-buffers candidates
+          (imoogi-persppin-test--prompted
+            (call-interactively (imoogi-persppin-test--suffix "b")))))
+      (should-not candidates)
+      (should-not io))))
+
 ;;; project-perspective-pin-test.el ends here

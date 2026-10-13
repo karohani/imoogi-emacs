@@ -316,9 +316,15 @@ nothing is shown."
 (defun imoogi-project--buffer-project ()
   "Return the project `b' lists buffers for.
 The buffer's own project wins, then the Perspective's root (which also covers
-notes buffers, where the finder declines), then the normal prompt."
+notes buffers, where the finder declines), then the normal prompt.
+Like the finder, the fallback declines for a remote buffer or a remote mapped
+root, checked on the raw strings before any file operation (REQ-PIN-006)."
   (or (project-current nil)
       (when-let* (((bound-and-true-p persp-mode))
+                  ((not (file-remote-p default-directory)))
+                  (raw-root (car (rassoc (persp-current-name)
+                                         imoogi-project-perspective-alist)))
+                  ((not (file-remote-p raw-root)))
                   (root (imoogi-project--perspective-root)))
         (imoogi-project-resolve-root root))
       (project-current t)))
