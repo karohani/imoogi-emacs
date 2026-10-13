@@ -135,8 +135,30 @@ Run-phase choices within the plan's options:
 
 ## §E.3 Run-phase Audit-Ready Signal
 
-_<pending run-phase>_
+Filled at sync from the §E.2 evidence above (the run phase left it empty).
+
+```yaml
+run_status: audit-ready
+run_complete_at: 2026-10-13
+cycle_type: tdd
+run_head: 89a0af0
+final_full_suite: "Ran 740 tests, 729 results as expected, 0 unexpected, 11 skipped"  # re-verified by the lane before sync
+acceptance_criteria_pass: 18/18
+deviations: [AC-PIN-010 trigger 7 on window-setup-hook (09e62b0), aligned in spec text 89a0af0]
+```
 
 ## §E.4 Sync-phase Audit-Ready Signal
 
-_<pending sync-phase>_
+```yaml
+sync_complete_at: 2026-10-13
+sync_commit_sha: pending-backfill  # a commit cannot name its own SHA; parent 89a0af0
+sync_status: complete
+docs_updated: [README.md "프로젝트와 작업공간 (`project.el` + `perspective.el`)"]
+changelog_entry_position: none  # repo has no CHANGELOG.md
+b12_self_test_a: n/a (no CHANGELOG.md)
+b12_self_test_b: acceptance.md distinct AC ids = 18
+b12_self_test_c: n/a (no CHANGELOG.md)
+frontmatter_status_transitions:
+  spec.md: draft -> completed  # in-progress/implemented never recorded; merged close on this commit
+  plan.md / acceptance.md / progress.md: no frontmatter
+```

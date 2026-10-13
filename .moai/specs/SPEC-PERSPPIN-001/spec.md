@@ -2,7 +2,7 @@
 id: SPEC-PERSPPIN-001
 title: "Pin a project Perspective fully to its project"
 version: "0.1.4"
-status: draft
+status: completed
 created: 2026-10-13
 updated: 2026-10-13
 author: jay
