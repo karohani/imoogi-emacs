@@ -6558,10 +6558,13 @@ opens the new file below the project's artifacts directory."
 
 ;; Keep notes buffers away from the Perspective finder (04-projects.el owns the
 ;; hook, so neither module requires the other), and keep the notes-directory
-;; list fresh.  Startup runs after `imoogi-perspective-state-restore' (-50).
+;; list fresh.  The startup rebuild sits on `window-setup-hook', which Emacs
+;; runs after `emacs-startup-hook' and so after
+;; `imoogi-perspective-state-restore'.  `emacs-startup-hook' itself stays
+;; exactly that one restore function (workspace-bridge-test.el pins it).
 (add-hook 'imoogi-project-perspective-finder-exclude-functions
           #'imoogi-project-notes--context-buffer-p)
-(add-hook 'emacs-startup-hook #'imoogi-project-notes--rebuild-context-directories)
+(add-hook 'window-setup-hook #'imoogi-project-notes--rebuild-context-directories)
 (with-eval-after-load 'perspective
   (add-hook 'persp-switch-hook #'imoogi-project-notes--refresh-context-directories))
 

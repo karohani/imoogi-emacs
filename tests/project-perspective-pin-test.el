@@ -489,14 +489,17 @@ Prompting signals \"prompted\", and `compile' records its directory in
       (should-not log))))
 
 (ert-deftest imoogi-persppin-notes-list-startup-registered ()
-  "AC-PIN-010: the startup rebuild runs after the Perspective state restore."
-  (let* ((hook (default-value 'emacs-startup-hook))
-         (restore (cl-position #'imoogi-perspective-state-restore hook))
-         (rebuild (cl-position #'imoogi-project-notes--rebuild-context-directories
-                               hook)))
-    (should restore)
-    (should rebuild)
-    (should (< restore rebuild))))
+  "AC-PIN-010: the startup rebuild runs after the Perspective state restore.
+It is registered on `window-setup-hook', which Emacs runs after
+`emacs-startup-hook' (where the restore lives).  `emacs-startup-hook' must stay
+exactly the restore function: workspace-bridge-test.el pins that, and the
+batch runner never runs either hook, so registration is what is verified."
+  (should (memq #'imoogi-perspective-state-restore
+                (default-value 'emacs-startup-hook)))
+  (should-not (memq #'imoogi-project-notes--rebuild-context-directories
+                    (default-value 'emacs-startup-hook)))
+  (should (memq #'imoogi-project-notes--rebuild-context-directories
+                (default-value 'window-setup-hook))))
 
 (ert-deftest imoogi-persppin-t34-fallback-retained ()
   "AC-PIN-016: with the finder inhibited, the t34 fallback still answers."
