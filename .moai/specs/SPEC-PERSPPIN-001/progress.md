@@ -230,7 +230,7 @@ deviations: [AC-PIN-010 trigger 7 on window-setup-hook (09e62b0), aligned in spe
 
 ```yaml
 sync_complete_at: 2026-10-13
-sync_commit_sha: pending-backfill  # a commit cannot name its own SHA; parent 89a0af0
+sync_commit_sha: 3afb732  # parent 89a0af0
 sync_status: complete
 docs_updated: [README.md "프로젝트와 작업공간 (`project.el` + `perspective.el`)"]
 changelog_entry_position: none  # repo has no CHANGELOG.md
@@ -240,4 +240,9 @@ b12_self_test_c: n/a (no CHANGELOG.md)
 frontmatter_status_transitions:
   spec.md: draft -> completed  # in-progress/implemented never recorded; merged close on this commit
   plan.md / acceptance.md / progress.md: no frontmatter
+  lint_note: StatusTransitionInvalid (draft -> completed, commit 3afb732) is accepted as-is; the run phase never recorded draft -> in-progress, and repairing the edge needs history rewriting
+follow_up_sync:
+  base: 34048c4  # review rework + SPEC v0.1.5, after sync-audit.md FAIL (F1, F2)
+  scope: README F2/O1/O2 wording + notes Dired/compile/shell limitation; sync_commit_sha backfill
+  commit: this follow-up t35 sync commit (child of 34048c4)
 ```

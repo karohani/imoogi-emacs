@@ -456,16 +456,20 @@ imoogi Transient 메뉴에서 `?`를 누르면 현재 메뉴의 목적과 기능
 
 `C-x p p`로 연 Perspective는 그 프로젝트에 고정된다. 이 Perspective 안에서는
 `*scratch*`·`*Help*`처럼 자기 프로젝트가 없는 버퍼도 그 프로젝트를 쓰므로,
-`C-c h p`의 `b`/`c`/`k`/`f`/`s`/`d`와 일반 `C-x p` 명령이 프로젝트를 묻지 않는다.
+`C-c h p`의 `b`/`c`/`k`/`f`/`s`/`d`와 일반 `C-x p` 명령이 프로젝트를 묻지 않는다
+(명시적으로 고르는 `C-x p p`/`C-x p F`와 프로젝트가 없는 TRAMP 원격 버퍼는 예외로 계속 묻는다).
 `b`는 프로젝트 버퍼와 그 프로젝트의 project-notes 버퍼를, `f`는 프로젝트
-파일과 그 노트 파일을 함께 보여준다. 자기 프로젝트가 있는 버퍼는 그 프로젝트를
-그대로 쓰고, 프로젝트에 연결되지 않은 Perspective에서는 예전처럼 묻는다.
+파일과 그 노트 파일을 함께 보여준다. 다른 프로젝트에 속한 버퍼에서는 `b`/`c`/`k`와
+`C-x p` 명령이 그 버퍼의 프로젝트를 쓰고, `f`/`s`/`d`는 Perspective의 프로젝트를
+따른다. 프로젝트에 연결되지 않은 Perspective에서는 예전처럼 묻는다.
 
 알려진 제한:
-- project-notes 버퍼에서는 `c`/`k`와 일반 `C-x p` 명령이 여전히 프로젝트를 묻는다. 학습 노트
+- project-notes 버퍼(노트 디렉터리 안의 Dired·compile·shell 버퍼 포함)에서는
+  `c`/`k`와 일반 `C-x p` 명령이 여전히 프로젝트를 묻는다. 학습 노트
   Perspective에서는 모든 노트 파일이 여기에 해당한다(`b`/`f`/`s`/`d`는 묻지 않는다).
-- VC가 없는 루트에 고정된 상태에서 `git init`을 하면, 다음 Perspective 전환
-  전까지는 이전 프로젝트가 유지된다.
+- VC가 없는 루트에 고정된 상태에서 `git init`을 하면, 자기 프로젝트가 없는
+  버퍼는 다음 Perspective 전환 전까지 이전 프로젝트를 쓴다(`f`/`s`/`d`는 바로
+  새 VC 프로젝트를 따른다).
 
 프로젝트 루트와 기본 Perspective 이름의 연결은 `savehist`로 유지된다.
 Perspective의 파일/Dired 버퍼와 창 배치는 정상 종료 시 저장되며, shell·REPL·compile
