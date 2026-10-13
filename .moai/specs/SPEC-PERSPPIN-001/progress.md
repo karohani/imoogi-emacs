@@ -133,6 +133,85 @@ Run-phase choices within the plan's options:
   REQ-PIN-001's memo wording (O3-a) then holds literally.
 - O3-d taken: route (a)'s middle branch skips a remote context root.
 
+### Rework after review
+
+Run 2026-10-13, cycle_type tdd, reproduction-first, on top of `3afb732`.
+Inputs: `.moai/reports/t35/card-review.md` (CR1-CR3) and
+`.moai/reports/t35/sync-audit.md` (F1, O4, O8). Tree: the L1 isolated
+worktree `.claude/worktrees/agent-a3a4684d5ca75bf55` (branch
+`worktree-agent-a3a4684d5ca75bf55`, fast-forwarded to `3afb732`), for
+fast-forwarding `WT-persp-full-pin`.
+
+Selector runs below are
+`IMOOGI_ERT_SELECTOR='<selector>' IMOOGI_TEST_USER_DIR=<fresh tmp dir> /Applications/Emacs.app/Contents/MacOS/Emacs --batch -Q -l tests/run.el`
+(the ert stage of `run.sh`, with the same boot). The full gate is
+`EMACS=/Applications/Emacs.app/Contents/MacOS/Emacs make test-elisp`.
+S-REL is
+`imoogi-persppin-\|imoogi-project-notes-scratch\|imoogi-project-notes-unmapped\|imoogi-project-notes-buffer-project\|imoogi-project-notes-unregistered\|imoogi-project-switch\|imoogi-project-context\|imoogi-project-perspective\|imoogi-perspective-\|imoogi-treemacs-\|imoogi-transient-suffix`
+(the persppin tests, the four t34 tests, workspace-bridge, and the transient
+dispatch table).
+
+| Defect | Step | Selector | Exit | Result line |
+|--------|------|----------|------|-------------|
+| baseline | — | `imoogi-persppin-` | 0 | Ran 23 tests, 23 results as expected, 0 unexpected (09:34:10) |
+| CR1 | RED | `imoogi-persppin-explicit-default-directory` | 1 | Ran 1 tests, 0 results as expected, 1 unexpected (09:39:15) — `(project-current nil ".../elsewhere/")` `:value (transient . ".../source/")` |
+| CR1 | GREEN | S-REL | 0 | Ran 80 tests, 80 results as expected, 0 unexpected (09:40:12) |
+| CR2 | RED | `imoogi-persppin-switch-buffer-remote` | 1 | Ran 2 tests, 0 results as expected, 2 unexpected (09:40:33) — remote buffer: `b` "did not signal an error" (it switched to R's buffer); remote root: `(equal "Remote file I/O: /ssh:host:/srv/app/" "prompted")` |
+| CR2 | GREEN | same, then S-REL | 0 / 0 | Ran 2 tests, 2 results as expected, 0 unexpected (09:40:46); Ran 82 tests, 82 results as expected, 0 unexpected (09:40:55) |
+| O4 | old test, `persp-mode` check deleted | `imoogi-persppin-unmapped-off-or-stale-declines` | 0 | Ran 1 tests, 1 results as expected, 0 unexpected (09:41:12) — vacuous, as the audit said |
+| O4 | new test, `persp-mode` check deleted | same | 1 | Ran 1 tests, 0 results as expected, 1 unexpected (09:41:22) — `(should-not (project-current nil))` |
+| O4 | new test, check restored | `imoogi-persppin-` | 0 | Ran 26 tests, 26 results as expected, 0 unexpected (09:41:37) |
+| CR3 | RED | `imoogi-persppin-rename-rollback` | 1 | Ran 1 tests, 0 results as expected, 1 unexpected (09:42:00) — `(imoogi-project-notes--context-buffer-p)` `:value nil` for a fresh file under the restored N |
+| CR3 | GREEN | same, then `rename\|rollback\|imoogi-persppin-` | 0 / 0 | Ran 1 tests, 1 results as expected, 0 unexpected (09:42:10); Ran 33 tests, 33 results as expected, 0 unexpected (09:42:19) |
+| F1 | RED | the 3 F1 tests | 1 | Ran 3 tests, 0 results as expected, 3 unexpected (09:43:01) |
+| F1 | RED (journal reproduction) | `imoogi-persppin-dired-on-other-notes` | 1 | Ran 1 tests, 0 results as expected, 1 unexpected (09:43:18) — X's journal text contains `** 작업 공간: .../source/` |
+| F1 | GREEN | the 3 F1 tests, then S-REL | 0 / 0 | Ran 3 tests, 3 results as expected, 0 unexpected (09:43:35); Ran 85 tests, 85 results as expected, 0 unexpected (09:43:46) |
+| O8 | first run | `imoogi-persppin-finder-installed-at-boot` | 0 | Ran 1 tests, 1 results as expected, 0 unexpected (09:44:07) |
+| O8 | install call replaced by `(ignore)` | `imoogi-persppin-` | 1 | Ran 30 tests, 29 results as expected, 1 unexpected (09:44:21) — only the boot test fails |
+| O8 | hook added without the advice | `imoogi-persppin-` | 1 | Ran 30 tests, 29 results as expected, 1 unexpected (09:44:37) — `(should imoogi-persppin-test--boot-advised)` |
+| O8 | restored | `imoogi-persppin-` | 0 | Ran 30 tests, 30 results as expected, 0 unexpected (09:44:53) |
+| **full** | gate | `make test-elisp` | **0** | **Ran 747 tests, 736 results as expected, 0 unexpected, 11 skipped (2026-10-13 09:46:19+0900, 72.680222 sec)** |
+
+Every mutation was reverted before the next step; `git diff --exit-code -- modules/project/04-projects.el`
+returned 0 each time. The skip set is the same 11 tests as before (7
+`cli-cache-*`, 2 GUI org-calendar, 2 toolchain-server). `git status --short`
+was empty after the full run (`with-editor.elc` untouched). A byte-compile
+probe of the two changed modules shows no warnings in `04-projects.el`; every
+`26-project-notes.el` warning sits at the same pre-existing code, shifted by
+the added lines (460/467, 2220-2223, 3415, 4693, 5055, 5242, 5357, 446-474).
+
+Cause or symptom, checked once per defect:
+- CR1, cause. `project-current` replaces an omitted DIRECTORY with
+  `default-directory` before it runs the finders, so no check inside a finder
+  can tell the two calls apart. The marker is set where the information
+  still exists.
+- CR2, cause. `b`'s fallback was a second path to the mapped root, built on
+  `--perspective-root` (written for `f`/`s`/`d`), without the finder's
+  guards. The guards now sit at that path.
+- CR3, cause. The notes-directory list is a cache that the registry and
+  mounted-state writers rebuild. The rollback restores both files with direct
+  writes, so it was the one writer that skipped the rebuild.
+- F1, cause. The journal heading is the symptom. The notes-context predicate
+  covered visited files only, so the finder claimed non-file buffers inside
+  notes directories, and `--current-source-root` (which predates this SPEC)
+  took the Perspective's root.
+
+| Defect | Fix | Test(s) | Status |
+|--------|-----|---------|--------|
+| CR1 | `04-projects.el`: `imoogi-project--explicit-lookup` + `imoogi-project--mark-explicit-lookup` (`:around` on `project-current`), checked in `imoogi-project--perspective-find`, installed by `imoogi-project-install-perspective-finder` (idempotent). Commit `02c10ad` | `imoogi-persppin-explicit-default-directory-not-claimed` | PASS: explicit DIR == `default-directory` → nil (and prompts with MAYBE-PROMPT); the implicit lookup → R; after reinstalling, 1 advice and 1 hook member |
+| CR2 | `04-projects.el` `imoogi-project--buffer-project`: decline for a remote `default-directory` or a remote raw mapped root, before `--perspective-root`. Commit `e4b735b` | `imoogi-persppin-switch-buffer-remote-buffer-prompts`, `-remote-root-prompts` | PASS: "prompted", no `read-buffer`, no remote file check |
+| O4 | test only. Commit `816b791` | `imoogi-persppin-unmapped-off-or-stale-declines` (b) | PASS: nil, "prompted", 0 `persp-current-name` calls; fails when the check is deleted |
+| CR3 | `26-project-notes.el` `imoogi-project-notes--rollback-rename`: rebuild the list as the last step. Commit `e3c225e` | `imoogi-persppin-rename-rollback-rebuilds-notes-list` | PASS: N restored, N2 gone, a fresh file under N is notes context and declined |
+| F1 | `26-project-notes.el` `imoogi-project-notes--context-buffer-p`: for a buffer visiting no file, a local `default-directory`, expanded only, compared with the same in-memory list. Commit `e3bd1ea` | `imoogi-persppin-dired-on-other-notes-keeps-source-root`, `-non-file-notes-check-no-io`, plus a Dired row in `-notes-check-reads-no-registry` | PASS: X's journal keeps X's root, no heading for R; the predicate reads no registry, metadata, truename, existence or attributes |
+| O8 | test only. Commit `3ba878c` | `imoogi-persppin-finder-installed-at-boot` | PASS: finder in the global `project-find-functions`; advice present at test-file load time (after `boot.el`) |
+
+Constraints held: existing-test edits are still exactly E1-E3 (all new tests
+and the O4 change are in `tests/project-perspective-pin-test.el`, which this
+SPEC added); the four t34 tests are unmodified; spec.md, plan.md,
+acceptance.md and README.md are untouched. The SPEC wording these fixes need
+(§ 2 notes-context, REQ-PIN-004 mechanism, REQ-PIN-008, AC-PIN-006/010/017)
+is routed to manager-spec.
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 Filled at sync from the §E.2 evidence above (the run phase left it empty).
