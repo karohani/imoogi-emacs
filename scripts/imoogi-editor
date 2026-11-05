@@ -38,6 +38,12 @@ find_emacsclient() {
 
 emacsclient="$(find_emacsclient)"
 
+# CLI shortcut ec reuses the existing GUI frame instead of creating one.
+if [[ "${1:-}" == "--existing-frame" ]]; then
+  shift
+  exec "${emacsclient}" "$@"
+fi
+
 # Do not pass --no-wait: Claude Code and Codex must wait until the server
 # buffer is finished (C-x #) before reading the edited temporary file.
 exec "${emacsclient}" --create-frame "$@"

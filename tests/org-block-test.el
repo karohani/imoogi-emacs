@@ -9,7 +9,13 @@
 (require 'org-src)
 
 (ert-deftest imoogi-org-json-source-block-uses-json-mode ()
-  (should (eq (org-src-get-lang-mode "json") 'js-json-mode)))
+  ;; Keep the built-in JSON alias, while honoring the configured TS remap.
+  (should (eq (cdr (assoc "json" org-src-lang-modes)) 'js-json))
+  (let ((expected (if (fboundp 'major-mode-remap)
+                      (major-mode-remap 'js-json-mode)
+                    (or (cdr (assq 'js-json-mode major-mode-remap-alist))
+                        'js-json-mode))))
+    (should (eq (org-src-get-lang-mode "json") expected))))
 
 (ert-deftest imoogi-org-mermaid-source-block-uses-mermaid-mode ()
   (should (eq (org-src-get-lang-mode "mermaid") 'mermaid-mode))

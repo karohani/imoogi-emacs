@@ -138,4 +138,29 @@ bash "${PROJECT_ROOT}/scripts/imoogi-editor" "+12:4" "/tmp/file with spaces.txt"
 [[ "$(sed -n '3p' "${editor_log}")" == "/tmp/file with spaces.txt" ]] || fail "editor did not preserve a spaced filename"
 [[ "$(wc -l <"${editor_log}" | tr -d ' ')" == "3" ]] || fail "editor added unexpected arguments"
 
+# Exercise the installed shortcuts through real shell alias expansion.
+for test_shell in bash zsh; do
+  command -v "${test_shell}" >/dev/null 2>&1 || continue
+  for shortcut in ec eframe et; do
+    HOME="${install_home}" EMACSCLIENT="${fake_emacsclient}" \
+    IMOOGI_FAKE_EDITOR_LOG="${editor_log}" \
+    "${test_shell}" -c '
+      if [ -n "${BASH_VERSION:-}" ]; then shopt -s expand_aliases; fi
+      . "$1"
+      eval "$2 +12:4 \"/tmp/file with spaces.txt\""
+    ' test "${profile}" "${shortcut}"
+    expected_args="${TEST_ROOT}/expected-editor-args"
+    {
+      if [[ "${shortcut}" == eframe ]]; then printf '%s\n' --create-frame; fi
+      if [[ "${shortcut}" == et ]]; then
+        printf '%s\n' --tty
+      else
+        printf '%s\n' --no-wait
+      fi
+      printf '%s\n' +12:4 '/tmp/file with spaces.txt'
+    } >"${expected_args}"
+    cmp -s "${editor_log}" "${expected_args}" || fail "${test_shell} ${shortcut} passed incorrect client arguments"
+  done
+done
+
 echo "setup-toolchain tests: PASS"

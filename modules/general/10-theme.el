@@ -137,6 +137,26 @@ nil 이면 해상도를 보지 않고 `imoogi-font-size' 를 그대로 쓴다.
 (use-package nerd-icons
   :ensure t)
 
+(defun imoogi-treemacs-enable-terminal-icons ()
+  "doom-colors의 문자 아이콘을 터미널에서도 사용한다.
+GUI 아이콘은 그대로 두고, 이미지 아이콘의 기존 fallback도 보존한다.
+터미널의 폰트는 Emacs가 아닌 터미널 앱에서 Nerd Fonts를 지원해야 한다."
+  (when-let* ((theme (treemacs--find-theme "doom-colors")))
+    (let ((terminal-icons (treemacs-theme->tui-icons theme)))
+      (maphash
+       (lambda (extension icon)
+         (let* ((display (get-text-property 0 'display icon))
+                (text (cond ((stringp display) display)
+                            ((eq (car-safe display) 'image) nil)
+                            (t icon))))
+           (when (and (stringp text) (string-match-p "[^[:space:]]" text))
+             ;; GUI의 탭/display 폭 보정 대신 TTY에는 문자와 공백을 보낸다.
+             (setq text (copy-sequence text))
+             (remove-text-properties 0 (length text) '(display nil) text)
+             (setq text (string-trim (replace-regexp-in-string "\t" " " text)))
+             (puthash extension (concat text " ") terminal-icons))))
+       (treemacs-theme->gui-icons theme)))))
+
 ;;; doom-themes
 (use-package doom-themes
   :ensure t
@@ -150,7 +170,8 @@ nil 이면 해상도를 보지 않고 `imoogi-font-size' 를 그대로 쓴다.
   ;; treemacs 색상/아이콘을 doom 테마에 맞춤
   (with-eval-after-load 'treemacs
     (setq doom-themes-treemacs-theme "doom-colors")
-    (doom-themes-treemacs-config)))
+    (doom-themes-treemacs-config)
+    (imoogi-treemacs-enable-terminal-icons)))
 
 ;;; hl-line — 현재 커서 라인 강하게 표시
 (use-package hl-line

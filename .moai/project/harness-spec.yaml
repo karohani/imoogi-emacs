@@ -1,0 +1,15 @@
+# .moai/project/harness-spec.yaml — machine-readable harness generation input
+# Auto-generated from .moai/project/interview.md — do not hand-edit; re-run /moai project to regenerate.
+
+domain: "developer-tooling / editor-configuration"
+goal: "Provide a modern, self-contained Emacs configuration that boots and works fully in a network-isolated (air-gapped) environment — modernizing package choices over time while never breaking offline bootability."
+constraints:
+  - "The boot path (early-init.el -> boot.el -> modules/) must never touch the network — no package-refresh-contents, url-retrieve, or runtime installs during Emacs startup."
+  - "All Emacs packages are vendored into vendor/elpa/ (committed to git)."
+  - "The Go toolchain manager (imoogi-toolchain) follows the same fetch (online) / setup (offline, no network) split."
+scope: "In-scope: the Emacs configuration itself (modules/, vendor/elpa/) and the imoogi-toolchain Go CLI (cmd/, internal/) that manages LSP toolchain artifacts for it, both designed to run fully offline once vendored. Out-of-scope: publishing this as a distributable/public package, and platform targets beyond the current darwin/arm64 build."
+
+verification: "Emacs: tests/run.sh (check-parens syntax validation, offline-boot smoke test with package-archives set to nil, ERT suite via tests/run.el). Go: go test ./... per package."
+external_systems: []
+ui_surface: "has-ui"
+team_sharing: "solo"

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/claude-code/main/.mcp.schema.json",
+  "mcpServers": {
+    "context7": {
+      "args": [
+        "-y",
+        "@upstash/context7-mcp@latest"
+      ],
+      "command": "npx"
+    },
+    "moai": {
+      "args": [
+        "mcp-server"
+      ],
+      "command": "moai"
+    }
+  },
+  "staggeredStartup": {
+    "connectionTimeout": 15000,
+    "delayMs": 500,
+    "enabled": true
+  }
+}

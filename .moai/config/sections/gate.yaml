@@ -1,0 +1,92 @@
+# Pre-commit quality gate configuration.
+#
+# The gate detects the project language from marker files (go.mod, package.json,
+# pyproject.toml, Cargo.toml, ...) and runs the matching vet/lint/test toolchain
+# before git commit. Tools that are not installed are skipped gracefully.
+#
+# The ast_grep_gate sub-section controls the ast-grep domain-rule scan step.
+# It is ON by default in advisory mode (findings reported, commits never
+# blocked); blocking is opt-in via block_on_error/warn_only_mode below. When
+# the `sg` CLI is absent, the scan is skipped gracefully with a notice.
+# Known limitation: the PreToolUse hook budget is 5s while the scan timeout is
+# 30s; in advisory mode a timeout only loses the advisory output.
+gate:
+  enabled: true
+  skip_tests: false
+  # Disable individual steps by step name (e.g. "mypy", "dotnet format",
+  # "pytest"). Note the inverted convention: an entry whose value is FALSE
+  # skips that step. Omit the section entirely to run every detected step.
+  disabled_steps: {}
+  timeouts:
+    vet: 30
+    lint: 60
+    test: 120
+    # A type-check over a large monorepo routinely outlasts the test budget,
+    # so it gets its own.
+    typecheck: 300
+    # How long a starting `moai gate` run waits for the gate-run lock — the
+    # advisory lock that serializes concurrent manual gate runs in one
+    # project — before degrading to an unserialized run. On expiry the run
+    # proceeds and reports that it did; the lock never fails the gate.
+    lock_wait: 30
+  # The typecheck axis runs between vet and lint, so a type error surfaces
+  # before the slower style pass and a project whose linter config is absent
+  # still gets a correctness gate.
+  #
+  # Node resolves in three tiers: `command` below (any language), then
+  # package.json scripts.typecheck, then `npx --no-install tsc --noEmit` when a
+  # tsconfig.json is present. A solution-style tsconfig (files: [] plus
+  # references) is refused rather than run — it type-checks nothing and would
+  # pass vacuously.
+  #
+  # Every outcome is reported. A skip is not a failure, but it is never
+  # silent: a language with no default prints how to supply one.
+  typecheck:
+    enabled: true
+    # Overrides the language default and enables the axis for ANY language,
+    # e.g. "mypy --strict ." or "npm run typecheck".
+    #
+    # Split on whitespace and executed directly, so shell metacharacters are
+    # NOT interpreted — put a pipeline or a redirect in a script and name the
+    # script here.
+    command: ""
+  # Pre-commit context: the git pre-commit hook's `moai gate` invocation.
+  # The project-wide heavy steps (vet / lint / test / typecheck) are OFF there
+  # by default, so one pre-existing failure unrelated to your staged change
+  # cannot block every commit; the hook still runs the fast staged-files
+  # subset (gofmt + go vet) on every commit. Set enabled: true to opt in and
+  # block commits on project-wide failures — e.g. via `moai web`, Gate panel.
+  # A standalone `moai gate` run ignores this key and keeps following the
+  # `enabled` key above.
+  pre_commit:
+    enabled: false
+  ast_grep_gate:
+    enabled: true
+    # Where this project's ast-grep rules live. This is the single source of
+    # truth: the code carries no fallback default, and `moai ast-grep` /
+    # `moai ast-edit` resolve their --rules-dir from this key when the flag
+    # is omitted. The value below is where `moai init`/`moai update` deploy
+    # the bundled ruleset; keep it in sync if you move the rules.
+    rules_dir: ".moai/config/astgrep-rules"
+    block_on_error: false
+    warn_only_mode: true
+  # The graph-freshness step checks the staleness of the project's graph
+  # layers (codemaps docs, the @MX index, the edges artifact) before commit
+  # and reports a per-layer verdict. Advisory by default — pre-commit is the
+  # wrong place to force a docs regeneration — with blocking opt-in below.
+  # The verdict is always emitted; a disabled step emits an explicit skip
+  # notice, never silence. Run `moai graph check` standalone for the full
+  # numeric report and exit codes.
+  graph_freshness:
+    enabled: true
+    blocking: false
+    # Red line for the codemaps layer: at or above this many described-source
+    # files changed since the docs' stamped generation commit, the layer is
+    # stale. Calibrate to your repository's docs-regeneration cadence.
+    codemaps_changed_files: 40
+    # Red line for the @MX index: at or above this many scanned files changed
+    # content since the last scan, the index is stale (it is cheap to rescan).
+    mx_index_changed_files: 1
+    # Query-time refresh cost budget in milliseconds. A refresh that exceeds
+    # it warns and still answers; it never blocks.
+    update_budget_ms: 2000

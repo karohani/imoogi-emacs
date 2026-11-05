@@ -1,0 +1,61 @@
+;;; org-color-test.el --- Colored text tests -*- lexical-binding: t; -*-
+(require 'ert)
+(require 'cl-lib)
+
+(ert-deftest imoogi-org-color-interactive-picker ()
+  "Exercise the real color picker, including candidate face construction."
+  (with-temp-buffer
+    (org-mode)
+    (insert "문장")
+    (goto-char (point-min))
+    (push-mark (point-max) t t)
+    (let ((transient-mark-mode t))
+      (cl-letf (((symbol-function 'completing-read)
+                 (lambda (&rest _) "red")))
+        (call-interactively #'imoogi-org-color-apply)))
+    (should (equal (buffer-string) "[[color:red][문장]]"))))
+
+(ert-deftest imoogi-org-color-insert-and-render ()
+  (with-temp-buffer
+    (org-mode)
+    (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "새 문장")))
+      (imoogi-org-color-apply "red"))
+    (should (equal (buffer-string) "[[color:red][새 문장]]"))
+    (font-lock-ensure)
+    (search-backward "새 문장")
+    (should (equal (get-text-property (point) 'face) '(:foreground "red")))))
+
+(ert-deftest imoogi-org-color-region-change-remove ()
+  (with-temp-buffer
+    (org-mode)
+    (insert "문장 뒤")
+    (goto-char 1)
+    (push-mark 3 t t)
+    (let ((transient-mark-mode t)) (imoogi-org-color-apply "red"))
+    (should (equal (buffer-string) "[[color:red][문장]] 뒤"))
+    (goto-char 15)
+    (imoogi-org-color-apply "#3498db")
+    (should (equal (buffer-string) "[[color:#3498db][문장]] 뒤"))
+    (goto-char 18)
+    (imoogi-org-color-remove)
+    (should (equal (buffer-string) "문장 뒤"))))
+
+(ert-deftest imoogi-org-color-invalid-selection-is-unchanged ()
+  (with-temp-buffer
+    (org-mode)
+    (insert "[[https://example.com][문장]]")
+    (let ((before (buffer-string)) (transient-mark-mode t))
+      (goto-char (point-min))
+      (push-mark (point-max) t t)
+      (should-error (imoogi-org-color-apply "red") :type 'user-error)
+      (should (equal before (buffer-string)))
+      (should-error (imoogi-org-color-apply "not-a-real-color") :type 'user-error)
+      (should (equal before (buffer-string))))))
+
+(ert-deftest imoogi-org-color-face-and-menu ()
+  (should (equal (imoogi-org-color--face "red") '(:foreground "red")))
+  (should (eq (imoogi-org-color--face "not-a-real-color") 'org-link))
+  (should (eq (org-link-get-parameter "color" :face) #'imoogi-org-color--face))
+  (should (transient-get-suffix 'imoogi-org-agenda-transient "C"))
+  (should (transient-get-suffix 'imoogi-org-color-transient "c"))
+  (should (transient-get-suffix 'imoogi-org-color-transient "r")))

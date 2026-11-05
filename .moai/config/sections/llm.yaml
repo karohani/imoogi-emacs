@@ -1,0 +1,161 @@
+llm:
+  deployment_mode: local
+  mode: ""
+  team_mode: ""
+  # Agent harness selected at init time. One of claude | gpt | both,
+  # written explicitly on every init run — including the claude default — so
+  # doctor and update read the resolved value instead of inferring it.
+  # "gpt" means Codex-only deployment: AGENTS.md and Codex surfaces only
+  # (no .claude/ tree, no CLAUDE.md, no .mcp.json). A project initialized
+  # before this key existed reads as claude (unchanged behavior).
+  harness: "claude"
+  glm_env_var: "GLM_API_KEY"
+  # Explicit Claude Code binary pin. When set to a path, moai launches THIS
+  # binary instead of searching PATH for `claude` — pin a known-good release
+  # when a newer Claude Code release breaks compatibility with a third-party
+  # endpoint, instead of every launch auto-adopting the broken build. The
+  # path must exist and be executable; an invalid value fails the launch
+  # rather than falling back silently. The MOAI_CLAUDE_BIN environment
+  # variable overrides this key for a single launch. Leave empty for the
+  # default PATH lookup.
+  claude_bin: ""
+  # Sub-agent model/effort: agents inherit the main session's model and
+  # effort by default. `moai web` exposes per-agent overrides through the two
+  # keys below — an agent without an entry here resolves to the session
+  # model/effort, and an override pinned equal to the profile default is
+  # cleared on save, so deleting your overrides restores plain inheritance.
+  #
+  # profile: the active per-agent model+effort column, one of
+  # {max, medium, low} (empty = the medium default). Distinct from the
+  # retired llm.performance_tier — that key stays retired and `moai update`
+  # still strips it, together with profiles / harness_agents and the
+  # workflow.yaml routing keys.
+  #
+  # agent_overrides: per-agent {model, effort} pins keyed by canonical agent
+  # name, applied on top of the active profile's cell. model is one of
+  # {inherit, haiku, sonnet, opus, fable}; effort is one of
+  # {low, medium, high, xhigh, max} (inert under haiku — effort select is
+  # disabled in the console and backfilled with the resolved value).
+  profile: "medium"
+  agent_overrides: {}
+  # agent_overrides_consume: opt-in spawn consumption (default false). Keep
+  # it false and the map above stays storage-only — every subagent keeps the
+  # session model/effort it inherits, the documented default. Set it true and
+  # the orchestrator consults the overrides before each spawn and passes the
+  # configured model on the Agent() call; an override whose model is
+  # `inherit` stays an explicit inheritance no-op. Spawn payloads carry model
+  # only (the Agent tool exposes no effort parameter), so a pinned effort is
+  # delivered by convention, not by the payload. Note that a spawn pinned to
+  # a concrete model does not inherit the parent session's [1m] context
+  # entitlement — the closed alias set on the overrides is what keeps pins
+  # spawnable.
+  agent_overrides_consume: false
+  # Main-session reasoning effort comes from the preference profile
+  # (`moai profile setup`), never from this file.
+  #
+  # Under a GLM backend (team_mode: glm), z.ai exposes a 3-level
+  # reasoning_effort control (low/high/max; GLM-5.3 reasons ALWAYS — reasoning
+  # cannot be disabled). The session-global mapping is:
+  #   effort low          -> reasoning_effort=low
+  #   effort medium/high  -> reasoning_effort=max
+  #   effort xhigh/max    -> reasoning_effort=max
+  # The code-producing run-phase agent runs at reasoning_effort=max regardless
+  # (coding-task recommendation).
+  #
+  # Delivery field (measured): the top-level reasoning_effort request field is
+  # the effective reasoning-control channel; a thinking-budget request object
+  # is ignored by the endpoint. Depth is controlled through reasoning_effort
+  # only.
+
+  # GLM backend configuration
+  glm:
+    base_url: "https://api.z.ai/api/anthropic"
+    models:
+      high: "glm-5.2" # 1M context — Opus slot (main session + inherit agents)
+      medium: "glm-4.7" # 202K context — Sonnet slot (balanced)
+      low: "glm-4.5-air" # 128K context — Haiku slot (lightweight)
+      fable: "glm-5.2" # 1M context — Fable tier (ANTHROPIC_DEFAULT_FABLE_MODEL)
+    # Per-tier reasoning effort (z.ai reasoning state: max | high | low).
+    # The `moai glm` launcher applies the slot serving the main session's
+    # model, overriding the session-wide effort preference; sub-agents keep
+    # the session-wide value. max is the deepest reasoning and the z.ai
+    # default; glm-5.3-flash accepts max only.
+    effort:
+      high: "max"
+      medium: "max"
+      low: "max"
+      fable: "max"
+  # Billing plan type: selects which model tier profile is applied.
+  #   api          - API-metered billing (per-task cost optimized)
+  #   subscription - subscription billing (weekly quota optimized)
+  # Absent or empty resolves to subscription (backward compatible).
+  plan_type: subscription
+  # Claude model mapping by tier
+  # Effort level mapping (Opus 4.7+ adaptive thinking):
+  #   thorough harness → xhigh effort (deep reasoning)
+  #   standard harness → high effort (balanced reasoning)
+  #   minimal harness  → medium effort (fast, light)
+  claude_models:
+    high: "opus" # Opus tier: adaptive thinking, reasoning agents
+    medium: "sonnet" # Balanced performance for most tasks
+    low: "sonnet" # Fast exploration, simple tasks
+
+# ── GLM reasoning-effort mapping (documentation-only — the Go overlay at
+#    internal/template/glm_effort_overlay.go is the runtime SSOT) ──
+#
+# z.ai does NOT implement Claude's 5-level effort vocabulary. GLM-5.3 reasons
+# ALWAYS — disabling reasoning is no longer supported, and a request that
+# asks for it fails — so the control is a single 3-level reasoning_effort:
+#
+#   low     thinking=enabled, reasoning_effort=low    ← Claude low
+#   high    thinking=enabled, reasoning_effort=high   ← legal wire value; no
+#                                                      Claude effort maps here
+#   max     thinking=enabled, reasoning_effort=max    ← Claude medium/high/
+#                                                      xhigh/max (omit-default)
+#
+# Collapse table (5 Claude levels → 2 reachable GLM levels):
+#   low      → low
+#   medium   → max
+#   high     → max
+#   xhigh    → max
+#   max      → max
+#   (unrecognized → max; totality clause — never under-reason)
+#
+# FLASH EXCEPTION (glm-5.3-flash): when the resolved model is glm-5.3-flash,
+# EVERY Claude effort level — including low — resolves to thinking=enabled,
+# reasoning_effort=max. The 3-level reasoning control above (low/high/max)
+# does not exist on flash, which accepts reasoning_effort: max only, so the
+# low state is never emitted for flash. The collapse table applies to every
+# non-flash model (glm-5.3 and older) unchanged.
+#
+# The `high` level stays a legal wire value and a selectable stored state
+# (settings widget), but no Claude effort collapses to it — every effort
+# above low converges on max.
+#
+# The session default is the `max` state (see
+# SessionGLMReasoningState in glm_effort_overlay.go); a web-set effort
+# preference collapses onto this same 3-level control.
+#
+# Wire state: the overlay is implemented and wired. Measured (null-controlled
+# live differential): the top-level reasoning_effort request field is the
+# effective delivery channel; a thinking-budget request object is ignored
+# by the endpoint. This block is documentation-only; no code reads it at
+# runtime.
+
+# Optional: override the statusline context window gauge per GLM model.
+# Claude Code reports context_window_size based on the
+# Claude slot (Opus=1M, Sonnet/Haiku=200K) regardless of provider, so
+# the statusline over-reports headroom in GLM mode.
+#
+# Values are in tokens. Substring match: "glm-5.3" matches the high-slot id directly.
+# Set MOAI_STATUSLINE_CONTEXT_SIZE env for a one-shot override instead.
+#
+# The built-in glmContextWindows table carries ONLY glm-5.3-flash and
+# glm-5.3 — the old-model entries are deleted, so this override key is the
+# ONLY path that still maps a context window for a removed id. If you keep
+# naming a removed model in a tier slot (the launcher falls back to the
+# tier default with a one-line warning), set the window here explicitly.
+# Reference (Z.AI official docs):
+#   glm-5.3     : 1000000 context
+# context_windows:
+#   glm-5.3: 1000000

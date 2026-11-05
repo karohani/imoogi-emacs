@@ -130,6 +130,9 @@ configure_external_editor() {
     printf '%s\n' "${start_marker}"
     printf 'export VISUAL="%s"\n' "${EDITOR_LINK}"
     printf 'export EDITOR="${VISUAL}"\n'
+    printf '%s\n' 'alias ec='\''"$HOME/.local/bin/imoogi-editor" --existing-frame --no-wait'\'
+    printf '%s\n' 'alias eframe='\''"$HOME/.local/bin/imoogi-editor" --no-wait'\'
+    printf '%s\n' 'alias et='\''"$HOME/.local/bin/imoogi-editor" --existing-frame --tty'\'
     printf '%s\n' "${end_marker}"
   } >>"${tmp}"
 
@@ -156,5 +159,7 @@ cat <<'EOF'
 설치 완료. Emacs를 재시작하세요.
 호환되는 동봉 언어 서버가 있으면 함께 설치되었습니다.
 새 셸부터 Claude Code/Codex의 Ctrl+G 외부 편집기로 Emacs를 사용합니다.
+실행 중인 GUI Emacs에 파일 열기: ec 파일명 / 새 GUI 창: eframe 파일명
+같은 Emacs를 터미널에서 열기: et 파일명 (돌아오기: C-x 5 0)
 자세한 내용은 docs/toolchains.md 를 참고하세요.
 EOF

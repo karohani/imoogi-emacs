@@ -1,0 +1,11 @@
+{
+  "Profiles": [
+    {
+      "Name": "Imoogi",
+      "Guid": "f17df125-8fe1-4935-9342-9dcb9287041b",
+      "Dynamic Profile Parent Name": "Default",
+      "Use Non-ASCII Font": true,
+      "Non Ascii Font": "SymbolsNFM 12"
+    }
+  ]
+}

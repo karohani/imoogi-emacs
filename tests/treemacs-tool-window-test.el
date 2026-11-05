@@ -46,11 +46,60 @@
   (should (eq (lookup-key global-map (kbd "s-2"))
               #'imoogi-treemacs-toggle-bookmarks)))
 
+(ert-deftest imoogi-treemacs-terminal-icons-cover-folders-and-file-types ()
+  (require 'treemacs)
+  (dolist (extension '(root-open root-closed dir-open dir-closed
+                      "el" "md" "org" "go" "json" "gitignore" fallback))
+    (let ((icon (treemacs-get-icon-value extension t "doom-colors")))
+      (should (stringp icon))
+      (should (string-match-p "[^[:space:]]" icon))
+      (should-not (string-match-p "\t" icon))
+      (should-not (text-property-not-all 0 (length icon) 'display nil icon)))))
+
+(ert-deftest imoogi-treemacs-terminal-icons-preserve-gui-and-are-idempotent ()
+  (require 'treemacs)
+  (let* ((theme (treemacs--find-theme "doom-colors"))
+         (gui (treemacs-theme->gui-icons theme))
+         (tty (treemacs-theme->tui-icons theme))
+         (gui-before (copy-hash-table gui))
+         (tty-before (copy-hash-table tty)))
+    (imoogi-treemacs-enable-terminal-icons)
+    (maphash (lambda (key icon)
+               (should (equal-including-properties icon (gethash key gui))))
+             gui-before)
+    (maphash (lambda (key icon)
+               (should (equal-including-properties icon (gethash key tty))))
+             tty-before)))
+
+(ert-deftest imoogi-treemacs-terminal-icons-preserve-image-fallback ()
+  (require 'treemacs)
+  (let* ((theme (treemacs--find-theme "doom-colors"))
+         (gui (treemacs-theme->gui-icons theme))
+         (tty (treemacs-theme->tui-icons theme)))
+    (unwind-protect
+        (progn
+          (puthash 'imoogi-test-image (propertize " " 'display '(image :type png)) gui)
+          (puthash 'imoogi-test-image "image fallback" tty)
+          (imoogi-treemacs-enable-terminal-icons)
+          (should (equal (gethash 'imoogi-test-image tty) "image fallback")))
+      (remhash 'imoogi-test-image gui)
+      (remhash 'imoogi-test-image tty))))
+
+(ert-deftest imoogi-treemacs-terminal-icon-set-is-selected-in-tty ()
+  (require 'treemacs)
+  (with-temp-buffer
+    (cl-letf (((symbol-function 'window-system) (lambda (&optional _) nil)))
+      (treemacs--select-icon-set)
+      (should (eq treemacs-icons
+                  (treemacs-theme->tui-icons treemacs--current-theme)))
+      (should (string-match-p "[^[:space:]]" treemacs-icon-dir-closed)))))
+
 (ert-deftest imoogi-treemacs-structure-is-bound-at-s-7 ()
   (should (eq (lookup-key global-map (kbd "s-7"))
               #'imoogi-treemacs-toggle-structure)))
 
 (ert-deftest imoogi-treemacs-file-tree-closes-when-focused ()
+  (require 'treemacs)
   (let ((closed nil)
         (selected nil)
         (treemacs-window (selected-window)))
@@ -67,6 +116,7 @@
       (should-not selected))))
 
 (ert-deftest imoogi-treemacs-file-tree-focuses-when-visible-from-editor ()
+  (require 'treemacs)
   (save-window-excursion
     (delete-other-windows)
     (let* ((editor-window (selected-window))
@@ -344,7 +394,7 @@
                      (lambda (item)
                        (setq seen-item item)))
                     ((symbol-function 'recenter)
-                     (lambda (&optional _arg)
+                     (lambda (&rest _args)
                        (setq recentered t))))
             (push-button)
             (should (eq (selected-window) editor-window))

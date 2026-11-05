@@ -34,6 +34,13 @@ Claude Code나 Codex의 `Ctrl+G`를 누르면 실행 중인 Emacs에 새 프레�
 저장 후 `C-x #`로 편집을 끝내면 터미널로 돌아온다. 별도 위치의 `emacsclient`를
 쓰려면 `EMACSCLIENT=/path/to/emacsclient`를 설정한다.
 
+같은 셸 설정 블록에 `ec`, `eframe`, `et` 단축 명령도 등록한다. GUI Emacs를 실행한
+상태에서 `ec 파일명`은 기존 GUI 창에, `eframe 파일명`은 같은 Emacs의 새 GUI
+창에 파일을 열고 즉시 터미널로 돌아온다. 새 셸을 열거나 zsh에서는
+`source ~/.zshrc`로 적용한다. `et 파일명`은 같은 Emacs를 터미널 안에서 열며,
+`C-x 5 0`으로 터미널 프레임을 닫고 셸로 돌아온다. 세 명령 모두 위와 같은 `emacsclient` 자동 탐색과
+`EMACSCLIENT` 설정을 사용하며, 실행 중인 Emacs 서버가 필요하다.
+
 직접 하려면 `~/.config/imoogi-emacs` 로 심볼릭 링크를 건 뒤 아래 두 파일을 만든다.
 
 `~/.emacs.d/early-init.el`:
@@ -698,6 +705,17 @@ SQLite 파일은 재생성 가능한 파생 캐시일 뿐이고 Org 파일이 �
 | 여백 표시 | diff-hl — 커밋되지 않은 변경을 fringe 에 표시 |
 
 ### 파일 탐색기 (treemacs)
+
+GUI와 터미널(`et`) 모두 `doom-colors`의 Nerd Font 문자 아이콘을 사용한다.
+터미널에서는 GUI 전용 위치 보정과 탭을 제거하고 공백으로 간격을 맞춘다.
+아이콘이 네모로 보이면 터미널 앱의 폰트 설정도 필요하다.
+
+iTerm용 파일은 `iterm2/imoogi.json`이다. 이를
+`~/Library/Application Support/iTerm2/DynamicProfiles/imoogi.json`에 복사하면
+`Imoogi` 프로필이 추가된다. 이 프로필은 `Default` 설정을 상속하고, 비ASCII
+폰트만 동봉된 `NFM.ttf`의 `SymbolsNFM`(12pt)으로 지정한다. 일반 텍스트 폰트와
+Command/Option 키 설정은 상속한다. `Imoogi` 프로필로 새 창을 열어 사용한다.
+GUI에서 프로필을 편집해도 저장소 JSON에는 자동 반영되지 않는다.
 | 키 | 동작 |
 |----|------|
 | `s-1` | Project: 편집 버퍼에서는 파일 트리로 이동, Treemacs 안에서는 닫기 |
@@ -778,6 +796,11 @@ Org-roam은 `~/notes/permanent/`를 영구 노트 폴더로 사용한다. `C-c n
 `e` agenda.org 열기, `S` 기본 폴더 설정을 제공한다. Org 제목 위에서는
 `s` 일정 지정, `d` 마감일 지정, `T` TODO 상태 변경, `c` 카테고리 설정도 사용할 수 있다.
 `c`는 현재 제목에 `CATEGORY` 속성을 설정하며 하위 제목에도 상속된다.
+`C`는 문장 색상 메뉴다. 문장을 선택하고 `c`로 색 이름이나 `#RRGGBB`를 지정하면
+`[[color:red][문장]]` 형태의 링크로 저장되어 Org 화면에서 해당 색으로 표시된다.
+색상 링크 위에서 `c`로 색을 바꾸고 `r`로 색을 제거한다. 선택 영역이나 색상 링크가
+없으면 새 문장을 입력한다. 대괄호·기존 링크를 포함한 선택 영역은 지원하지 않는다.
+이 색상은 Emacs 편집 화면용이며 HTML·PDF 내보내기와 브라우저 미리보기에는 적용되지 않는다.
 `x` 내보내기는 Org 문서에서는 기본 내보내기 메뉴(`C-c C-e`)를 열고,
 Agenda 화면에서는 현재 일정 보기를 파일로 저장한다. 문서는 메뉴에서 HTML·텍스트
 등의 형식을 선택하고, Agenda는 저장할 파일의 확장자(`.txt`, `.html`, `.ics`, `.org` 등)로

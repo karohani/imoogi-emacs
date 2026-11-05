@@ -60,8 +60,8 @@
 
 Returns one of:
   `ok'               -- URL answered with a well-formed AnkiConnect
-                         handshake response (a JSON body with a
-                         \"result\" key).
+                         handshake response granting permission with
+                         no API error.
   `unreachable'       -- nothing answered at URL at all (AC-005's
                          Given: Anki is very likely not running).
   `invalid-response'  -- something answered, but not with a valid
@@ -96,9 +96,14 @@ Returns one of:
                   (if (search-forward "\n\n" nil t)
                       (let* ((body (buffer-substring (point) (point-max)))
                              (parsed (condition-case nil
-                                         (json-parse-string body :object-type 'alist)
+                                         (json-parse-string body :object-type 'hash-table
+                                                            :null-object nil :false-object :false)
                                        (error nil))))
-                        (if (and parsed (assq 'result parsed))
+                        (if (and (hash-table-p parsed)
+                                 (null (gethash "error" parsed))
+                                 (let ((result (gethash "result" parsed)))
+                                   (and (hash-table-p result)
+                                        (equal (gethash "permission" result) "granted"))))
                             'ok
                           'invalid-response))
                     'invalid-response))))
