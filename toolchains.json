@@ -1,7 +1,7 @@
 {
   "schema": "imoogi-toolchains-desired/v1",
   "cli_version": "1.0.0",
-  "bundle": "2026.08.23.1",
+  "bundle": "2026.10.12.1",
   "target": {
     "os": "darwin",
     "arch": "arm64"
@@ -44,6 +44,27 @@
       "kind": "python-language-server",
       "source": "npm",
       "upstream_version": "1.39.10"
+    },
+    {
+      "name": "jdtls",
+      "kind": "java-language-server",
+      "source": "download.eclipse.org/jdtls",
+      "upstream_version": "1.61.0-202609031315",
+      "revision": "08eafe6ff60c7159ef88571d47b6a9ef82fef94e"
+    },
+    {
+      "name": "kotlin-language-server",
+      "kind": "kotlin-language-server",
+      "source": "github.com/fwcd/kotlin-language-server",
+      "upstream_version": "1.3.13",
+      "revision": "f532bcc9c6578f5a35009a8b5f281f93d4d131ba"
+    },
+    {
+      "name": "clojure-lsp",
+      "kind": "clojure-language-server",
+      "source": "github.com/clojure-lsp/clojure-lsp",
+      "upstream_version": "2026.07.06-14.34.19",
+      "revision": "de66293956c057b6ef02601594f196d048684683"
     }
   ]
 }

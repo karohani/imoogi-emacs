@@ -17,7 +17,7 @@
   (list 'transient (file-truename root)))
 
 (cl-defmethod project-root ((project (head transient)))
-  (cadr project))
+  (if (consp (cdr project)) (cadr project) (cdr project)))
 
 (defmacro imoogi-test--with-project-command-stubs (root &rest body)
   (declare (indent 1))
@@ -149,8 +149,9 @@
               ((symbol-function 'imoogi-project-context-root)
                (lambda ()
                  (if (equal current "first") first second)))
-              ((symbol-function 'project-find-file)
-               (lambda () (interactive) (setq seen default-directory))))
+              ((symbol-function 'project-find-file-in)
+               (lambda (_suggested _dirs _project &optional _include-all)
+                 (setq seen default-directory))))
       (imoogi-project-find-file)
       (should (equal seen first))
       (setq current "second")
@@ -167,8 +168,9 @@
               ((symbol-function 'project-current)
                (lambda (&optional _maybe-prompt _directory)
                  (imoogi-test--project root)))
-              ((symbol-function 'project-find-file)
-               (lambda () (interactive) (setq seen default-directory))))
+              ((symbol-function 'project-find-file-in)
+               (lambda (_suggested _dirs _project &optional _include-all)
+                 (setq seen default-directory))))
       (imoogi-project-find-file)
       (should (equal seen (imoogi-project--canonical-root root))))))
 

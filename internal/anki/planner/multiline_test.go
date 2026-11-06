@@ -411,6 +411,11 @@ func TestRenderErrorMapping(t *testing.T) {
 			protocol.CodeExtraBlockUnbalanced, true,
 		},
 		{
+			"a missing arrow line is a skip",
+			&orgdoc.SwiftArrowMissingError{},
+			protocol.CodeSwiftArrowMissing, true,
+		},
+		{
 			// Anything else is a rendering failure rather than a condition of
 			// the entry's content that the user can correct in the buffer.
 			"an unrecognized note type is a failure",

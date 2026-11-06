@@ -120,7 +120,11 @@
 (defun imoogi-test-lsp--mode-starts-eglot-p (mode file)
   "Return non-nil when MODE for FILE starts Eglot with a server available."
   (let (started)
+    ;; Java/Kotlin 은 jvm.el 의 Java 검사를 한 번 더 거친다. 여기서는 훅 배선만
+    ;; 보므로 그 검사도 통과로 고정한다(검사 자체는 lsp-jvm-test.el).
     (cl-letf (((symbol-function 'imoogi-eglot-server-available-p)
+               (lambda (_server) t))
+              ((symbol-function 'imoogi-jvm-server-ready-p)
                (lambda (_server) t))
               ((symbol-function 'eglot-ensure)
                (lambda () (setq started t))))

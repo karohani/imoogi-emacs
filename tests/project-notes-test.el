@@ -1063,6 +1063,173 @@
       (should (string-match-p "Unsaved personal domain detail" (buffer-string)))
       (should (buffer-modified-p)))))
 
+(defun imoogi-project-notes-test--count-matches (regexp text)
+  "Return how many times REGEXP occurs in TEXT."
+  (let ((count 0) (start 0))
+    (while (string-match regexp text start)
+      (setq count (1+ count)
+            start (match-end 0)))
+    count))
+
+(ert-deftest imoogi-project-notes-add-custom-document-persists-kind-and-shortcut ()
+  (imoogi-project-notes-test--isolated
+    (cl-letf (((symbol-function 'imoogi-project-notes--project-root) (lambda () root)))
+      (imoogi-project-notes-open))
+    (let* ((directory (file-name-directory buffer-file-name))
+           (project-buffer (current-buffer))
+           (project-file buffer-file-name)
+           (metadata-file (expand-file-name ".imoogi-project.json" directory))
+           (kind (intern "운영-정책"))
+           (target (expand-file-name "development/운영-정책.org" directory))
+           (shortcut "- [[file:development/운영-정책.org][운영 정책]]"))
+      (imoogi-project-notes-add-document "운영 정책")
+      (should (equal buffer-file-name target))
+      (let ((text (imoogi-project-notes-test--read target)))
+        (should (string-match-p "^#\\+TITLE: .* — 운영 정책$" text))
+        (should (string-match-p "^\\* 바로가기$" text)))
+      ;; Metadata JSON stores the full list, built-ins included.
+      (let* ((metadata (imoogi-project-notes--read-metadata-file metadata-file))
+             (documents (imoogi-project-notes--documents-from-json
+                         (alist-get 'documents metadata))))
+        (should (equal (alist-get kind documents) '("운영-정책.org" . "운영 정책")))
+        (should (equal (alist-get 'domain documents) '("domain.org" . "도메인 모델")))
+        (should (equal documents
+                       (imoogi-project-notes--entry-documents
+                        (imoogi-project-notes--metadata-entry
+                         metadata-file metadata)))))
+      ;; The shortcut lands inside `* 바로가기', after the existing list items.
+      (with-current-buffer project-buffer
+        (should-not (buffer-modified-p))
+        (should (string-match-p
+                 (concat "재개 지점\\]\\]\n" (regexp-quote shortcut) "\n")
+                 (buffer-string))))
+      (should (string-match-p (regexp-quote shortcut)
+                              (imoogi-project-notes-test--read project-file)))
+      ;; Re-adding by name or by stored kind opens the same file, no duplicates.
+      (imoogi-project-notes-add-document "운영 정책")
+      (should (equal buffer-file-name target))
+      (imoogi-project-notes-add-document kind)
+      (should (equal buffer-file-name target))
+      (should (= 1 (imoogi-project-notes-test--count-matches
+                    (regexp-quote shortcut)
+                    (imoogi-project-notes-test--read project-file))))
+      (should (= 4 (length (imoogi-project-notes--documents-from-json
+                            (alist-get 'documents
+                                       (imoogi-project-notes--read-metadata-file
+                                        metadata-file)))))))))
+
+(ert-deftest imoogi-project-notes-stored-custom-document-without-file-is-created ()
+  (imoogi-project-notes-test--isolated
+    (cl-letf (((symbol-function 'imoogi-project-notes--project-root) (lambda () root)))
+      (imoogi-project-notes-open))
+    (let* ((directory (file-name-directory buffer-file-name))
+           (entry (imoogi-project-notes--current-entry))
+           (target (expand-file-name "development/ops.org" directory)))
+      (imoogi-project-notes--save-documents-metadata
+       entry (append (imoogi-project-notes--entry-documents entry)
+                     (list (cons 'ops (cons "ops.org" "Ops Policy")))))
+      (should-not (file-exists-p target))
+      (imoogi-project-notes-add-document 'ops)
+      (should (equal buffer-file-name target))
+      (should (string-match-p "^#\\+TITLE: .* — Ops Policy$"
+                              (imoogi-project-notes-test--read target))))))
+
+(ert-deftest imoogi-project-notes-legacy-metadata-documents-fall-back-to-built-ins ()
+  (imoogi-project-notes-test--isolated
+    (let* ((notes (expand-file-name "legacy/" imoogi-project-notes-directory))
+           (file (expand-file-name ".imoogi-project.json" notes)))
+      (imoogi-project-notes-test--write-metadata notes "dir:legacy" "project" root)
+      (let ((metadata (imoogi-project-notes--read-metadata-file file)))
+        (should-not (assq 'documents metadata))
+        (should (equal (imoogi-project-notes--entry-documents
+                        (imoogi-project-notes--metadata-entry file metadata))
+                       imoogi-project-notes--documents)))
+      ;; Unsafe or non-Org file names are dropped on read.
+      (should (equal (imoogi-project-notes--documents-from-json
+                      '(((kind . "bad") (file . "../evil.org") (label . "x"))
+                        ((kind . "nested") (file . "a/b.org") (label . "x"))
+                        ((kind . "plain") (file . "plain.txt") (label . "x"))
+                        ((kind . "ok") (file . "ok.org") (label . "OK"))))
+                     '((ok . ("ok.org" . "OK"))))))))
+
+(ert-deftest imoogi-project-notes-promote-artifact-moves-file-and-keeps-id ()
+  (imoogi-project-notes-test--isolated
+    (cl-letf (((symbol-function 'imoogi-project-notes--project-root) (lambda () root)))
+      (imoogi-project-notes-open))
+    (let* ((directory (file-name-directory buffer-file-name))
+           (project-file buffer-file-name)
+           (metadata-file (expand-file-name ".imoogi-project.json" directory))
+           (id (org-id-new))
+           (copied-id (org-id-new))
+           (artifact (expand-file-name "artifacts/design-ops-runbook.org" directory))
+           (target (expand-file-name "development/ops-runbook.org" directory))
+           (content (format (concat "#+TITLE: Ops Runbook\n#+CATEGORY: demo\n\n"
+                                    "* Ops Runbook\n:PROPERTIES:\n:ID:       %s\n"
+                                    ":TYPE:     설계\n:END:\n\n** 결과 요약\n"
+                                    "- [[file:../project.org][개요]]\n"
+                                    "** Copied section\n:PROPERTIES:\n"
+                                    ":ID:       %s\n:END:\n"
+                                    "#+begin_example\n:ID:       example-only-id\n"
+                                    "#+end_example\n")
+                            id copied-id)))
+      ;; project.org is not an artifact.
+      (should-error (imoogi-project-notes-promote-artifact "ops-runbook")
+                    :type 'user-error)
+      (with-temp-file artifact (insert content))
+      (org-id-add-location id artifact)
+      (find-file artifact)
+      ;; Unsaved changes block the move.
+      (goto-char (point-max))
+      (insert "x")
+      (should-error (imoogi-project-notes-promote-artifact "ops-runbook")
+                    :type 'user-error)
+      (delete-char -1)
+      (set-buffer-modified-p nil)
+      ;; An existing development document blocks the move.
+      (make-directory (file-name-directory target) t)
+      (with-temp-file target (insert "existing\n"))
+      (should-error (imoogi-project-notes-promote-artifact "ops-runbook")
+                    :type 'user-error)
+      (should (file-exists-p artifact))
+      (should (equal "existing\n" (imoogi-project-notes-test--read target)))
+      (delete-file target)
+      ;; A sibling-relative link would change destination after the move.
+      (goto-char (point-max))
+      (dolist (link '("[[file:diagram.png]]" "file:diagram.png" "[[./diagram.png]]"))
+        (erase-buffer)
+        (insert content link "\n")
+        (save-buffer)
+        (should-error (imoogi-project-notes-promote-artifact "ops-runbook")
+                      :type 'user-error))
+      (should (file-exists-p artifact))
+      (erase-buffer)
+      (insert content)
+      (save-buffer)
+      (org-id-add-location copied-id artifact)
+      ;; Default name is the slug of #+TITLE.
+      (imoogi-project-notes-promote-artifact)
+      (should (equal buffer-file-name target))
+      (should-not (buffer-modified-p))
+      (should-not (file-exists-p artifact))
+      (should (equal content (imoogi-project-notes-test--read target)))
+      (with-temp-buffer
+        (should (file-equal-p (gethash id org-id-locations) target))
+        (should (file-equal-p (org-id-find-id-file id) target))
+        (should (file-equal-p (gethash copied-id org-id-locations) target))
+        (should-not (gethash "example-only-id" org-id-locations)))
+      (should (equal (alist-get 'ops-runbook
+                                (imoogi-project-notes--documents-from-json
+                                 (alist-get 'documents
+                                            (imoogi-project-notes--read-metadata-file
+                                             metadata-file))))
+                     '("ops-runbook.org" . "Ops Runbook")))
+      (should (string-match-p
+               (regexp-quote "- [[file:development/ops-runbook.org][Ops Runbook]]")
+               (imoogi-project-notes-test--read project-file)))
+      ;; A promoted document is no longer under artifacts/.
+      (should-error (imoogi-project-notes-promote-artifact "again")
+                    :type 'user-error))))
+
 (ert-deftest imoogi-project-notes-central-storage-stays-central ()
   (imoogi-project-notes-test--isolated
     (setq imoogi-project-notes-todo-storage 'central)

@@ -1,0 +1,374 @@
+;;; anki-src-open-test.el --- SPEC-ANKISRC-001 open side: the Emacs receiver -*- lexical-binding: t; -*-
+
+;;; Commentary:
+
+;; AC-ASRC-009..013 and the Elisp half of AC-ASRC-014: `imoogi-anki-open-id',
+;; the fixed function the `imoogi-anki open' handler evaluates through
+;; emacsclient.  Every test isolates the Org ID cache to temporary state and
+;; stubs the frame-focus function so its calls can be counted.
+
+;;; Code:
+
+(require 'ert)
+(require 'cl-lib)
+(require 'org)
+(require 'org-id)
+(require 'imoogi)
+(require 'imoogi-open)
+
+(defvar imoogi-anki-src-open-test--focus 0
+  "How many times the receiver raised the Emacs frame.")
+
+(defvar imoogi-anki-src-open-test--messages nil
+  "Messages the receiver showed, newest first.")
+
+(defmacro imoogi-anki-src-open-test--with-root (&rest body)
+  "Run BODY with BASE, ROOT (the legacy sync root) and isolated Org ID state."
+  (declare (indent 0))
+  `(let* ((base (file-name-as-directory (make-temp-file "imoogi-src-open" t)))
+          (root (file-name-as-directory (expand-file-name "notes" base)))
+          (locations (expand-file-name "state/org-id-locations" base))
+          (org-id-locations-file locations)
+          (org-id-locations (make-hash-table :test 'equal))
+          (org-id-files nil)
+          (org-id-track-globally t)
+          (imoogi-targets-file (expand-file-name "state/targets.json" base))
+          (imoogi-sync-root root)
+          (imoogi-exclude-patterns nil)
+          (imoogi-anki-src-open-test--focus 0)
+          (imoogi-anki-src-open-test--messages nil)
+          (prev-window-buffer (window-buffer (selected-window)))
+          (prev-current-buffer (current-buffer))
+          (start-buffer (generate-new-buffer " *imoogi-open-start*")))
+     (make-directory root t)
+     (make-directory (file-name-directory locations) t)
+     (unwind-protect
+         (cl-letf (((symbol-function 'imoogi-anki-open--focus-frame)
+                    (lambda () (cl-incf imoogi-anki-src-open-test--focus)))
+                   ((symbol-function 'message)
+                    (lambda (format-string &rest args)
+                      (when format-string
+                        (push (apply #'format-message format-string args)
+                              imoogi-anki-src-open-test--messages)))))
+           (set-window-buffer (selected-window) start-buffer)
+           (set-buffer start-buffer)
+           ,@body)
+       (dolist (buffer (buffer-list))
+         (let ((file (buffer-file-name buffer)))
+           (when (and file (file-in-directory-p file base))
+             (with-current-buffer buffer (set-buffer-modified-p nil))
+             (kill-buffer buffer))))
+       (when (get-buffer "*imoogi-anki-open*") (kill-buffer "*imoogi-anki-open*"))
+       ;; Hand the selected window and the current buffer back as found, so
+       ;; later tests do not inherit whatever the receiver displayed.
+       (when (buffer-live-p prev-window-buffer)
+         (set-window-buffer (selected-window) prev-window-buffer))
+       (when (buffer-live-p prev-current-buffer)
+         (set-buffer prev-current-buffer))
+       (kill-buffer start-buffer)
+       (delete-directory base t))))
+
+(defun imoogi-anki-src-open-test--write (dir relative id &optional title)
+  "Write a one-card Org file at RELATIVE under DIR whose heading has ID."
+  (let ((file (expand-file-name relative dir)))
+    (make-directory (file-name-directory file) t)
+    (with-temp-file file
+      (insert "#+TITLE: fixture\n"
+              "* Unrelated\nText.\n"
+              (format "* %s\n:PROPERTIES:\n:ANKI_NOTE_TYPE: Basic\n:ID: %s\n:END:\nBody\n"
+                      (or title "Card") id)))
+    file))
+
+(defun imoogi-anki-src-open-test--cache (id file)
+  "Put ID -> FILE into the in-memory location cache, Org's way."
+  (puthash id (abbreviate-file-name file) org-id-locations))
+
+(defun imoogi-anki-src-open-test--at-heading-p (file id)
+  "Non-nil when the current buffer visits FILE and point is on ID's heading."
+  (and buffer-file-name
+       (equal (file-truename buffer-file-name) (file-truename file))
+       (org-at-heading-p)
+       (equal (org-entry-get (point) "ID" nil) id)))
+
+(defun imoogi-anki-src-open-test--saved-path (id)
+  "Return the truename `org-id-locations-file' records for ID, or nil."
+  (when (file-exists-p org-id-locations-file)
+    (let ((data (with-temp-buffer
+                  (insert-file-contents org-id-locations-file)
+                  (read (current-buffer))))
+          found)
+      (dolist (item data)
+        (when (member id (cdr item))
+          (setq found (file-truename (expand-file-name (car item))))))
+      found)))
+
+;; --- AC-ASRC-009: a cache hit opens the heading.
+
+(ert-deftest imoogi-anki-src-open-cache-hit-opens-heading ()
+  (imoogi-anki-src-open-test--with-root
+    (let ((file (imoogi-anki-src-open-test--write root "a.org" "id-a")))
+      (imoogi-anki-src-open-test--write root "b.org" "id-b")
+      (imoogi-anki-src-open-test--cache "id-a" file)
+      (should (equal (imoogi-anki-open-id "id-a") "ok"))
+      (should (imoogi-anki-src-open-test--at-heading-p file "id-a"))
+      (should (= imoogi-anki-src-open-test--focus 1)))))
+
+(ert-deftest imoogi-anki-src-open-cached-file-outside-targets-is-accepted ()
+  (imoogi-anki-src-open-test--with-root
+    (let ((outside (imoogi-anki-src-open-test--write base "elsewhere/o.org" "id-o")))
+      (imoogi-anki-src-open-test--write root "a.org" "id-a")
+      (imoogi-anki-src-open-test--cache "id-o" outside)
+      (should (equal (imoogi-anki-open-id "id-o") "ok"))
+      (should (imoogi-anki-src-open-test--at-heading-p outside "id-o"))
+      (should (= imoogi-anki-src-open-test--focus 1)))))
+
+;; --- AC-ASRC-010: a moved file is found again and re-registered.
+
+(ert-deftest imoogi-anki-src-open-moved-file-is-rescanned-and-recached ()
+  (imoogi-anki-src-open-test--with-root
+    (let ((moved (imoogi-anki-src-open-test--write root "new/a.org" "id-m")))
+      (imoogi-anki-src-open-test--cache "id-m" (expand-file-name "old/a.org" root))
+      (should (equal (imoogi-anki-open-id "id-m") "ok"))
+      (should (imoogi-anki-src-open-test--at-heading-p moved "id-m"))
+      (should (equal (imoogi-anki-src-open-test--saved-path "id-m") (file-truename moved))))))
+
+;; --- AC-ASRC-011: nothing found -> a message, no file, no buffer.
+
+(ert-deftest imoogi-anki-src-open-missing-id-creates-nothing ()
+  (imoogi-anki-src-open-test--with-root
+    (let ((gone (expand-file-name "deleted.org" root))
+          (buffers (buffer-list)))
+      (imoogi-anki-src-open-test--write root "a.org" "id-a")
+      (dolist (case '(("id-gone" . t) ("id-never" . nil)))
+        (setq imoogi-anki-src-open-test--messages nil)
+        (when (cdr case)
+          (imoogi-anki-src-open-test--cache (car case) gone))
+        (should (equal (imoogi-anki-open-id (car case)) "not-found"))
+        (let ((shown (string-join imoogi-anki-src-open-test--messages "\n")))
+          (should (string-match-p (regexp-quote (car case)) shown))
+          (should (string-match-p "imoogi-sync" shown))))
+      (should-not (file-exists-p gone))
+      (should-not (find-buffer-visiting gone))
+      (should-not (cl-set-difference (buffer-list) buffers))
+      (should (eq (current-buffer) (get-buffer " *imoogi-open-start*")))
+      (should (= imoogi-anki-src-open-test--focus 2)))))
+
+;; --- AC-ASRC-012: a duplicate ID lists the candidates and moves nowhere.
+
+(ert-deftest imoogi-anki-src-open-duplicate-lists-candidates ()
+  (dolist (cached '(nil t))
+    (imoogi-anki-src-open-test--with-root
+      (let ((one (imoogi-anki-src-open-test--write root "one.org" "id-d" "First copy"))
+            (two (imoogi-anki-src-open-test--write root "sub/two.org" "id-d" "Second copy")))
+        (when cached (imoogi-anki-src-open-test--cache "id-d" one))
+        (with-current-buffer " *imoogi-open-start*" (insert "abc") (goto-char 2))
+        (should (equal (imoogi-anki-open-id "id-d") "duplicate"))
+        (should (eq (current-buffer) (get-buffer " *imoogi-open-start*")))
+        (should (= (point) 2))
+        (let ((listing (with-current-buffer "*imoogi-anki-open*" (buffer-string))))
+          (should (string-match-p (regexp-quote (file-truename one)) listing))
+          (should (string-match-p (regexp-quote (file-truename two)) listing))
+          (should (string-match-p "First copy" listing))
+          (should (string-match-p "Second copy" listing)))
+        (should (= imoogi-anki-src-open-test--focus 1))))))
+
+;; O4: a property line with trailing whitespace still counts as a match, so
+;; the duplicate is not missed.
+(ert-deftest imoogi-anki-src-open-trailing-whitespace-still-counts ()
+  (imoogi-anki-src-open-test--with-root
+    (imoogi-anki-src-open-test--write root "one.org" "id-w")
+    (let ((two (expand-file-name "two.org" root)))
+      (with-temp-file two
+        (insert "* Copy\n:PROPERTIES:\n:ANKI_NOTE_TYPE: Basic\n:ID: id-w \t\n:END:\nBody\n"))
+      (should (equal (imoogi-anki-open-id "id-w") "duplicate")))))
+
+;; --- Card review finding 1: a target that could not be checked blocks the
+;; automatic move, because a duplicate in it cannot be ruled out.
+
+(defmacro imoogi-anki-src-open-test--with-locked (path &rest body)
+  "Run BODY with PATH unreadable, restoring its modes afterwards."
+  (declare (indent 1))
+  `(let ((modes (file-modes ,path)))
+     (set-file-modes ,path 0)
+     (unwind-protect
+         (progn
+           (skip-unless (and (not (zerop (user-uid)))
+                             (not (file-readable-p ,path))))
+           ,@body)
+       (set-file-modes ,path modes))))
+
+(defun imoogi-anki-src-open-test--assert-incomplete (id file unreadable)
+  "Assert that opening ID refused to move to FILE and listed UNREADABLE."
+  (let ((buffers (buffer-list)))
+    (with-current-buffer " *imoogi-open-start*" (insert "abc") (goto-char 2))
+    (should (equal (imoogi-anki-open-id id) "incomplete"))
+    (should (eq (current-buffer) (get-buffer " *imoogi-open-start*")))
+    (should (= (point) 2))
+    (should-not (find-buffer-visiting file))
+    (should-not (imoogi-anki-src-open-test--saved-path id))
+    (should (= imoogi-anki-src-open-test--focus 1))
+    (let ((listing (with-current-buffer "*imoogi-anki-open*" (buffer-string))))
+      (should (string-match-p (regexp-quote id) listing))
+      (should (string-match-p (regexp-quote unreadable) listing))
+      (should (string-match-p (regexp-quote (file-truename file)) listing)))
+    (should-not (cl-remove (get-buffer "*imoogi-anki-open*")
+                           (cl-set-difference (buffer-list) buffers)))))
+
+(ert-deftest imoogi-anki-src-open-unreadable-file-blocks-navigation ()
+  (imoogi-anki-src-open-test--with-root
+    (let ((file (imoogi-anki-src-open-test--write root "a.org" "id-r"))
+          (locked (imoogi-anki-src-open-test--write root "b.org" "id-other")))
+      (imoogi-anki-src-open-test--with-locked locked
+        (imoogi-anki-src-open-test--assert-incomplete
+         "id-r" file (file-truename locked))))))
+
+(ert-deftest imoogi-anki-src-open-unreadable-directory-blocks-navigation ()
+  (imoogi-anki-src-open-test--with-root
+    (let ((file (imoogi-anki-src-open-test--write root "a.org" "id-r"))
+          (locked (expand-file-name "locked" root)))
+      (imoogi-anki-src-open-test--write locked "c.org" "id-other")
+      (imoogi-anki-src-open-test--with-locked locked
+        (imoogi-anki-src-open-test--assert-incomplete
+         "id-r" file (directory-file-name (file-truename locked)))))))
+
+(defun imoogi-anki-src-open-test--register (&rest targets)
+  "Write TARGETS, a list of (KIND . PATH), to `imoogi-targets-file'."
+  (make-directory (file-name-directory imoogi-targets-file) t)
+  (with-temp-file imoogi-targets-file
+    (insert (json-encode
+             `((targets . ,(vconcat
+                            (mapcar (lambda (target)
+                                      `((kind . ,(symbol-name (car target)))
+                                        (path . ,(cdr target))))
+                                    targets))))))))
+
+(ert-deftest imoogi-anki-src-open-target-behind-locked-ancestor-blocks-navigation ()
+  ;; A registered target whose parent denies traversal is not "absent":
+  ;; it may hold a duplicate, so the move is refused.
+  (dolist (kind '(directory file))
+    (imoogi-anki-src-open-test--with-root
+      (let* ((file (imoogi-anki-src-open-test--write root "a.org" "id-t"))
+             (gate (expand-file-name "gate" base))
+             (target (if (eq kind 'directory)
+                         (expand-file-name "inner" gate)
+                       (expand-file-name "inner.org" gate))))
+        (if (eq kind 'directory)
+            (imoogi-anki-src-open-test--write target "c.org" "id-t")
+          (make-directory gate t)
+          (with-temp-file target
+            (insert "* Card\n:PROPERTIES:\n:ID: id-t\n:END:\n")))
+        (imoogi-anki-src-open-test--register (cons kind target))
+        (imoogi-anki-src-open-test--with-locked gate
+          (imoogi-anki-src-open-test--assert-incomplete
+           "id-t" file (directory-file-name (expand-file-name target))))))))
+
+(ert-deftest imoogi-anki-src-open-missing-registered-target-is-not-a-failure ()
+  (imoogi-anki-src-open-test--with-root
+    (let ((file (imoogi-anki-src-open-test--write root "a.org" "id-m")))
+      (imoogi-anki-src-open-test--register
+       (cons 'directory (expand-file-name "gone/dir" base))
+       (cons 'file (expand-file-name "gone/x.org" base)))
+      (should (equal (imoogi-anki-open-id "id-m") "ok"))
+      (should (imoogi-anki-src-open-test--at-heading-p file "id-m")))))
+
+(ert-deftest imoogi-anki-src-open-known-duplicate-wins-over-unreadable ()
+  (imoogi-anki-src-open-test--with-root
+    (imoogi-anki-src-open-test--write root "one.org" "id-d")
+    (imoogi-anki-src-open-test--write root "two.org" "id-d")
+    (let ((locked (imoogi-anki-src-open-test--write root "three.org" "id-x")))
+      (imoogi-anki-src-open-test--with-locked locked
+        (should (equal (imoogi-anki-open-id "id-d") "duplicate"))))))
+
+;; --- Card review finding 2: the source vanished between the scan and the
+;; move.  Nothing is created, no buffer is left behind, and the answer is
+;; "not-found".
+
+(ert-deftest imoogi-anki-src-open-source-gone-before-navigation-is-not-found ()
+  (dolist (change '(delete remove-id))
+    (imoogi-anki-src-open-test--with-root
+      (let* ((file (imoogi-anki-src-open-test--write root "a.org" "id-g"))
+             (original (symbol-function 'imoogi-anki-open--candidates))
+             (buffers (buffer-list)))
+        (cl-letf (((symbol-function 'imoogi-anki-open--candidates)
+                   (lambda (id)
+                     (prog1 (funcall original id)
+                       (pcase change
+                         ('delete (delete-file file))
+                         ('remove-id
+                          (with-temp-file file
+                            (insert "* Card\n:PROPERTIES:\n:ANKI_NOTE_TYPE: Basic\n:END:\nBody\n"))))))))
+          (should (equal (imoogi-anki-open-id "id-g") "not-found")))
+        (let ((shown (string-join imoogi-anki-src-open-test--messages "\n")))
+          (should (string-match-p "id-g" shown))
+          (should (string-match-p "imoogi-sync" shown)))
+        (should (eq (eq change 'delete) (not (file-exists-p file))))
+        (should-not (find-buffer-visiting file))
+        (should-not (cl-set-difference (buffer-list) buffers))
+        (should (eq (current-buffer) (get-buffer " *imoogi-open-start*")))
+        (should-not (imoogi-anki-src-open-test--saved-path "id-g"))
+        (should (= imoogi-anki-src-open-test--focus 1))))))
+
+;; The ID left a buffer the user already visits: that buffer stays.
+(ert-deftest imoogi-anki-src-open-id-gone-from-user-buffer-keeps-buffer ()
+  (imoogi-anki-src-open-test--with-root
+    (let* ((file (imoogi-anki-src-open-test--write root "a.org" "id-k"))
+           (buffer (find-file-noselect file))
+           (original (symbol-function 'imoogi-anki-open--candidates)))
+      (cl-letf (((symbol-function 'imoogi-anki-open--candidates)
+                 (lambda (id)
+                   (prog1 (funcall original id)
+                     (with-current-buffer buffer
+                       (goto-char (point-min))
+                       (while (re-search-forward "^:ID: id-k\n" nil t)
+                         (replace-match "")))))))
+        (should (equal (imoogi-anki-open-id "id-k") "not-found")))
+      (should (buffer-live-p buffer))
+      (should (eq (current-buffer) (get-buffer " *imoogi-open-start*"))))))
+
+;; --- AC-ASRC-013: the user's unsaved edits are left exactly as they were.
+
+(ert-deftest imoogi-anki-src-open-keeps-unsaved-user-buffer-untouched ()
+  (imoogi-anki-src-open-test--with-root
+    (let* ((file (imoogi-anki-src-open-test--write root "a.org" "id-u"))
+           (disk (with-temp-buffer (insert-file-contents file) (buffer-string)))
+           (buffer (find-file-noselect file))
+           text)
+      (with-current-buffer buffer
+        (goto-char (point-min))
+        (forward-line 1)
+        (insert "* Unsaved heading the user is writing\n")
+        (setq text (buffer-string)))
+      (set-buffer " *imoogi-open-start*")
+      (should (equal (imoogi-anki-open-id "id-u") "ok"))
+      (should (eq (current-buffer) buffer))
+      (should (imoogi-anki-src-open-test--at-heading-p file "id-u"))
+      (should (buffer-modified-p buffer))
+      (should (equal (buffer-string) text))
+      (should (equal (with-temp-buffer (insert-file-contents file) (buffer-string)) disk)))))
+
+;; --- AC-ASRC-014 (Elisp half): the receiver re-validates its input.
+
+(ert-deftest imoogi-anki-src-open-rejects-ids-outside-the-character-set ()
+  (imoogi-anki-src-open-test--with-root
+    (let ((buffers (buffer-list)))
+      (imoogi-anki-src-open-test--write root "a.org" "id-a")
+      (dolist (bad '("x\")(shell-command \"touch pwn\"" "a b" "" "a/b"))
+        (should-not (member (imoogi-anki-open-id bad) '("ok" "not-found" "duplicate" "incomplete"))))
+      (should-not (cl-set-difference (buffer-list) buffers))
+      (should (eq (current-buffer) (get-buffer " *imoogi-open-start*"))))))
+
+;; --- REQ-ASRC-011.7: the receiver loads with the Anki module itself.
+
+(ert-deftest imoogi-anki-src-open-receiver-is-required-by-the-module ()
+  (should (fboundp 'imoogi-anki-open-id))
+  (let ((module (seq-find #'file-readable-p
+                          (list (expand-file-name "modules/org/24-anki.el" default-directory)
+                                (and (boundp 'imoogi-emacs-dir)
+                                     (expand-file-name "modules/org/24-anki.el" imoogi-emacs-dir))))))
+    (skip-unless module)
+    (with-temp-buffer
+      (insert-file-contents module)
+      (should (re-search-forward "^(require 'imoogi-open)" nil t)))))
+
+(provide 'anki-src-open-test)
+;;; anki-src-open-test.el ends here

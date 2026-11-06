@@ -14,6 +14,11 @@
 (declare-function org-element-type "org-element")
 (declare-function project-current "project")
 (declare-function project-root "project")
+(declare-function imoogi-org-color-preview-map "14-org")
+(declare-function org-id-find "org-id")
+(declare-function org-fold-show-context "org-fold")
+(declare-function imoogi-clipboard--owner "28-clipboard")
+(declare-function imoogi-clipboard--owner-asset-root "28-clipboard")
 
 (defgroup imoogi-org-preview nil
   "Live Org/Markdown preview backed by the local imoogi-org-preview server."
@@ -47,7 +52,8 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
   :type 'number)
 
 (defcustom imoogi-org-preview-highlight-current t
-  "When non-nil, highlight the current paragraph in the browser without scrolling."
+  "When non-nil, highlight the current paragraph in the browser and keep it in view.
+The preview scrolls only when that paragraph is off screen."
   :type 'boolean)
 
 (defcustom imoogi-org-preview-navigation-sync nil
@@ -414,6 +420,8 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
      (allowed_roots . ,(imoogi-org-preview--allowed-roots))
      (asset_map . ,(when (fboundp 'imoogi-clipboard-preview-asset-map)
                      (imoogi-clipboard-preview-asset-map)))
+     (color_map . ,(when (fboundp 'imoogi-org-color-preview-map)
+                     (imoogi-org-color-preview-map)))
      (text . ,(buffer-substring-no-properties (point-min) (point-max)))
      (cursor_byte . ,(imoogi-org-preview--cursor-byte)))))
 
@@ -433,8 +441,21 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
          (list (when-let* ((root (imoogi-org-preview--project-root)))
                  (expand-file-name root))
                (when buffer-file-name
-                 (file-name-directory (expand-file-name buffer-file-name)))))
+                 (file-name-directory (expand-file-name buffer-file-name)))
+               (imoogi-org-preview--clipboard-asset-root)))
    #'string=))
+
+(defun imoogi-org-preview--clipboard-asset-root ()
+  "Return the clipboard asset directory owning this buffer's pasted files.
+Project-notes artifacts link to a sibling assets directory outside both the
+document directory and any VCS project, so it must be allowed explicitly."
+  (when (and buffer-file-name (fboundp 'imoogi-clipboard--owner))
+    (condition-case nil
+        (when-let* ((root (imoogi-clipboard--owner-asset-root
+                           (imoogi-clipboard--owner)
+                           (expand-file-name buffer-file-name))))
+          (file-name-as-directory (expand-file-name root)))
+      (error nil))))
 
 (defun imoogi-org-preview--cursor-byte ()
   "Return zero-based UTF-8 byte offset for current point."
@@ -632,7 +653,42 @@ When nil, `imoogi-org-preview-mode' starts `imoogi-org-preview-command'."
            (imoogi-org-preview--apply-navigation event)))
         ("status"
          (when-let* ((status (alist-get 'status event)))
-           (imoogi-org-preview--set-status (intern status))))))))
+           (imoogi-org-preview--set-status (intern status))))
+        ("open"
+         (unless (equal origin "emacs")
+           ;; Opening switches buffers; keep SSE consumption in this buffer.
+           (save-current-buffer
+             (imoogi-org-preview--apply-open (alist-get 'open event)))))))))
+
+(defun imoogi-org-preview--apply-open (open)
+  "Open the link target OPEN that the preview server resolved.
+The path is checked again against this buffer's allowed roots, and a missing
+file or Org ID only produces a message; nothing is created."
+  (let ((kind (alist-get 'kind open)))
+    (pcase kind
+      ("file"
+       (let ((path (alist-get 'path open)))
+         (if (and (stringp path)
+                  (file-name-absolute-p path)
+                  (file-regular-p path)
+                  (seq-some (lambda (root) (file-in-directory-p path root))
+                            (imoogi-org-preview--allowed-roots)))
+             (find-file-other-window path)
+           (message "Org preview: cannot open %s" path))))
+      ("id"
+       (let* ((id (alist-get 'id open))
+              (marker (and (stringp id) (org-id-find id 'marker))))
+         (if (not (markerp marker))
+             (message "Org preview: no heading with ID %s" id)
+           (pop-to-buffer (marker-buffer marker))
+           (unless (<= (point-min) marker (point-max))
+             (widen))
+           (goto-char marker)
+           (set-marker marker nil)
+           (when (fboundp 'org-fold-show-context)
+             (org-fold-show-context)))))
+      (_ (message "Org preview: link target not found: %s"
+                  (or (alist-get 'target open) "?"))))))
 
 (defun imoogi-org-preview--apply-navigation (event)
   "Move point according to a browser-originated navigation EVENT."

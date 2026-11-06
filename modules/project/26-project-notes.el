@@ -329,6 +329,53 @@ The sequence is the next free number after the largest one in NAME's scope."
            'study
          'development))))
 
+(defun imoogi-project-notes--valid-document-file-p (file)
+  "Return non-nil when FILE is one safe `.org' filename component."
+  (and (stringp file)
+       (string-suffix-p ".org" file)
+       (imoogi-project-notes--valid-artifact-prefix-p
+        (file-name-sans-extension file))))
+
+(defun imoogi-project-notes--documents-to-json (documents)
+  "Convert runtime standing DOCUMENTS to JSON-safe alists."
+  (mapcar (lambda (document)
+            `((kind . ,(symbol-name (car document)))
+              (file . ,(cadr document))
+              (label . ,(cddr document))))
+          documents))
+
+(defun imoogi-project-notes--documents-from-json (value)
+  "Convert JSON-safe standing document VALUE to runtime specs.
+Items with a missing field, an unsafe file name, or a repeated kind are dropped."
+  (when (or (listp value) (vectorp value))
+    (let ((value (if (vectorp value) (append value nil) value))
+          documents)
+      (dolist (spec value)
+        (let ((kind (and (listp spec)
+                         (imoogi-project-notes--alist-string 'kind spec)))
+              (file (and (listp spec)
+                         (imoogi-project-notes--alist-string 'file spec)))
+              (label (and (listp spec)
+                          (imoogi-project-notes--alist-string 'label spec))))
+          (when (and kind (not (string-empty-p kind)) label
+                     (imoogi-project-notes--valid-document-file-p file)
+                     (not (assq (intern kind) documents)))
+            (push (cons (intern kind) (cons file label)) documents))))
+      (nreverse documents))))
+
+;; @MX:NOTE Standing documents live only in the folder metadata, never in an
+;; entry alist: the runtime form holds dotted pairs that `json-encode' rejects,
+;; and `--save-entry' encodes entries wholesale into the registry.  Reading the
+;; file also keeps a registry-derived entry from masking a newly saved kind.
+(defun imoogi-project-notes--entry-documents (entry)
+  "Return ENTRY's standing documents, falling back for legacy metadata."
+  (or (when-let* ((directory (imoogi-project-notes--alist-string 'notes-dir entry))
+                  (file (imoogi-project-notes--metadata-file directory))
+                  ((file-readable-p file))
+                  (metadata (imoogi-project-notes--read-metadata-file file 'noerror)))
+        (imoogi-project-notes--documents-from-json (alist-get 'documents metadata)))
+      (copy-tree imoogi-project-notes--documents)))
+
 (defun imoogi-project-notes--registry-file ()
   "Return the project notes registry path."
   (locate-user-emacs-file ".cache/project-notes.json"))
@@ -746,11 +793,13 @@ NOERROR is non-nil."
   "Write ENTRIES to the project notes registry."
   (let ((file (imoogi-project-notes--registry-file)))
     (make-directory (file-name-directory file) t)
-    (with-temp-file file
-      (let ((json-encoding-pretty-print t))
-        (insert (json-encode `((version . 1)
-                               (projects . ,entries))))
-        (insert "\n")))))
+    (prog1
+        (with-temp-file file
+          (let ((json-encoding-pretty-print t))
+            (insert (json-encode `((version . 1)
+                                   (projects . ,entries))))
+            (insert "\n")))
+      (imoogi-project-notes--rebuild-context-directories))))
 
 (defun imoogi-project-notes--empty-mounted-state ()
   "Return a new empty mounted roots registry value."
@@ -829,14 +878,16 @@ return an empty state instead of signaling for malformed data."
     (let ((temporary (make-temp-file
                       (expand-file-name ".project-notes-mounted-roots-"
                                         (file-name-directory file)))))
-      (unwind-protect
-          (progn
-            (with-temp-file temporary
-              (let ((json-encoding-pretty-print t))
-                (insert (json-encode state) "\n")))
-            (rename-file temporary file t))
-        (when (file-exists-p temporary)
-          (delete-file temporary))))))
+      (prog1
+          (unwind-protect
+              (progn
+                (with-temp-file temporary
+                  (let ((json-encoding-pretty-print t))
+                    (insert (json-encode state) "\n")))
+                (rename-file temporary file t))
+            (when (file-exists-p temporary)
+              (delete-file temporary)))
+        (imoogi-project-notes--rebuild-context-directories)))))
 
 (defun imoogi-project-notes--canonical-directory (directory)
   "Return existing local DIRECTORY in canonical directory form."
@@ -1143,6 +1194,85 @@ remain distinct through their `instance-id'."
           (push entry result))))
     (nreverse result)))
 
+;;; Notes-context buffers and the Perspective finder
+;;
+;; 04-projects.el resolves a buffer with no project of its own to the project
+;; of its Perspective.  Notes buffers must keep their own resolution, otherwise
+;; `imoogi-project-notes--current-source-root' would follow the Perspective
+;; root instead of the worktree the notes were opened from.  The check runs on
+;; every tab-bar redisplay, so it reads only buffer-local state and an
+;; in-memory list that is rebuilt where the registry or mounted state changes.
+
+(defvar imoogi-project-notes--context-directories 'unbuilt
+  "Truenames of every known notes directory, as directory names.
+The symbol `unbuilt' until the first rebuild.  Rebuilt eagerly by
+`imoogi-project-notes--rebuild-context-directories', never on the lookup
+path.")
+
+(defun imoogi-project-notes--rebuild-context-directories (&optional entries)
+  "Rebuild `imoogi-project-notes--context-directories' from ENTRIES.
+ENTRIES defaults to `imoogi-project-notes--all-entries'.  On any error (a
+corrupt registry, an unreadable mount) the previous list is kept, because a
+refresh must never break the command that triggered it."
+  (condition-case nil
+      (setq imoogi-project-notes--context-directories
+            (delete-dups
+             (delq nil
+                   (mapcar
+                    (lambda (entry)
+                      (when-let* ((directory (imoogi-project-notes--alist-string
+                                              'notes-dir entry)))
+                        (file-name-as-directory
+                         (imoogi-project-notes--truename-if-present directory))))
+                    (or entries (imoogi-project-notes--all-entries))))))
+    (error nil))
+  nil)
+
+(defun imoogi-project-notes--refresh-context-directories ()
+  "Rebuild the notes-directory list on a Perspective switch.
+This also picks up notes directories created or mounted outside Emacs."
+  (imoogi-project-notes--rebuild-context-directories))
+
+(defun imoogi-project-notes-directory-for-root (root)
+  "Return the notes directory registered for source ROOT, or nil.
+Worktrees of one repository share an identity key and so share notes.  Signals
+`user-error' for a remote ROOT, which the identity key refuses.  The project
+transient's `b' and `f' entries add this directory's buffers and files to
+their candidates; it never becomes a member of the project itself."
+  (let ((key (imoogi-project-notes--identity-key root)))
+    (when-let* ((entries (imoogi-project-notes--all-entries))
+                (entry (imoogi-project-notes--find-entry-by-key key entries)))
+      (imoogi-project-notes--alist-string 'notes-dir entry))))
+
+(defun imoogi-project-notes--context-buffer-p ()
+  "Return non-nil when the current buffer is a notes-context buffer.
+That is a buffer carrying project-note buffer-local state, visiting a file
+whose truename lies inside a known notes directory, or visiting no file (Dired,
+compilation, shell) with its `default-directory' inside one.  No file I/O:
+`default-directory' is only expanded, not resolved to a truename, and before
+the first rebuild only `imoogi-project-notes-directory' is compared, as a
+string prefix."
+  (or imoogi-project-notes-source-root
+      imoogi-project-notes-directory-local
+      imoogi-project-notes-entry-instance-id
+      (when-let* ((file (cond
+                         (buffer-file-truename
+                          (expand-file-name buffer-file-truename))
+                         ;; Checked on the raw string: `expand-file-name'
+                         ;; would enter the TRAMP handler.
+                         ((and (not buffer-file-name)
+                               (stringp default-directory)
+                               (not (file-remote-p default-directory)))
+                          (file-name-as-directory
+                           (expand-file-name default-directory))))))
+        (let ((directories
+               (if (listp imoogi-project-notes--context-directories)
+                   imoogi-project-notes--context-directories
+                 (list (file-name-as-directory
+                        (expand-file-name imoogi-project-notes-directory))))))
+          (cl-some (lambda (directory) (string-prefix-p directory file))
+                   directories)))))
+
 (defun imoogi-project-notes--root-number-id-entries (root origin &optional label)
   "Return numbering id entries discovered directly below ROOT."
   (let ((root (and root (file-name-as-directory (expand-file-name root))))
@@ -1329,10 +1459,18 @@ remain distinct through their `instance-id'."
               entries))
         (and buffer-file-name
              (imoogi-project-notes--find-entry-by-notes-file buffer-file-name entries))
-        (when-let* ((project (project-current nil)))
-          (imoogi-project-notes--find-entry-by-key
-           (imoogi-project-notes--identity-key (project-root project))
-           entries)))))
+        (if-let* ((project (project-current nil)))
+            (imoogi-project-notes--find-entry-by-key
+             (imoogi-project-notes--identity-key (project-root project))
+             entries)
+          ;; A buffer with no project of its own (scratch, help) follows the
+          ;; project its Perspective was opened for instead of prompting.  A
+          ;; buffer of an unregistered project never borrows another's notes.
+          (when-let* (((fboundp 'imoogi-project--perspective-root))
+                      (root (imoogi-project--perspective-root)))
+            (imoogi-project-notes--find-entry-by-key
+             (imoogi-project-notes--identity-key root)
+             entries))))))
 
 (defun imoogi-project-notes--current-source-root (&optional entry)
   "Return the source root that should be used for this command.
@@ -1551,7 +1689,9 @@ The folder lives below BASE, or `imoogi-project-notes-directory' when nil."
       (todo_storage . ,(imoogi-project-notes--alist-string
                          'todo-storage entry))
       (artifact_preset . ,(imoogi-project-notes--artifact-preset-to-json
-                           (imoogi-project-notes--entry-artifact-preset entry))))))
+                           (imoogi-project-notes--entry-artifact-preset entry)))
+      (documents . ,(imoogi-project-notes--documents-to-json
+                     (imoogi-project-notes--entry-documents entry))))))
 
 (defun imoogi-project-notes--metadata-merge-derived-fields (metadata expected)
   "Return METADATA with missing optional derived keys copied from EXPECTED."
@@ -2149,7 +2289,11 @@ or failed with \"arrayp, nil\" (a window showing another workspace)."
   (if mounted-state-before
       (with-temp-file mounted-state-file (insert mounted-state-before))
     (when (file-exists-p mounted-state-file)
-      (delete-file mounted-state-file))))
+      (delete-file mounted-state-file)))
+  ;; The direct writes above bypass `--write-registry' and
+  ;; `--write-mounted-state', so rebuild the notes-directory list here, or it
+  ;; keeps describing the rename that the commit already recorded.
+  (imoogi-project-notes--rebuild-context-directories))
 
 (defun imoogi-project-notes--rename-entry-directory
     (entry old-root new-root &optional commit allow-pending-repair)
@@ -2343,6 +2487,77 @@ step back to its `project-notes' parent so renames cannot become nested."
     (let ((json-encoding-pretty-print t))
       (with-temp-file file
         (insert (json-encode metadata) "\n")))))
+
+(defun imoogi-project-notes--save-documents-metadata (entry documents)
+  "Persist standing DOCUMENTS in ENTRY's metadata, keeping other fields."
+  (let* ((directory (imoogi-project-notes--alist-string 'notes-dir entry))
+         (file (imoogi-project-notes--metadata-file directory))
+         (metadata (if (file-readable-p file)
+                       (imoogi-project-notes--read-metadata-file file)
+                     (imoogi-project-notes--metadata-data
+                      entry (format-time-string "%Y-%m-%d")))))
+    (setf (alist-get 'documents metadata)
+          (imoogi-project-notes--documents-to-json documents))
+    (let ((json-encoding-pretty-print t))
+      (with-temp-file file
+        (insert (json-encode metadata) "\n")))))
+
+(defun imoogi-project-notes--record-document (entry kind file label)
+  "Record standing document KIND stored in FILE with LABEL for ENTRY.
+An existing KIND keeps its position and takes the new FILE and LABEL."
+  (let* ((documents (imoogi-project-notes--entry-documents entry))
+         (spec (cons file label)))
+    (if (assq kind documents)
+        (setf (alist-get kind documents) spec)
+      (setq documents (append documents (list (cons kind spec)))))
+    (imoogi-project-notes--save-documents-metadata entry documents)
+    documents))
+
+(defun imoogi-project-notes--add-project-shortcut (entry document-file label)
+  "Link DOCUMENT-FILE as LABEL under `* 바로가기' in ENTRY's overview.
+Skips with a message when the overview has unsaved changes."
+  (let* ((project-file (imoogi-project-notes--alist-string 'project-file entry))
+         (buffer (and project-file (find-buffer-visiting project-file)))
+         (target (file-relative-name document-file
+                                     (file-name-directory project-file)))
+         (line (format "- [[file:%s][%s]]" target label))
+         (insert-shortcut
+          (lambda ()
+            (save-excursion
+              (save-restriction
+                (widen)
+                (goto-char (point-min))
+                (unless (search-forward (format "[[file:%s]" target) nil t)
+                  (goto-char (point-min))
+                  (if (re-search-forward "^\\* 바로가기[ \t]*$" nil t)
+                      (let ((section-end (save-excursion
+                                           (if (re-search-forward "^\\* " nil t)
+                                               (match-beginning 0)
+                                             (point-max)))))
+                        ;; Append after the section's last list item so the
+                        ;; trailing guide paragraph stays below the links.
+                        (while (re-search-forward "^- " section-end t)
+                          (forward-line 1))
+                        (unless (bolp) (insert "\n"))
+                        (insert line "\n"))
+                    (goto-char (point-max))
+                    (unless (bolp) (insert "\n"))
+                    (insert "\n* 바로가기\n" line "\n"))
+                  t))))))
+    (cond
+     ((not (and project-file (file-exists-p project-file))) nil)
+     ((and buffer (buffer-modified-p buffer))
+      (message "imoogi: 개요에 저장하지 않은 변경이 있어 바로가기를 추가하지 않았습니다: %s"
+               project-file))
+     (buffer
+      (with-current-buffer buffer
+        (when (funcall insert-shortcut)
+          (save-buffer))))
+     (t
+      (with-temp-buffer
+        (insert-file-contents project-file)
+        (when (funcall insert-shortcut)
+          (write-region nil nil project-file nil 'silent)))))))
 
 (defun imoogi-project-notes--metadata-has-artifact-preset-p (entry)
   "Return non-nil when ENTRY metadata explicitly stores a preset."
@@ -2690,32 +2905,181 @@ The directory is renamed in place after duplicate and path preflight checks."
       (imoogi-project-notes--ensure-worktree-journal-section entry source-root))
     (current-buffer)))
 
+(defun imoogi-project-notes--resolve-document (documents name)
+  "Return (KIND FILE LABEL NEW-P) for document NAME among DOCUMENTS.
+NAME matches a stored kind, a stored label, or the kind its slug would get.
+Any other NAME describes a new custom document."
+  (let* ((by-kind (assq (intern name) documents))
+         (by-label (cl-find name documents :key #'cddr :test #'equal))
+         (slug (imoogi-project-notes--slug name))
+         (by-slug (assq (intern slug) documents)))
+    (if-let* ((found (or by-kind by-label by-slug)))
+        (list (car found) (cadr found) (cddr found) nil)
+      (unless (string-match-p "[[:alnum:]]" name)
+        (user-error "문서 이름에 글자나 숫자가 필요합니다: %s" name))
+      (let ((file (concat slug ".org")))
+        (unless (imoogi-project-notes--valid-document-file-p file)
+          (user-error "문서 파일 이름으로 쓸 수 없습니다: %s" file))
+        (when (cl-find file documents :key #'cadr :test #'equal)
+          (user-error "같은 파일을 쓰는 개발 문서가 이미 있습니다: %s" file))
+        (list (intern slug) file name t)))))
+
 ;;;###autoload
 (defun imoogi-project-notes-add-document (document)
-  "Create and open an on-demand development DOCUMENT."
+  "Create and open an on-demand development DOCUMENT.
+DOCUMENT is a stored kind symbol or a name.  An unknown name becomes a new
+custom document recorded in the project metadata and created from the
+generic document template."
   (interactive
    (list
-    (intern
-     (completing-read "개발 문서: "
-                      (mapcar (lambda (entry)
-                                (symbol-name (car entry)))
-                              imoogi-project-notes--documents)
-                      nil t))))
-  (let* ((spec (alist-get document imoogi-project-notes--documents))
-         (entry (imoogi-project-notes--entry-or-setup)))
+    (completing-read "개발 문서: "
+                     (mapcar (lambda (spec) (symbol-name (car spec)))
+                             (if-let* ((entry (imoogi-project-notes--current-entry)))
+                                 (imoogi-project-notes--entry-documents entry)
+                               imoogi-project-notes--documents)))))
+  (let* ((entry (imoogi-project-notes--entry-or-setup))
+         (name (string-trim (if (symbolp document)
+                                (symbol-name document)
+                              (or document "")))))
     (imoogi-project-notes--ensure-entry-mutable entry "개발 문서 생성")
-    (unless spec
-      (user-error "알 수 없는 프로젝트 문서: %s" document))
-    (let* ((notes-dir (imoogi-project-notes--alist-string 'notes-dir entry))
-           (source-root (imoogi-project-notes--alist-string 'source-root entry))
-           (project-name (imoogi-project-notes--entry-name entry))
-           (task-file (imoogi-project-notes--alist-string 'tasks-file entry))
-           (file (expand-file-name (car spec)
-                                   (expand-file-name "development/" notes-dir)))
-           (values (imoogi-project-notes--values project-name source-root
-                                                 task-file notes-dir)))
-      (imoogi-project-notes--find-existing-or-create
-       entry file (symbol-name document) values))))
+    (when (string-empty-p name)
+      (user-error "개발 문서 이름을 입력하세요"))
+    (pcase-let* ((`(,kind ,file-name ,label ,new-p)
+                  (imoogi-project-notes--resolve-document
+                   (imoogi-project-notes--entry-documents entry) name))
+                 (notes-dir (imoogi-project-notes--alist-string 'notes-dir entry))
+                 (source-root (imoogi-project-notes--alist-string 'source-root entry))
+                 (project-name (imoogi-project-notes--entry-name entry))
+                 (task-file (imoogi-project-notes--alist-string 'tasks-file entry))
+                 (file (expand-file-name file-name
+                                         (expand-file-name "development/" notes-dir)))
+                 (created-p (not (or (file-exists-p file)
+                                     (find-buffer-visiting file))))
+                 (values (cons (cons "DOCUMENT_TITLE" label)
+                               (imoogi-project-notes--values project-name source-root
+                                                             task-file notes-dir))))
+      (prog1 (imoogi-project-notes--find-existing-or-create
+              entry file
+              ;; Built-ins keep their dedicated templates; custom kinds share one.
+              (if (assq kind imoogi-project-notes--documents)
+                  (symbol-name kind)
+                "document")
+              values)
+        (when new-p
+          (imoogi-project-notes--record-document entry kind file-name label))
+        ;; Every development document this command newly creates, built-in or
+        ;; custom, gets one overview shortcut; reopening never adds another.
+        (when created-p
+          (imoogi-project-notes--add-project-shortcut entry file label))))))
+
+(defun imoogi-project-notes--promotable-artifact ()
+  "Return (ENTRY FILE ID TITLE) for the artifact visited by this buffer.
+Signals `user-error' unless the buffer visits a saved `.org' file directly
+below its project's `artifacts/' directory."
+  (let* ((file buffer-file-name)
+         (entry (and file (imoogi-project-notes--current-entry)))
+         (notes-dir (and entry
+                         (imoogi-project-notes--alist-string 'notes-dir entry))))
+    (unless (and file notes-dir
+                 (string-suffix-p ".org" file)
+                 (file-equal-p (file-name-directory file)
+                               (expand-file-name "artifacts/" notes-dir)))
+      (user-error "프로젝트 artifacts/ 바로 아래의 산출물 문서에서 실행하세요"))
+    (when (buffer-modified-p)
+      (user-error "먼저 산출물을 저장하세요: %s" file))
+    (org-with-wide-buffer
+     (goto-char (point-min))
+     (let* ((id (or (org-entry-get nil "ID")
+                    (when (or (org-at-heading-p)
+                              (re-search-forward org-outline-regexp-bol nil t))
+                      (org-back-to-heading t)
+                      (org-id-get))))
+            (title (let ((keyword (cadr (assoc "TITLE"
+                                               (org-collect-keywords '("TITLE"))))))
+                     (if (and keyword (not (string-blank-p keyword)))
+                         (string-trim keyword)
+                       (file-name-base file)))))
+       (list entry file id title)))))
+
+(defun imoogi-project-notes--buffer-ids ()
+  "Return every Org ID property value in the current buffer."
+  ;; Parsed node properties only: `:ID:' text inside blocks is not an ID.
+  (org-with-wide-buffer
+   (delete-dups
+    (org-element-map (org-element-parse-buffer) 'node-property
+      (lambda (property)
+        (when (string= (upcase (org-element-property :key property)) "ID")
+          (string-trim (org-element-property :value property))))))))
+
+(defun imoogi-project-notes--move-breaking-file-links ()
+  "Return relative file link paths that a move to `development/' would break.
+`artifacts/' and `development/' are siblings, so absolute, home-relative and
+`../' paths keep their destination; any other relative path would not."
+  ;; Org's parser covers bracket, plain and `./'-style file links alike.
+  (org-with-wide-buffer
+   (delete-dups
+    (org-element-map (org-element-parse-buffer) 'link
+      (lambda (link)
+        (let ((path (org-element-property :path link)))
+          (when (and (string= (org-element-property :type link) "file")
+                     (not (file-name-absolute-p path))
+                     (not (string-prefix-p "../" path)))
+            path)))))))
+
+;;;###autoload
+(defun imoogi-project-notes-promote-artifact (&optional name)
+  "Move the visited artifact into the project's `development/' as NAME.
+NAME defaults to the slug of the artifact's #+TITLE.  The file contents,
+including its Org ID, are kept unchanged; the ID location is updated so
+existing `[[id:...]]' links keep resolving, and the document is recorded as a
+standing document in the project metadata."
+  (interactive
+   (pcase-let ((`(,_entry ,_file ,_id ,title)
+                (imoogi-project-notes--promotable-artifact)))
+     (let ((default (imoogi-project-notes--slug title)))
+       (list (read-string (format-prompt "개발 문서 이름" default)
+                          nil nil default)))))
+  (pcase-let* ((`(,entry ,file ,_id ,title)
+                (imoogi-project-notes--promotable-artifact))
+               (name (string-trim (or name "")))
+               (slug (imoogi-project-notes--slug
+                      (string-remove-suffix
+                       ".org" (if (string-empty-p name) title name))))
+               (kind (intern slug))
+               (file-name (concat slug ".org"))
+               (notes-dir (imoogi-project-notes--alist-string 'notes-dir entry))
+               (target (expand-file-name
+                        file-name (expand-file-name "development/" notes-dir)))
+               (existing (assq kind (imoogi-project-notes--entry-documents entry))))
+    (imoogi-project-notes--ensure-entry-mutable entry "산출물 승격")
+    (unless (imoogi-project-notes--valid-document-file-p file-name)
+      (user-error "문서 파일 이름으로 쓸 수 없습니다: %s" file-name))
+    (when (or (file-exists-p target) (find-buffer-visiting target))
+      (user-error "같은 이름의 개발 문서가 이미 있습니다: %s" target))
+    (when (and existing (not (equal (cadr existing) file-name)))
+      (user-error "같은 종류의 개발 문서가 다른 파일을 씁니다: %s" (cadr existing)))
+    (when-let* ((links (imoogi-project-notes--move-breaking-file-links)))
+      (user-error "옮기면 깨지는 상대 경로 링크가 있습니다: %s"
+                  (string-join links ", ")))
+    (make-directory (file-name-directory target) t)
+    (rename-file file target)
+    ;; ALONG-WITH-FILE: the file moved with the buffer.  `rename-file' itself
+    ;; flags the visiting buffer as modified (observed on Emacs 30), but the
+    ;; buffer was verified saved above and the contents did not change.
+    (set-visited-file-name target t t)
+    (set-visited-file-modtime)
+    (set-buffer-modified-p nil)
+    (imoogi-project-notes--set-buffer-context entry)
+    (imoogi-project-notes--apply-buffer-status entry)
+    ;; Every ID in the file moved with it, not only the first heading's:
+    ;; copied sections carry their own IDs and links to them must resolve.
+    (dolist (moved-id (imoogi-project-notes--buffer-ids))
+      (org-id-add-location moved-id target))
+    (imoogi-project-notes--record-document entry kind file-name title)
+    (imoogi-project-notes--add-project-shortcut entry target title)
+    (message "imoogi: 산출물을 개발 문서로 옮겼습니다: %s"
+             (abbreviate-file-name target))
+    target))
 
 (defun imoogi-project-notes--entry-label (entry)
   "Return a readable completion label for project notes ENTRY."
@@ -2979,9 +3343,11 @@ no enabled mounted root is currently attached."
          (roots (cl-count-if
                  (lambda (root) (not (eq (alist-get 'enabled root) :json-false)))
                  (alist-get 'roots state)))
+         (all-entries (imoogi-project-notes--all-entries))
          (entries (cl-count-if
                    (lambda (entry) (eq (alist-get 'origin entry) 'mounted))
-                   (imoogi-project-notes--all-entries))))
+                   all-entries)))
+    (imoogi-project-notes--rebuild-context-directories all-entries)
     (message "imoogi: 외장 루트 %d개에서 노트 %d개를 찾았습니다" roots entries)
     entries))
 
@@ -3548,6 +3914,7 @@ Agenda paths are changed and the original directory is removed."
       (user-error "외장 노트만 세션에서 분리할 수 있습니다"))
     (cl-pushnew instance-id imoogi-project-notes--detached-instance-ids
                 :test #'string=)
+    (imoogi-project-notes--rebuild-context-directories)
     (message "imoogi: 외장 노트를 현재 세션 목록에서 분리했습니다")))
 
 (defun imoogi-project-notes--command-output (&rest command)
@@ -3665,6 +4032,7 @@ Agenda paths are changed and the original directory is removed."
     ;; proven; Treemacs may contain user-added roots outside this device.
     (unless (funcall imoogi-project-notes-unmount-executor-function descriptor)
       (user-error "장치를 unmount하지 못했습니다"))
+    (imoogi-project-notes--rebuild-context-directories)
     (message "imoogi: 변경 파일 %d개를 저장하고 %s를 unmount했습니다"
              (length dirty) mount-point)
     t))
@@ -6201,6 +6569,18 @@ opens the new file below the project's artifacts directory."
   (imoogi-project-notes--restore-agenda-files))
 
 (imoogi-project-notes--install-refile-guards)
+
+;; Keep notes buffers away from the Perspective finder (04-projects.el owns the
+;; hook, so neither module requires the other), and keep the notes-directory
+;; list fresh.  The startup rebuild sits on `window-setup-hook', which Emacs
+;; runs after `emacs-startup-hook' and so after
+;; `imoogi-perspective-state-restore'.  `emacs-startup-hook' itself stays
+;; exactly that one restore function (workspace-bridge-test.el pins it).
+(add-hook 'imoogi-project-perspective-finder-exclude-functions
+          #'imoogi-project-notes--context-buffer-p)
+(add-hook 'window-setup-hook #'imoogi-project-notes--rebuild-context-directories)
+(with-eval-after-load 'perspective
+  (add-hook 'persp-switch-hook #'imoogi-project-notes--refresh-context-directories))
 
 (provide 'imoogi-project-notes)
 ;;; 26-project-notes.el ends here

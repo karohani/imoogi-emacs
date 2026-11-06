@@ -1,0 +1,58 @@
+{
+  "a_list_arrow_beside_a_plain_one": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003e수도\u003c/p\u003e\n\u003cp\u003e\n도쿄 \u003cb class=\"swift-arrow\"\u003e:-\u0026gt;\u003c/b\u003e {{c1::일본}}\u003c/p\u003e\n\u003cul\u003e\n\u003cli\u003e서울 :-\u0026gt; 한국\u003c/li\u003e\n\u003c/ul\u003e\n"
+  },
+  "a_second_token_is_text": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003eChain\u003c/p\u003e\n\u003cp\u003e\nA \u003cb class=\"swift-arrow\"\u003e:-\u0026gt;\u003c/b\u003e {{c1::B :-\u0026gt; C}}\u003c/p\u003e\n"
+  },
+  "a_source_block_beside_the_arrow": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003eShell\u003c/p\u003e\n\u003cdiv class=\"src src-sh\"\u003e\n\u003cdiv class=\"highlight\"\u003e\n\u003cpre\u003e\nx :-\u0026gt; y\n\u003c/pre\u003e\n\u003c/div\u003e\n\u003c/div\u003e\n\u003cp\u003e\nrun \u003cb class=\"swift-arrow\"\u003e:-\u0026gt;\u003c/b\u003e {{c1::echo}}\u003c/p\u003e\n"
+  },
+  "an_arrow_free_list_is_context": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003e수도\u003c/p\u003e\n\u003cp\u003e\n도쿄 \u003cb class=\"swift-arrow\"\u003e:-\u0026gt;\u003c/b\u003e {{c1::일본}}\u003c/p\u003e\n\u003cul\u003e\n\u003cli\u003e참고 사항\u003c/li\u003e\n\u003c/ul\u003e\n"
+  },
+  "blank_separated_runs": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003ePairs\u003c/p\u003e\n\u003cp\u003e\nA \u003cb class=\"swift-arrow\"\u003e:-\u0026gt;\u003c/b\u003e {{c1::B}}\u003c/p\u003e\n\u003cp\u003e\ntext\u003c/p\u003e\n\u003cp\u003e\nC \u003cb class=\"swift-arrow\"\u003e:-\u0026gt;\u003c/b\u003e {{c3::D}}\u003c/p\u003e\n"
+  },
+  "both_ways": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003e수도\u003c/p\u003e\n\u003cp\u003e\n{{c2::도쿄}} \u003cb class=\"swift-arrow\"\u003e:\u0026lt;-\u0026gt;\u003c/b\u003e {{c1::일본}}\u003c/p\u003e\n"
+  },
+  "consecutive_lines_break_apart": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003e수도\u003c/p\u003e\n\u003cp\u003e\n도쿄 \u003cb class=\"swift-arrow\"\u003e:-\u0026gt;\u003c/b\u003e {{c1::일본}}\u003cbr\u003e\n서울 \u003cb class=\"swift-arrow\"\u003e:-\u0026gt;\u003c/b\u003e {{c3::한국}}\u003c/p\u003e\n"
+  },
+  "hand_written_marker_on_one_side": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003ePairs\u003c/p\u003e\n\u003cp\u003e\n{{c1::A}} \u003cb class=\"swift-arrow\"\u003e:-\u0026gt;\u003c/b\u003e {{c2::B}}\u003c/p\u003e\n"
+  },
+  "latex_braces_are_separated": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003eFormula\u003c/p\u003e\n\u003cp\u003e\nroot \u003cb class=\"swift-arrow\"\u003e:-\u0026gt;\u003c/b\u003e {{c1::\\sqrt{a\u003csup\u003e2\u003c/sup\u003e } }}\u003c/p\u003e\n"
+  },
+  "leftward": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003e수도\u003c/p\u003e\n\u003cp\u003e\n{{c2::도쿄}} \u003cb class=\"swift-arrow\"\u003e:\u0026lt;-\u003c/b\u003e 일본\u003c/p\u003e\n"
+  },
+  "one_korean_line": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003e일본\u003c/p\u003e\n\u003cp\u003e\n도쿄 \u003cb class=\"swift-arrow\"\u003e:-\u0026gt;\u003c/b\u003e {{c1::일본}}\u003c/p\u003e\n"
+  },
+  "prose_above_and_below": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003e수도\u003c/p\u003e\n\u003cp\u003e\n문맥 한 줄\n도쿄 \u003cb class=\"swift-arrow\"\u003e:-\u0026gt;\u003c/b\u003e {{c1::일본}}\n참고: 성립 조건\u003c/p\u003e\n"
+  },
+  "supplementary_block": {
+    "Back Extra": "\u003cp\u003e메모\u003c/p\u003e\n",
+    "Text": "\u003cp\u003e수도\u003c/p\u003e\n\u003cp\u003e\n도쿄 \u003cb class=\"swift-arrow\"\u003e:-\u0026gt;\u003c/b\u003e {{c1::일본}}\u003c/p\u003e\n"
+  },
+  "title_marker_raises_the_base": {
+    "Back Extra": "",
+    "Text": "\u003cp\u003e{{c3::수도}}\u003c/p\u003e\n\u003cp\u003e\n도쿄 \u003cb class=\"swift-arrow\"\u003e:-\u0026gt;\u003c/b\u003e {{c4::일본}}\u003c/p\u003e\n"
+  }
+}

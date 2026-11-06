@@ -132,6 +132,25 @@
   color: var(--imoogi-emphasis-fg);
 }
 
+/* 10. The swift card's arrow.
+ *
+ * A heading carrying ANKI_SWIFT renders each arrow line as left side, arrow,
+ * right side, and the arrow is emitted as a bold element marked with this
+ * class. The class rides the arrow itself rather than a container: the
+ * renderer inserts no line of its own, so there is no container to mark. The
+ * card's layout does not depend on this rule either — consecutive arrow lines
+ * are already kept apart by a line break in the field — so a sheet that fails
+ * to load costs only the arrow's styling.
+ *
+ * Every declaration consumes an existing token or a plain length; this rule
+ * names no network-hosted resource and derives nothing from a deck name.
+ */
+.card .swift-arrow {
+  color: var(--imoogi-emphasis-fg);
+  font-weight: 700;
+  padding: 0 0.15em;
+}
+
 /* 6. Night theme, under BOTH selector forms: .card.nightMode is Anki desktop
  * and AnkiMobile, .card.night_mode is AnkiDroid — no space between the class
  * names in either. Only the three themed tokens are reassigned; every

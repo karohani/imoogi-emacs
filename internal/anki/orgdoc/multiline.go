@@ -47,13 +47,17 @@ const (
 	DirectionBoth
 )
 
-// CardOptions carries the resolved multiline pair. It deliberately does NOT
-// carry ANKI_SWIFT: swift selects a different card kind, and an entry bearing
-// swift beside a multiline option is rejected by the planner's validation gate
-// before it can reach composition (spec.md § 3 preamble).
+// CardOptions carries the resolved card options: the multiline pair, and the
+// swift option SPEC-ANKICARD-004 gives a rendering meaning (REQ-SW-009.1).
+//
+// Swift and the multiline pair select different card kinds, and an entry
+// bearing swift beside a multiline option is rejected by the planner's
+// validation gate before it can reach composition. RenderWithOptions still
+// answers that combination — as swift — so its dispatch is total.
 type CardOptions struct {
 	Direction   Direction
 	Incremental bool
+	Swift       bool
 }
 
 // multiline reports whether at least one multiline option is ON — the
@@ -166,8 +170,15 @@ func splitLines(body string) []sourceLine {
 	return lines
 }
 
-// blockRegions reports which lines sit inside a block interior, and the index
-// of the first `#+BEGIN_` line that is never terminated.
+// blockSpan is one paired block: the indices of its opening and closing
+// delimiter lines, and its upper-cased NAME.
+type blockSpan struct {
+	begin, end int
+	name       string
+}
+
+// pairedBlocks pairs the body's `#+BEGIN_` and `#+END_` lines, and reports the
+// index of the first `#+BEGIN_` line that is never terminated.
 //
 // The pairing rule is go-org's own: a block closes at the next `#+END_` whose
 // NAME matches, compared case-insensitively, so `#+END_EXAMPLE` does not close
@@ -177,11 +188,10 @@ func splitLines(body string) []sourceLine {
 // split leaves exactly that shape behind when the author nested one
 // `#+BEGIN_EXTRA` block inside another.
 //
-// `undefinedFrom` is what REQ-ML-009.2's decline keys on: from an unterminated
-// opening to the end of the body the extent of the block is undefined, so the
-// collapse declines rather than guessing where it ends.
-func blockRegions(lines []sourceLine) (interior []bool, undefinedFrom int) {
-	interior = make([]bool, len(lines))
+// This is the package's ONE implementation of that rule. blockRegions derives
+// the interior from it, and the swift scanner reads the spans themselves — an
+// empty block has no interior line, so only the span can say where it closes.
+func pairedBlocks(lines []sourceLine) (spans []blockSpan, undefinedFrom int) {
 	undefinedFrom = -1
 	for i := 0; i < len(lines); {
 		m := beginBlockLinePattern.FindStringSubmatch(lines[i].text)
@@ -205,10 +215,26 @@ func blockRegions(lines []sourceLine) (interior []bool, undefinedFrom int) {
 			i++
 			continue
 		}
-		for j := i + 1; j < end; j++ {
+		spans = append(spans, blockSpan{begin: i, end: end, name: name})
+		i = end + 1
+	}
+	return spans, undefinedFrom
+}
+
+// blockRegions reports which lines sit inside a block interior, and the index
+// of the first `#+BEGIN_` line that is never terminated, by the pairing rule
+// pairedBlocks carries.
+//
+// `undefinedFrom` is what REQ-ML-009.2's decline keys on: from an unterminated
+// opening to the end of the body the extent of the block is undefined, so the
+// collapse declines rather than guessing where it ends.
+func blockRegions(lines []sourceLine) (interior []bool, undefinedFrom int) {
+	interior = make([]bool, len(lines))
+	spans, undefinedFrom := pairedBlocks(lines)
+	for _, span := range spans {
+		for j := span.begin + 1; j < span.end; j++ {
 			interior[j] = true
 		}
-		i = end + 1
 	}
 	return interior, undefinedFrom
 }
@@ -369,42 +395,113 @@ func scanAnswerList(body, kind string) (answerList, bool) {
 	}
 
 	list := answerList{containerAt: lines[first].start}
-	cur := base
 	spanOpen := false
+	walkList(lines, first, base, func(i int, role listLineRole, b bulletLine) {
+		ln := lines[i]
+		switch role {
+		case listBlankLine:
+			spanOpen = false
+		case listItemLine:
+			start := ln.start + b.contentStart + answerContentOffset(ln.text[b.contentStart:], kind)
+			list.items = append(list.items, answerItem{start: start, end: ln.end})
+			spanOpen = true
+		case listNestedBullet:
+			spanOpen = false
+		default:
+			// A continuation of the current item. It extends the span only
+			// while the span is still open — a nested bullet is a child, and a
+			// blank line has already closed it.
+			if spanOpen {
+				list.items[len(list.items)-1].end = ln.end
+			}
+		}
+	})
+	return list, true
+}
+
+// listLineRole is what the list-continuation rule makes of one line it
+// attaches to a list.
+type listLineRole int
+
+const (
+	listContinuationLine listLineRole = iota // an indented line of the current item
+	listItemLine                             // a bullet starting a sibling item
+	listNestedBullet                         // a deeper bullet: a child of the current item
+	listBlankLine                            // a single blank line, which does not end the list
+)
+
+// walkList walks the list whose first bullet is lines[first], calling visit for
+// every line go-org's list-continuation rule attaches to it, and returns the
+// index of the first line past the list.
+//
+// The four rules the bare bullet grammar does not carry, each measured against
+// go-org v1.9.1: the base indentation comes from the list's FIRST bullet rather
+// than from column zero; a sibling item is a bullet at that indentation and of
+// the same main kind; a continuation line must reach the current item's own
+// minimum indent, which is the bullet's indent plus the bullet's own width; and
+// two consecutive blank lines end the list where one does not.
+//
+// A fifth rule bounds the fourth and the indent rule: a paired `#+BEGIN_` block
+// or LaTeX environment opened on a line of the item runs to its own close as
+// one continuation, whatever its interior holds — go-org's parseBlock and
+// parseLatexBlock stop only at their own close, not at the item's stop. So
+// neither a shallow interior line, nor a blank pair, nor a bullet inside it
+// ends the list or opens an item (card review t15, finding 2).
+//
+// It is the ONE copy of that rule in the package: the multiline answer scan
+// reads item spans from it, and the swift scanner reads which lines are list
+// content (SPEC-ANKICARD-004 REQ-SW-001.5).
+func walkList(lines []sourceLine, first int, base bulletLine, visit func(i int, role listLineRole, b bulletLine)) int {
+	nested := nestedConstructEnds(lines)
+	cur := base
 	blankRun := 0
 	for i := first; i < len(lines); i++ {
 		ln := lines[i]
 		if ln.blank {
 			blankRun++
 			if blankRun >= 2 {
-				break
+				return i
 			}
-			spanOpen = false
+			visit(i, listBlankLine, bulletLine{})
 			continue
 		}
 		b, isBullet := readBullet(ln.text)
 		if isBullet && b.indent == base.indent && b.mainKind == base.mainKind {
 			blankRun = 0
 			cur = b
-			start := ln.start + b.contentStart + answerContentOffset(ln.text[b.contentStart:], kind)
-			list.items = append(list.items, answerItem{start: start, end: ln.end})
-			spanOpen = true
+			visit(i, listItemLine, b)
 			continue
 		}
 		if ln.indent < cur.minIndent {
-			break
+			return i
 		}
-		// A continuation of the current item. It extends the span only while
-		// the span is still open and the line is not itself a bullet — a
-		// nested bullet is a child, and a blank line has already closed it.
 		blankRun = 0
-		if spanOpen && !isBullet {
-			list.items[len(list.items)-1].end = ln.end
+		if end, ok := nested[i]; ok {
+			for k := i; k <= end; k++ {
+				visit(k, listContinuationLine, bulletLine{})
+			}
+			i = end
+			continue
+		}
+		if isBullet {
+			visit(i, listNestedBullet, b)
 		} else {
-			spanOpen = false
+			visit(i, listContinuationLine, b)
 		}
 	}
-	return list, true
+	return len(lines)
+}
+
+// nestedConstructEnds maps the opening line of every paired `#+BEGIN_` block
+// and LaTeX environment in the body to its closing line, by the package's one
+// pairing rule for each delimiter (pairedBlocks, latexEnvironments).
+func nestedConstructEnds(lines []sourceLine) map[int]int {
+	blocks, _ := pairedBlocks(lines)
+	ends := make(map[int]int)
+	for _, span := range append(blocks, latexEnvironments(lines)...) {
+		ends[span.begin] = span.end
+	}
+	return ends
 }
 
 // --- composition ------------------------------------------------------------
@@ -584,11 +681,17 @@ func wrappable(span string) bool {
 // rejects a split that left a supplementary marker unpaired, before any other
 // render-time diagnostic can fire on the damage it causes (SPEC-ANKICARD-005
 // REQ-AKX-004). Composition reads the REMAINING body, so supplementary content
-// can never become an answer item; and it runs BEFORE the marker gate, so a
-// multiline entry carrying no hand-written marker is satisfied by the markers
-// composition generated rather than skipped as unmarked (spec.md REQ-ML-009).
+// can never become an answer item or an arrow line; and it runs BEFORE the
+// marker gate, so an entry carrying no hand-written marker is satisfied by the
+// markers composition generated rather than skipped as unmarked (spec.md
+// REQ-ML-009, SPEC-ANKICARD-004 REQ-SW-008).
+//
+// The dispatch on card kind is TOTAL (SPEC-ANKICARD-004 REQ-SW-009.3): swift
+// is tested first, so the unreachable swift-beside-multiline entry composes as
+// swift; an entry with neither option on, or on a note type that is not
+// cloze-style, delegates to Render.
 func RenderWithOptions(noteType, title, body string, opts CardOptions) (map[string]string, error) {
-	if !opts.multiline() || noteType != NoteTypeCloze {
+	if !(opts.Swift || opts.multiline()) || noteType != NoteTypeCloze {
 		return Render(noteType, title, body)
 	}
 
@@ -596,7 +699,12 @@ func RenderWithOptions(noteType, title, body string, opts CardOptions) (map[stri
 	if err != nil {
 		return nil, err
 	}
-	composedTitle, composedRest, err := composeMultiline(title, rest, opts)
+	composedTitle, composedRest := title, ""
+	if opts.Swift {
+		composedRest, err = composeSwift(title, rest)
+	} else {
+		composedTitle, composedRest, err = composeMultiline(title, rest, opts)
+	}
 	if err != nil {
 		return nil, err
 	}

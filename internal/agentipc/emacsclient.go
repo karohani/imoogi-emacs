@@ -164,6 +164,19 @@ func findEmacsclient() (string, error) {
 	return "", errors.New("emacsclient not found; install Emacs or set EMACSCLIENT")
 }
 
+// FindEmacsclient exposes findEmacsclient's discovery rule ($EMACSCLIENT,
+// PATH, then the app-bundle candidates) so the imoogi-anki open handler finds
+// emacsclient exactly as imoogi-agent does (SPEC-ANKISRC-001 REQ-ASRC-009.2).
+func FindEmacsclient() (string, error) {
+	return findEmacsclient()
+}
+
+// ParseLispString exposes parseLispString: stdout read as one printed Lisp
+// string. The open handler classifies the receiver's result with it.
+func ParseLispString(stdout []byte) (string, bool) {
+	return parseLispString(stdout)
+}
+
 func isExecutable(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir() && info.Mode().Perm()&0o111 != 0

@@ -29,6 +29,35 @@
       ]
     },
     {
+      "id": "toolchain/clojure-lsp",
+      "kind": "toolchain-archive",
+      "version": "2026.07.06-14.34.19",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/clojure-lsp/clojure-lsp",
+        "artifact_url": "https://github.com/clojure-lsp/clojure-lsp/releases/download/2026.07.06-14.34.19/clojure-lsp-native-macos-aarch64.zip",
+        "commit": "de66293956c057b6ef02601594f196d048684683",
+        "ref": "2026.07.06-14.34.19"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "go run ./cmd/imoogi-toolchain fetch",
+      "files": [
+        {
+          "path": "vendor/toolchains/clojure/clojure-lsp/2026.07.06-14.34.19/darwin-arm64/clojure-lsp-native-macos-aarch64.zip",
+          "sha256": "dd9a8e36add53b8d8166bb3d7580c6e5563401aea87b62600786af2e7d37ccde",
+          "size": 40569964
+        },
+        {
+          "path": "vendor/toolchains/licenses/clojure-lsp-LICENSE",
+          "sha256": "f2ea07ed625651b1e4a88ae49b620f0fecd32b64fe1f6609e4d0f12754d77e72",
+          "size": 1080
+        }
+      ]
+    },
+    {
       "id": "toolchain/gopls",
       "kind": "toolchain-binary",
       "version": "v0.23.0",
@@ -73,13 +102,76 @@
       "files": [
         {
           "path": "vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain",
-          "sha256": "491492881ff4a7d733caaafc1f672b7e03d21e8fc1e72e9d45b296f9a6d51f46",
-          "size": 9556130
+          "sha256": "79c8bab41d7c9311bb0fdc21b7b44bf3a53124e527b300871eba154b54c30be3",
+          "size": 9802994
         },
         {
           "path": "vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain.provenance.json",
-          "sha256": "d02529e6a41af5ee2a969b4aae8dc0eba039e464bf0baf3888b0e73968c9859a",
+          "sha256": "9139ec9b71770b79561e409d9bdff7bc8d45fb379c968ba55f9aa8a5eb9d2228",
           "size": 557
+        }
+      ]
+    },
+    {
+      "id": "toolchain/jdtls",
+      "kind": "toolchain-archive",
+      "version": "1.61.0-202609031315",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/eclipse-jdtls/eclipse.jdt.ls",
+        "artifact_url": "https://download.eclipse.org/jdtls/milestones/1.61.0/jdt-language-server-1.61.0-202609031315.tar.gz",
+        "commit": "08eafe6ff60c7159ef88571d47b6a9ef82fef94e",
+        "ref": "v1.61.0"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "go run ./cmd/imoogi-toolchain fetch",
+      "files": [
+        {
+          "path": "vendor/toolchains/java/jdtls/1.61.0-202609031315/darwin-arm64/jdt-language-server.tar.gz",
+          "sha256": "338e7e73d61836651ba2453919a0d34fa763eb4e7c03342092309bffb8934c64",
+          "size": 51037522
+        },
+        {
+          "path": "vendor/toolchains/licenses/jdtls-LICENSE",
+          "sha256": "209fe24bf55677bbf81c2b0481c1403201fab57b3b4c609971eba4ec8162b99c",
+          "size": 14196
+        }
+      ]
+    },
+    {
+      "id": "toolchain/kotlin-language-server",
+      "kind": "toolchain-archive",
+      "version": "1.3.13",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/fwcd/kotlin-language-server",
+        "artifact_url": "https://github.com/fwcd/kotlin-language-server/releases/download/1.3.13/server.zip",
+        "commit": "f532bcc9c6578f5a35009a8b5f281f93d4d131ba",
+        "ref": "1.3.13"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "go run ./cmd/imoogi-toolchain fetch",
+      "files": [
+        {
+          "path": "vendor/toolchains/kotlin/kotlin-language-server/1.3.13/darwin-arm64/server.zip",
+          "sha256": "4fe7d71d087b307c7869036171bd9d8c6a4284cd7c25b89098b0a24eb2d9b6d2",
+          "size": 87291855
+        },
+        {
+          "path": "vendor/toolchains/licenses/kotlin-language-server-1.3.13-licenseReport.html",
+          "sha256": "2bc89a2c22956d0256cb4c4c5b278aa8fe2bf748fb31a5d2f1900246e8a73b89",
+          "size": 40093
+        },
+        {
+          "path": "vendor/toolchains/licenses/kotlin-language-server-LICENSE",
+          "sha256": "1690b72b5a2beb330c98c0715929bf789cb8d91670c29ff2e4abcdae84329136",
+          "size": 1104
         }
       ]
     },

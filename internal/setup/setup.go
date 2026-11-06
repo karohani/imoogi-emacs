@@ -20,7 +20,9 @@ import (
 	"github.com/karohani/imoogi-emacs/internal/artifact"
 	"github.com/karohani/imoogi-emacs/internal/config"
 	"github.com/karohani/imoogi-emacs/internal/lang"
+	"github.com/karohani/imoogi-emacs/internal/lang/clojure"
 	"github.com/karohani/imoogi-emacs/internal/lang/golang"
+	"github.com/karohani/imoogi-emacs/internal/lang/jvm"
 	"github.com/karohani/imoogi-emacs/internal/lang/typescript"
 )
 
@@ -281,6 +283,12 @@ func DefaultProviderFactory(lock config.ResolvedLock) ([]lang.Provider, error) {
 			processed[component.Name] = struct{}{}
 		case typescript.SupportsComponent(component):
 			tsComponents = append(tsComponents, component)
+			processed[component.Name] = struct{}{}
+		case jvm.SupportsComponent(component):
+			providers = append(providers, jvm.New(component))
+			processed[component.Name] = struct{}{}
+		case clojure.SupportsComponent(component):
+			providers = append(providers, clojure.New(component))
 			processed[component.Name] = struct{}{}
 		}
 	}

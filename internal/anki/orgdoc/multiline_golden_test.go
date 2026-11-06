@@ -168,8 +168,11 @@ func TestMultilineFalsyOptionsAreByteIdenticalToNoOptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rendering with no options: %v", err)
 	}
+	// SPEC-ANKICARD-004 names the swift field too (plan.md § A.4, fourth
+	// site): its zero value already compiled and passed here, which is exactly
+	// why the no-option claim would otherwise cover two options of three.
 	falsy, err := orgdoc.RenderWithOptions(orgdoc.NoteTypeCloze, title, body,
-		orgdoc.CardOptions{Direction: orgdoc.DirectionNone, Incremental: false})
+		orgdoc.CardOptions{Direction: orgdoc.DirectionNone, Incremental: false, Swift: false})
 	if err != nil {
 		t.Fatalf("rendering with falsy options: %v", err)
 	}
@@ -179,10 +182,14 @@ func TestMultilineFalsyOptionsAreByteIdenticalToNoOptions(t *testing.T) {
 		}
 	}
 	// And neither carries a generated marker or a container: an entry with no
-	// multiline option on is not a multiline entry.
+	// multiline option on is not a multiline entry. Nor, with swift off, does
+	// it carry the arrow's emphasis or the inline break between arrow lines.
 	for _, v := range none {
 		if strings.Contains(v, "children-list") {
 			t.Errorf("a non-multiline entry gained the answer-list container: %q", v)
+		}
+		if strings.Contains(v, "swift-arrow") || strings.Contains(v, "<br>") {
+			t.Errorf("a non-swift entry gained the swift emphasis or break: %q", v)
 		}
 	}
 }

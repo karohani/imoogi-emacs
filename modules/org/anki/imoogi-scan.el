@@ -98,7 +98,14 @@ Returns a plist (:entries LIST :census LIST)."
                     ;; chain resolved to no value.
                     (direction (imoogi-props-resolve-direction))
                     (incremental (imoogi-props-resolve-incremental))
-                    (swift (imoogi-props-resolve-swift)))
+                    (swift (imoogi-props-resolve-swift))
+                    ;; SPEC-ANKISRC-001 REQ-ASRC-003: the heading's OWN
+                    ;; :ID: as it is on disk -- never a parent's.  It
+                    ;; travels as the optional `org_id' and names the
+                    ;; heading in the card's open-source link.
+                    (org-id (let ((id (org-entry-get (point) "ID" nil)))
+                              (and id (not (string-empty-p (string-trim id)))
+                                   (string-trim id)))))
                (push (list :key key
                             :note-id (and note-id (string-to-number note-id))
                             :note-type note-type
@@ -109,7 +116,8 @@ Returns a plist (:entries LIST :census LIST)."
                             :body body
                             :direction direction
                             :incremental incremental
-                            :swift swift)
+                            :swift swift
+                            :org-id org-id)
                      entries)
                (setq index (1+ index))))))))
     (list :entries (nreverse entries) :census (nreverse census))))

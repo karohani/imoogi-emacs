@@ -123,6 +123,11 @@ absent from that heading's own drawer."
   "AC-024: a run over an already-synchronized entry must leave the Org
 buffer byte-identical, the file on disk byte-identical, and must write
 no Anki-sourced field value, tag, or deck name anywhere."
+  ;; The heading already carries its own Org :ID:, as every synchronized
+  ;; heading does once SPEC-ANKISRC-001's ID pass has run once.  Without it
+  ;; that pass would (correctly, REQ-ASRC-001.2) give the heading an ID on
+  ;; this run, which is imoogi's own identifier rather than anything
+  ;; Anki-sourced -- the property this test guards.
   (imoogi-oneway-test--with-root
       (concat "* Capital of France\n"
               ":PROPERTIES:\n"
@@ -130,12 +135,16 @@ no Anki-sourced field value, tag, or deck name anywhere."
               ":ANKI_NOTE_ID: 1001\n"
               ":ANKI_DECK: Geography\n"
               ":ANKI_TAGS: geography europe\n"
+              ":ID: 3C0D5A51-7A2B-4C6E-8F00-0123456789AB\n"
               ":END:\n"
               "Paris.\n")
     (let ((buffer-before (with-current-buffer buffer (buffer-string)))
           (disk-before (imoogi-oneway-test--file-contents file))
           (captured-request nil))
-      (let* ((imoogi-sync-root root)
+      (let* ((org-id-locations-file (expand-file-name ".org-id-locations" root))
+             (org-id-locations (make-hash-table :test 'equal))
+             (org-id-files nil)
+             (imoogi-sync-root root)
              (imoogi-exclude-patterns nil)
              (imoogi-anki-binary-path (executable-find "true"))
              (imoogi-process-runner
@@ -237,16 +246,24 @@ delta is checked here to touch ANKI_NOTE_ID and nothing else.
 The run is driven over an `added' result, because write-back is the
 only path that edits an Org file at all: a run that wrote nothing
 could not fail this assertion however the code behaved."
+  ;; The heading already carries its own Org :ID: (see AC-024 above):
+  ;; otherwise SPEC-ANKISRC-001's ID pass would add one on this run, and
+  ;; the delta would no longer be ANKI_NOTE_ID alone for a reason this
+  ;; criterion is not about.
   (imoogi-oneway-test--with-root
       (concat "* Optioned\n"
               ":PROPERTIES:\n"
               ":ANKI_NOTE_TYPE: imoogi-Cloze\n"
               ":ANKI_DIRECTION: ->\n"
+              ":ID: 7E2B9C40-5D1A-4F3B-A6C8-0123456789CD\n"
               ":END:\n"
               "A {{c1::cloze}} body.\n")
     (let ((options-before (imoogi-oneway-test--card-options file))
           (disk-before (imoogi-oneway-test--file-contents file)))
-      (let* ((imoogi-sync-root root)
+      (let* ((org-id-locations-file (expand-file-name ".org-id-locations" root))
+             (org-id-locations (make-hash-table :test 'equal))
+             (org-id-files nil)
+             (imoogi-sync-root root)
              (imoogi-exclude-patterns nil)
              (imoogi-anki-binary-path (executable-find "true"))
              (imoogi-process-runner

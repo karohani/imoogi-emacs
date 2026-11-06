@@ -39,6 +39,16 @@ var multilineCorpus = []struct {
 		body:  "#+BEGIN_QUOTE\n- inner\n#+END_QUOTE\n",
 		found: false,
 	},
+	{
+		// A block nested in an item runs to its own close: its shallow
+		// interior line ends neither the item nor the list (the shared list
+		// walk, SPEC-ANKICARD-004 card review t15, finding 2). Count only —
+		// the span over a nested block is the walk's existing continuation
+		// rule, unchanged here.
+		name:  "a_nested_block_with_a_shallow_line_stays_in_its_item",
+		body:  "- A\n  #+BEGIN_EXAMPLE\nx\n  #+END_EXAMPLE\n- B\n",
+		found: true, items: 2,
+	},
 
 	// --- blank-line runs -----------------------------------------------------
 	{

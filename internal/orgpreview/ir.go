@@ -81,6 +81,19 @@ func FindNodeAt(nodes []Node, offset int) *Node {
 	return best
 }
 
+// FindNodeByID returns the node with ID anywhere in nodes, or nil.
+func FindNodeByID(nodes []Node, id string) *Node {
+	for i := range nodes {
+		if nodes[i].ID == id {
+			return &nodes[i]
+		}
+		if found := FindNodeByID(nodes[i].Children, id); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
 func Flatten(doc Document) []FlatNode {
 	var out []FlatNode
 	var walk func([]Node)
