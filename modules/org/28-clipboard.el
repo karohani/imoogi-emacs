@@ -22,6 +22,14 @@
   "Seconds between staging lease renewals."
   :type 'integer :group 'imoogi-clipboard)
 
+(defcustom imoogi-clipboard-vault-directories
+  (list (expand-file-name "~/satelite/"))
+  "Knowledge vaults sharing one asset folder, besides `imoogi-mothership-directory'."
+  :type '(repeat directory) :group 'imoogi-clipboard)
+
+(defconst imoogi-clipboard-vault-asset-directory "50. Assets"
+  "Folder, relative to a vault root, that holds every pasted asset of the vault.")
+
 (defvar imoogi-clipboard--session-id nil)
 (defvar imoogi-clipboard--process-start-id
   (format "%s:%s" (emacs-pid) (float-time before-init-time)))
@@ -36,6 +44,7 @@
 (defvar-local imoogi-clipboard--transactions nil)
 (defvar-local imoogi-clipboard--pending-renames nil)
 (defvar imoogi-clipboard--refile-source-directory nil)
+(defvar imoogi-clipboard--in-roam-refile nil)
 
 (defun imoogi-clipboard--id (prefix)
   "Return a locally unique identifier beginning with PREFIX."
@@ -166,9 +175,19 @@
     (funcall callback nil)
     nil))
 
+(defun imoogi-clipboard--vault-root (document)
+  "Return the knowledge vault root containing DOCUMENT, or nil."
+  (seq-find (lambda (root) (file-in-directory-p document root))
+            (mapcar #'expand-file-name
+                    (append (and (boundp 'imoogi-mothership-directory)
+                                 (list imoogi-mothership-directory))
+                            imoogi-clipboard-vault-directories))))
+
 (defun imoogi-clipboard--owner ()
   "Return the explicit owner descriptor for the current buffer."
-  (let* ((registry-matches
+  (let* ((vault-root (and buffer-file-name
+                          (imoogi-clipboard--vault-root buffer-file-name)))
+         (registry-matches
           (and buffer-file-name
                (fboundp 'imoogi-project-notes--read-registry)
                (seq-filter
@@ -189,6 +208,12 @@
                    imoogi-project-notes-directory-local)
               (alist-get 'notes-dir registry-entry))))
    (cond
+   (vault-root
+    `((kind . "project_notes")
+      (document . ,(expand-file-name buffer-file-name))
+      (root . ,vault-root)
+      (registry_key . "vault")
+      (asset_dir . ,imoogi-clipboard-vault-asset-directory)))
    ((and notes-root buffer-file-name
          (file-in-directory-p (expand-file-name buffer-file-name)
                               (expand-file-name notes-root)))
@@ -288,11 +313,20 @@ With prefix ARG, always invoke native `yank'."
 		  (assets . ,(alist-get 'assets response)))
 		imoogi-clipboard--transactions))))
 
+(defun imoogi-clipboard--percent-link-target (target)
+  "Percent-encode TARGET, preserving path separators."
+  (mapconcat #'url-hexify-string (split-string target "/" nil) "/"))
+
 (defun imoogi-clipboard--link-target (target)
-  "Encode TARGET for an Org or Markdown link, preserving path separators."
-  (if (string-prefix-p "imoogi-asset:" target)
-      target
-    (mapconcat #'url-hexify-string (split-string target "/" nil) "/")))
+  "Encode TARGET for an Org or Markdown link, preserving path separators.
+Org does not decode percent escapes in file links, so an Org target encodes
+only the characters that would break the link or its later decoding."
+  (cond
+   ((string-prefix-p "imoogi-asset:" target) target)
+   ((derived-mode-p 'org-mode)
+    (replace-regexp-in-string
+     "[][%\\]" (lambda (match) (format "%%%02X" (aref match 0))) target t t))
+   (t (imoogi-clipboard--percent-link-target target))))
 
 (defun imoogi-clipboard--decode-link-target (target)
   "Decode the UTF-8 percent escapes in link TARGET."
@@ -427,7 +461,8 @@ With prefix ARG, always invoke native `yank'."
 (defun imoogi-clipboard--owner-asset-root (owner document)
   "Return OWNER's asset root for DOCUMENT."
   (pcase (alist-get 'kind owner)
-    ("project_notes" (expand-file-name "assets" (alist-get 'root owner)))
+    ("project_notes" (expand-file-name (or (alist-get 'asset_dir owner) "assets")
+                                       (alist-get 'root owner)))
     ("standalone" (or (alist-get 'root owner)
                       (concat (file-name-sans-extension document) ".assets")))))
 
@@ -457,13 +492,40 @@ With prefix ARG, always invoke native `yank'."
        (equal (file-truename (alist-get 'root left))
               (file-truename (alist-get 'root right)))))
 
+(defun imoogi-clipboard--rebased-target (raw old-directory)
+  "Return link target RAW re-expressed from this buffer's directory, or nil.
+RAW is relative to OLD-DIRECTORY; only links to existing files are rebased."
+  (unless (or (file-name-absolute-p raw) (string-match-p "\\`[[:alpha:]-]+:" raw))
+    (let ((source (expand-file-name (imoogi-clipboard--decode-link-target raw)
+                                    old-directory)))
+      (when (file-regular-p source)
+        (imoogi-clipboard--link-target
+         (file-relative-name source (file-name-directory buffer-file-name)))))))
+
+(defun imoogi-clipboard--rebase-links (old-directory)
+  "Rewrite relative file links in this buffer that were written from OLD-DIRECTORY."
+  (save-excursion
+    (goto-char (point-min))
+    (while (re-search-forward
+            "\\(?:\\[\\[file:\\([^]]+\\)\\]\\|](\\([^)]*\\))\\)" nil t)
+      (let* ((group (if (match-beginning 1) 1 2))
+             (raw (match-string-no-properties group))
+             (target (save-match-data
+                       (imoogi-clipboard--rebased-target raw old-directory))))
+        (when target (replace-match target t t nil group))))))
+
 (defun imoogi-clipboard--relocate-visited-assets (old-document new-document &optional old-owner)
-  "Copy managed standalone assets from OLD-DOCUMENT for NEW-DOCUMENT."
+  "Copy managed standalone assets from OLD-DOCUMENT for NEW-DOCUMENT.
+Inside one vault the shared asset folder stays put and only links change."
   (let* ((old-owner (or old-owner
                         `((kind . "standalone")
                           (document . ,old-document)
                           (root . ,(concat (file-name-sans-extension old-document) ".assets")))))
          (new-owner (imoogi-clipboard--owner)))
+  (when (and old-document new-document
+             (alist-get 'asset_dir new-owner)
+             (imoogi-clipboard--same-project-owner-p old-owner new-owner))
+    (imoogi-clipboard--rebase-links (file-name-directory old-document)))
   (when (and old-document new-document
              (not (equal (expand-file-name old-document)
                          (expand-file-name new-document)))
@@ -485,17 +547,21 @@ With prefix ARG, always invoke native `yank'."
                    (or (alist-get 'message response) "no response")))
           (cl-mapc
            (lambda (old-path asset)
-             (let ((old-relative
-                    (imoogi-clipboard--link-target
-                     (file-relative-name old-path (file-name-directory old-document))))
-                   (new-relative
-                    (imoogi-clipboard--link-target
-                     (file-relative-name (alist-get 'path asset)
-                                         (file-name-directory new-document)))))
-               (save-excursion
-                 (goto-char (point-min))
-                 (while (search-forward old-relative nil t)
-                   (replace-match new-relative t t)))))
+             (let* ((relative
+                     (file-relative-name old-path (file-name-directory old-document)))
+                    (new-relative
+                     (imoogi-clipboard--link-target
+                      (file-relative-name (alist-get 'path asset)
+                                          (file-name-directory new-document)))))
+               ;; Links written before Org targets stopped being percent-encoded.
+               (dolist (old-relative
+                        (delete-dups
+                         (list (imoogi-clipboard--link-target relative)
+                               (imoogi-clipboard--percent-link-target relative))))
+                 (save-excursion
+                   (goto-char (point-min))
+                   (while (search-forward old-relative nil t)
+                     (replace-match new-relative t t))))))
            paths (alist-get 'assets response))))))))
 
 (defun imoogi-clipboard--set-visited-around (original filename &rest args)
@@ -594,33 +660,64 @@ asset owner into the later `set-visited-file-name' call."
          (and buffer-file-name (file-name-directory buffer-file-name))))
     (apply original args)))
 
+(defun imoogi-clipboard--org-roam-refile-around (original &rest args)
+  "Run ORIGINAL `org-roam-refile' while retaining the source directory.
+It pastes directly instead of running `org-after-refile-insert-hook'."
+  (let ((imoogi-clipboard--refile-source-directory
+         (and buffer-file-name (file-name-directory buffer-file-name)))
+        (imoogi-clipboard--in-roam-refile t))
+    (apply original args)))
+
+(defun imoogi-clipboard--after-paste-subtree (&rest _)
+  "Treat the subtree `org-roam-refile' just pasted like a refile insert."
+  (when imoogi-clipboard--in-roam-refile
+    (imoogi-clipboard--after-refile-insert)))
+
+(defun imoogi-clipboard--refiled-target (raw)
+  "Return the new target for link RAW in a refiled subtree, or nil to keep it."
+  (let ((source (expand-file-name (imoogi-clipboard--decode-link-target raw)
+                                  imoogi-clipboard--refile-source-directory))
+        (vault-root (imoogi-clipboard--vault-root buffer-file-name)))
+    (cond
+     ((not (file-regular-p source)) nil)
+     ((and vault-root (file-in-directory-p source vault-root))
+      (imoogi-clipboard--rebased-target
+       raw imoogi-clipboard--refile-source-directory))
+     (t
+      (let ((response
+             (imoogi-clipboard--call-sync
+              (imoogi-clipboard--request
+               "import"
+               `((identity . ,(imoogi-clipboard--ensure-identity))
+                 (owner . ,(imoogi-clipboard--owner))
+                 (paths . ,(vector source))))
+              15.0)))
+        (when (equal (alist-get 'status response) "ok")
+          (imoogi-clipboard--link-target
+           (file-relative-name
+            (alist-get 'path (car (alist-get 'assets response)))
+            (file-name-directory buffer-file-name)))))))))
+
 (defun imoogi-clipboard--after-refile-insert ()
-  "Copy regular file links in a refiled subtree into the destination owner."
+  "Point file links in a refiled subtree at assets the destination can reach.
+A failure leaves that link unchanged so the refile itself still completes."
   (when (and imoogi-clipboard-mode imoogi-clipboard--refile-source-directory
              buffer-file-name)
-    (save-restriction
-      (org-narrow-to-subtree)
-      (goto-char (point-min))
-      (while (re-search-forward "\\[\\[file:\\([^]]+\\)\\]" nil t)
-        (let* ((raw (match-string-no-properties 1))
-               (source (expand-file-name (imoogi-clipboard--decode-link-target raw)
-                                         imoogi-clipboard--refile-source-directory)))
-          (when (file-regular-p source)
-            (let ((response
-                   (imoogi-clipboard--call-sync
-                    (imoogi-clipboard--request
-                     "import"
-                     `((identity . ,(imoogi-clipboard--ensure-identity))
-                       (owner . ,(imoogi-clipboard--owner))
-                       (paths . ,(vector source))))
-                    15.0)))
-              (when (equal (alist-get 'status response) "ok")
-                (let ((relative
-                       (imoogi-clipboard--link-target
-                        (file-relative-name
-                         (alist-get 'path (car (alist-get 'assets response)))
-                         (file-name-directory buffer-file-name)))))
-                  (replace-match relative t t nil 1))))))))))
+    (save-excursion
+      (save-restriction
+        (org-narrow-to-subtree)
+        (goto-char (point-min))
+        (while (re-search-forward "\\[\\[file:\\([^]]+\\)\\]" nil t)
+          (let* ((raw (match-string-no-properties 1))
+                 (target
+                  (save-match-data
+                    (condition-case err
+                        (imoogi-clipboard--refiled-target raw)
+                      (error
+                       (imoogi-clipboard--log "refile link update failed: %s"
+                                              (error-message-string err))
+                       nil)))))
+            (when target (replace-match target t t nil 1))))))))
 
 (defun imoogi-clipboard--after-kill (&rest _)
   "Capture OS clipboard identity after a local kill export."
@@ -715,6 +812,8 @@ asset owner into the later `set-visited-file-name' call."
 (advice-add 'rename-file :around #'imoogi-clipboard--rename-file-around)
 (with-eval-after-load 'org
   (advice-add 'org-refile :around #'imoogi-clipboard--org-refile-around)
+  (advice-add 'org-roam-refile :around #'imoogi-clipboard--org-roam-refile-around)
+  (advice-add 'org-paste-subtree :after #'imoogi-clipboard--after-paste-subtree)
   (add-hook 'org-after-refile-insert-hook #'imoogi-clipboard--after-refile-insert))
 (add-to-list 'dnd-protocol-alist '("^file:" . imoogi-clipboard--dnd-handler))
 

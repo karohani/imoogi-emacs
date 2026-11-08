@@ -101,6 +101,7 @@ type Owner struct {
 	Document    string    `json:"document,omitempty"`
 	Root        string    `json:"root,omitempty"`
 	RegistryKey string    `json:"registry_key,omitempty"`
+	AssetDir    string    `json:"asset_dir,omitempty"`
 	Session     string    `json:"session,omitempty"`
 	Buffer      string    `json:"buffer,omitempty"`
 	Generation  uint64    `json:"generation,omitempty"`

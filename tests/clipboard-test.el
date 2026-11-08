@@ -105,7 +105,7 @@
       (should
 	(equal (imoogi-clipboard--asset-link
 		'((id . "a") (path . "/tmp/note.assets/한 글[1](x)%25.png")))
-	       "[[file:note.assets/%ED%95%9C%20%EA%B8%80%5B1%5D%28x%29%2525.png][한 글_1__x_%25.png]]"))))
+	       "[[file:note.assets/한 글%5B1%5D(x)%2525.png][한 글_1__x_%25.png]]"))))
   (with-temp-buffer
     (setq major-mode 'markdown-mode)
     (let ((buffer-file-name "/tmp/note.md"))
@@ -281,7 +281,7 @@
             (imoogi-clipboard--relocate-visited-assets
              old-document new-document old-owner)
             (should (equal imported-paths (list old-asset)))
-            (should (string-match-p "moved\.assets/%ED%95%9C%20%EA%B8%80\.png"
+            (should (string-match-p "moved\.assets/한 글\.png"
                                     (buffer-string))))
         (delete-directory project t)
         (delete-directory outside t)))))
@@ -353,6 +353,150 @@
 				    (buffer-string)))))
       (delete-directory project t)
       (delete-directory outside t))))
+
+(defun imoogi-clipboard-test--make-file (path)
+  "Create an empty-ish regular file at PATH with its parents."
+  (make-directory (file-name-directory path) t)
+  (write-region "png" nil path nil 'silent))
+
+(ert-deftest imoogi-clipboard-refile-rewrites-link-after-import ()
+  (let* ((directory (make-temp-file "imoogi-refile" t))
+         (destination (expand-file-name "notes/dst.org" directory))
+         (copied (expand-file-name "notes/dst.assets/p.png" directory)))
+    (imoogi-clipboard-test--make-file
+     (expand-file-name "inbox/src.assets/p.png" directory))
+    (make-directory (file-name-directory destination) t)
+    (unwind-protect
+        (with-temp-buffer
+          (org-mode)
+          (setq buffer-file-name destination)
+          (setq-local imoogi-clipboard-mode t)
+          (insert "* Moved\n[[file:src.assets/p.png][p.png]]\n")
+          (goto-char (point-min))
+          (cl-letf (((symbol-function 'imoogi-clipboard--call-sync)
+                     (lambda (_request _timeout)
+                       `((status . "ok")
+                         (assets . (((id . "asset") (path . ,copied))))))))
+            (let ((imoogi-clipboard--refile-source-directory
+                   (expand-file-name "inbox/" directory)))
+              (imoogi-clipboard--after-refile-insert)))
+          (should (string-match-p "\\[\\[file:dst\\.assets/p\\.png\\]" (buffer-string))))
+      (delete-directory directory t))))
+
+(ert-deftest imoogi-clipboard-refile-survives-helper-failure ()
+  (let* ((directory (make-temp-file "imoogi-refile" t))
+         (destination (expand-file-name "notes/dst.org" directory)))
+    (imoogi-clipboard-test--make-file
+     (expand-file-name "inbox/src.assets/p.png" directory))
+    (make-directory (file-name-directory destination) t)
+    (unwind-protect
+        (with-temp-buffer
+          (org-mode)
+          (setq buffer-file-name destination)
+          (setq-local imoogi-clipboard-mode t)
+          (insert "* Moved\n[[file:src.assets/p.png][p.png]]\n")
+          (goto-char (point-min))
+          (cl-letf (((symbol-function 'imoogi-clipboard--call-sync)
+                     (lambda (&rest _) (error "helper exploded"))))
+            (let ((imoogi-clipboard--refile-source-directory
+                   (expand-file-name "inbox/" directory)))
+              (imoogi-clipboard--after-refile-insert)))
+          (should (string-match-p "file:src\\.assets/p\\.png" (buffer-string))))
+      (delete-directory directory t))))
+
+(ert-deftest imoogi-clipboard-owner-uses-shared-vault-assets ()
+  (let* ((vault (file-name-as-directory (make-temp-file "imoogi-vault" t)))
+         (imoogi-clipboard-vault-directories (list vault))
+         (document (expand-file-name "00. Inbox/note.org" vault)))
+    (make-directory (file-name-directory document) t)
+    (unwind-protect
+        (with-temp-buffer
+          (setq buffer-file-name document)
+          (let ((owner (imoogi-clipboard--owner)))
+            (should (equal (alist-get 'kind owner) "project_notes"))
+            (should (equal (alist-get 'root owner) (expand-file-name vault)))
+            (should (equal (alist-get 'asset_dir owner) "50. Assets"))
+            (should (equal (imoogi-clipboard--owner-asset-root owner document)
+                           (expand-file-name "50. Assets" vault)))))
+      (delete-directory vault t))))
+
+(ert-deftest imoogi-clipboard-same-vault-refile-relinks-without-copy ()
+  (let* ((vault (file-name-as-directory (make-temp-file "imoogi-vault" t)))
+         (imoogi-clipboard-vault-directories (list vault))
+         (destination (expand-file-name "30. Permanent Notes/sub/dst.org" vault))
+         called)
+    (imoogi-clipboard-test--make-file (expand-file-name "50. Assets/p.png" vault))
+    (make-directory (file-name-directory destination) t)
+    (make-directory (expand-file-name "00. Inbox" vault) t)
+    (unwind-protect
+        (with-temp-buffer
+          (org-mode)
+          (setq buffer-file-name destination)
+          (setq-local imoogi-clipboard-mode t)
+          (insert "* Moved\n[[file:../50. Assets/p.png][p.png]]\n")
+          (goto-char (point-min))
+          (cl-letf (((symbol-function 'imoogi-clipboard--call-sync)
+                     (lambda (&rest _) (setq called t) nil)))
+            (let ((imoogi-clipboard--refile-source-directory
+                   (expand-file-name "00. Inbox/" vault)))
+              (imoogi-clipboard--after-refile-insert)))
+          (should-not called)
+          (should (string-match-p "\\[\\[file:\\.\\./\\.\\./50\\. Assets/p\\.png\\]"
+                                  (buffer-string))))
+      (delete-directory vault t))))
+
+(ert-deftest imoogi-clipboard-org-roam-refile-relinks-pasted-subtree ()
+  (let* ((vault (file-name-as-directory (make-temp-file "imoogi-vault" t)))
+         (imoogi-clipboard-vault-directories (list vault))
+         (source (expand-file-name "00. Inbox/src.org" vault))
+         (destination (expand-file-name "30. Permanent Notes/sub/dst.org" vault)))
+    (imoogi-clipboard-test--make-file (expand-file-name "50. Assets/p.png" vault))
+    (make-directory (file-name-directory source) t)
+    (make-directory (file-name-directory destination) t)
+    (unwind-protect
+        (with-temp-buffer
+          (org-mode)
+          (setq buffer-file-name destination)
+          (setq-local imoogi-clipboard-mode t)
+          (insert "* Target\n")
+          (let ((destination-buffer (current-buffer)))
+            (with-temp-buffer
+              (setq buffer-file-name source)
+              (imoogi-clipboard--org-roam-refile-around
+               (lambda (&rest _)
+                 (with-current-buffer destination-buffer
+                   (goto-char (point-max))
+                   (org-paste-subtree
+                    2 "* Moved\n[[file:../50. Assets/p.png][p.png]]\n")))
+               'node)))
+          (should (string-match-p "\\[\\[file:\\.\\./\\.\\./50\\. Assets/p\\.png\\]"
+                                  (buffer-string))))
+      (delete-directory vault t))))
+
+(ert-deftest imoogi-clipboard-vault-rename-relinks-without-copy ()
+  (let* ((vault (file-name-as-directory (make-temp-file "imoogi-vault" t)))
+         (imoogi-clipboard-vault-directories (list vault))
+         (old-document (expand-file-name "00. Inbox/note.org" vault))
+         (new-document (expand-file-name "30. Permanent Notes/sub/note.org" vault))
+         called)
+    (imoogi-clipboard-test--make-file (expand-file-name "50. Assets/p.png" vault))
+    (make-directory (file-name-directory old-document) t)
+    (make-directory (file-name-directory new-document) t)
+    (unwind-protect
+        (with-temp-buffer
+          (org-mode)
+          (setq buffer-file-name old-document)
+          (setq-local imoogi-clipboard-mode t)
+          (insert "[[file:../50. Assets/p.png][p.png]]")
+          (cl-letf (((symbol-function 'imoogi-clipboard--call-sync)
+                     (lambda (&rest _) (setq called t) nil)))
+            (imoogi-clipboard--set-visited-around
+             (lambda (filename &rest _) (setq buffer-file-name filename))
+             new-document))
+          (should-not called)
+          (should (string-match-p "\\[\\[file:\\.\\./\\.\\./50\\. Assets/p\\.png\\]"
+                                  (buffer-string))))
+      (delete-directory vault t))))
 
 (provide 'clipboard-test)
 ;;; clipboard-test.el ends here

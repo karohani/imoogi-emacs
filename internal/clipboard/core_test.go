@@ -7,6 +7,27 @@ import (
 	"time"
 )
 
+func TestProjectOwnerHonorsAssetDirectory(t *testing.T) {
+	root := t.TempDir()
+	document := filepath.Join(root, "00. Inbox", "a.org")
+	resolved, err := ResolveOwner(Owner{Kind: OwnerProjectNotes, Document: document, Root: root, AssetDir: "50. Assets"}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.AssetRoot != filepath.Join(canonicalRoot, "50. Assets") {
+		t.Fatalf("asset root = %q", resolved.AssetRoot)
+	}
+	for _, escape := range []string{"..", "../outside", "."} {
+		if _, err := ResolveOwner(Owner{Kind: OwnerProjectNotes, Document: document, Root: root, AssetDir: escape}, t.TempDir()); err == nil {
+			t.Fatalf("asset dir %q accepted", escape)
+		}
+	}
+}
+
 func TestResolveProjectOwnerContainsDocument(t *testing.T) {
 	root := t.TempDir()
 	document := filepath.Join(root, "notes", "a.org")

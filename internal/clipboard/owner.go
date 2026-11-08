@@ -31,7 +31,11 @@ func ResolveOwner(owner Owner, stagingBase string) (ResolvedOwner, error) {
 		if !pathWithin(root, document) || document == root {
 			return ResolvedOwner{}, errors.New("project document is outside project root")
 		}
-		assetRoot, err := canonicalForContainment(filepath.Join(root, "assets"))
+		assetDir := owner.AssetDir
+		if assetDir == "" {
+			assetDir = "assets"
+		}
+		assetRoot, err := canonicalForContainment(filepath.Join(root, assetDir))
 		if err != nil {
 			return ResolvedOwner{}, fmt.Errorf("canonical project asset root: %w", err)
 		}
