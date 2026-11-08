@@ -15,6 +15,15 @@
 (with-eval-after-load 'org-src
   (add-to-list 'org-src-lang-modes '("json" . js-json)))
 
+(defun imoogi-org--remap-json-src-mode (mode)
+  "Return MODE, honoring `major-mode-remap-alist' for `js-json-mode'.
+Org 9.7 calls the mode from `org-src-get-lang-mode' directly, so the remap
+would otherwise never apply to source blocks."
+  (if (and (eq mode 'js-json-mode) (fboundp 'major-mode-remap))
+      (major-mode-remap mode)
+    mode))
+(advice-add 'org-src-get-lang-mode :filter-return #'imoogi-org--remap-json-src-mode)
+
 ;; `#+begin_src mermaid' already maps to `mermaid-mode' by name.  Enable
 ;; Babel execution for shell (sh/bash/zsh, built-in `ob-shell') and mermaid
 ;; (`ob-mermaid', renders via mmdc on PATH).  `org-confirm-babel-evaluate'
