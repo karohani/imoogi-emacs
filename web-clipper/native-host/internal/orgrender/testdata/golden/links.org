@@ -1,0 +1,27 @@
+#+TITLE: t
+#+DATE: [2026-11-08 Sun 10:00]
+#+SOURCE: https://example.com/post?id=1
+
+Source: [[https://example.com/post?id=1][https​:/​/​example.com/​post?id=​1]]
+
+js
+
+click me
+
+passwd
+
+sh
+
+mail
+
+rel
+
+[[https://example.com/a%5D%5Db%5B%5Belisp:(x)%5D%5D%20c][desc ］］ ［​［​elisp​:(x)］］]]
+
+[[https://Example.com/x%5C][trailing backslash]]
+
+[[https://example.com/][​*bold*​ desc(image not saved)]]
+
+[[https://example.com/empty]]
+
+[[https://user:pw@example.com/%7B%7B%7Bm%7D%7D%7D%3Cx%3E]]

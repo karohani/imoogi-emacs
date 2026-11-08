@@ -8,3 +8,4 @@
 go 1.26
 
 use .
+use ./web-clipper/native-host

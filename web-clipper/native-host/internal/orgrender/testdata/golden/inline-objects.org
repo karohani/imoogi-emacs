@@ -1,0 +1,17 @@
+#+TITLE: t
+#+DATE: [2026-11-08 Sun 10:00]
+#+SOURCE: https://example.com/post?id=1
+
+Source: [[https://example.com/post?id=1][https​:/​/​example.com/​post?id=​1]]
+
+{​{​{​macro}}} {​{​{​keyword(TITLE)}}} {​{​{​split}}}
+
+src​_​sh{​rm -rf ~​} SRC​_​sh{​x} src​_​sh{​rm -rf ~​} call​_​x() CALL​_​y[​:results raw]()
+
+<​<​target>> <​<​<​radio>>> [​fn​:1] [​fn​::inline] @​@html​:<​script>@​@ \​(x\​) \​[​y\​] $⁠$⁠z$⁠$⁠ \​alpha \​\​
+
+<​%%((x))> <​2026-11-08 Sun> [​cite​:@key] [​[​shell​:rm -rf ~​]] [​[​elisp​:(x)]]
+
+plain shell​:rm -rf ~​ elisp​:(x) file​:/​etc/​passwd https​:/​/​plain.example/​
+
+[​[​elisp​:(x)]]

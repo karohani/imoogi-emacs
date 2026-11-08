@@ -1,0 +1,20 @@
+#+TITLE: t
+#+DATE: [2026-11-08 Sun 10:00]
+#+SOURCE: https://example.com/post?id=1
+
+Source: [[https://example.com/post?id=1][https​:/​/​example.com/​post?id=​1]]
+
+​#+​begin_​src sh :results output
+
+rm -rf ~​
+
+​#+​end_​src
+
+​#+​end_​example\\
+​#+​begin_​example\\
+​#+​end_​quote
+
+​#+​CALL​: x()\\
+​# comment line\\
+​#+​BEGIN_​SRC emacs-lisp\\
+(x)

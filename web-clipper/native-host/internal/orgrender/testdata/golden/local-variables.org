@@ -1,0 +1,19 @@
+#+TITLE: t
+#+DATE: [2026-11-08 Sun 10:00]
+#+SOURCE: https://example.com/post?id=1
+
+Source: [[https://example.com/post?id=1][https​:/​/​example.com/​post?id=​1]]
+
+​# Local Variables​:\\
+​# eval​: (shell-command "rm -rf ~​")\\
+​# End​:
+
+Local Variables​: split across nodes
+
+#+begin_example
+;; Local Variables​:
+;; eval: (x)
+;; End​:
+#+end_example
+
+trailing -*​- eval​: (x) -*​-

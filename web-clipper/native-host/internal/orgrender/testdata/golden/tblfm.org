@@ -1,0 +1,13 @@
+#+TITLE: t
+#+DATE: [2026-11-08 Sun 10:00]
+#+SOURCE: https://example.com/post?id=1
+
+Source: [[https://example.com/post?id=1][https​:/​/​example.com/​post?id=​1]]
+
+| a | #+​TBLFM​: $⁠1=​1 |
+|---+---|
+| b | c |
+
+​#+​TBLFM​: @2$⁠1=​'((x))
+
+| x\vert{}y | multi line  cell | \vert{}---+​---\vert{} |
