@@ -255,6 +255,11 @@ selected, close it.  Otherwise replace any custom tool window and show it."
     (define-key winum-keymap (kbd "M-0") #'treemacs-select-window))
   :config
   (progn
+    ;; A package-manager upgrade can remove the Python cached by Treemacs.
+    ;; Validate it before enabling features that immediately spawn processes.
+    (when (and treemacs-python-executable
+               (not (executable-find treemacs-python-executable)))
+      (setq treemacs-python-executable (executable-find "python3")))
     (setq treemacs-buffer-name-function            #'treemacs-default-buffer-name
           treemacs-buffer-name-prefix              " *Treemacs-Buffer-"
           treemacs-collapse-dirs                   (if treemacs-python-executable 3 0)
@@ -326,15 +331,15 @@ selected, close it.  Otherwise replace any custom tool window and show it."
     (treemacs-follow-mode t)
     (treemacs-filewatch-mode t)
     (treemacs-fringe-indicator-mode 'always)
-    (when treemacs-python-executable
-      (treemacs-git-commit-diff-mode t))
+    (treemacs-git-commit-diff-mode (if treemacs-python-executable 1 -1))
 
     (pcase (cons (not (null (executable-find "git")))
                  (not (null treemacs-python-executable)))
       (`(t . t)
        (treemacs-git-mode 'deferred))
-      (`(t . _)
-       (treemacs-git-mode 'simple)))
+      (`(t . nil)
+       (treemacs-git-mode 'simple))
+      (_ (treemacs-git-mode -1)))
 
     (treemacs-hide-gitignored-files-mode nil))
   :bind

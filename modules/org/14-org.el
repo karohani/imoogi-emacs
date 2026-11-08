@@ -33,6 +33,52 @@
   "Return imoogi's default Org directory."
   (expand-file-name "~/notes/"))
 
+(defcustom imoogi-mothership-directory (expand-file-name "~/mothership/")
+  "Root directory of the Mothership personal knowledge space."
+  :type 'directory
+  :group 'imoogi)
+
+;;;###autoload
+(defun imoogi-mothership-setup (&optional open)
+  "Create the Mothership folders and README.org, preserving existing files.
+With OPEN non-nil (interactively), open README.org after setup.
+Return the root directory.
+This does not migrate notes or change Org, Org-roam, or agenda settings."
+  (interactive (list t))
+  (let* ((root (file-name-as-directory
+                (expand-file-name imoogi-mothership-directory)))
+         (folders '("00. Inbox" "10. Process" "20. Literature Notes"
+                    "30. Permanent Notes" "40. Docs" "50. Assets"
+                    "60. Collections" "70. Outputs" "80. References"
+                    "90. Settings"))
+         (readme (expand-file-name "README.org" root))
+         (template (expand-file-name "templates/mothership/README.org"
+                                     imoogi-emacs-dir))
+         contents)
+    ;; Check collisions and read the template before creating any directories.
+    (dolist (directory (cons (directory-file-name root)
+                            (mapcar (lambda (name) (expand-file-name name root))
+                                    folders)))
+      (when (and (or (file-exists-p directory) (file-symlink-p directory))
+                 (not (file-directory-p directory)))
+        (signal 'file-error (list "Mothership folder path is not a directory" directory))))
+    (when (file-directory-p readme)
+      (signal 'file-error (list "Mothership README path is a directory" readme)))
+    (unless (or (file-exists-p readme) (file-symlink-p readme))
+      (setq contents (with-temp-buffer
+                       (insert-file-contents template)
+                       (buffer-string))))
+    (make-directory root t)
+    (dolist (folder folders)
+      (make-directory (expand-file-name folder root) t))
+    (when contents
+      (let ((coding-system-for-write 'utf-8-unix))
+        (write-region contents nil readme nil 'silent nil 'excl)))
+    (when open
+      (find-file readme))
+    (message "imoogi: Mothership 준비 완료: %s" root)
+    root))
+
 (defun imoogi-org--permanent-directory ()
   "Return the directory used for permanent Org-roam notes."
   (expand-file-name "permanent/" (imoogi-org--default-directory)))

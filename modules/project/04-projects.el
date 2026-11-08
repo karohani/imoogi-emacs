@@ -479,6 +479,15 @@ perspective 의 `persp-new' 는 interactive 가 아니라 메뉴에 직접 붙�
   (interactive "s새 작업공간 이름: ")
   (persp-switch name))
 
+(defun imoogi-perspective--read-optional-state (file)
+  "Read one value from optional FILE, returning nil if it is missing or blank."
+  (when (file-readable-p file)
+    (with-temp-buffer
+      (insert-file-contents file)
+      (skip-chars-forward " \t\r\n\f")
+      (unless (eobp)
+        (read (current-buffer))))))
+
 (defun imoogi-perspective-state-restore ()
   "Restore saved Perspective state without making startup fragile."
   (when (file-readable-p imoogi-perspective-state-file)
@@ -487,18 +496,14 @@ perspective 의 `persp-new' 는 interactive 가 아니라 메뉴에 직접 붙�
           (let ((imoogi-perspective--treemacs-visible nil))
             (persp-state-load imoogi-perspective-state-file))
           (setq imoogi-perspective--treemacs-visible
-                (when (file-readable-p imoogi-perspective-treemacs-file)
-                  (with-temp-buffer
-                    (insert-file-contents imoogi-perspective-treemacs-file)
-                    (let ((names (read (current-buffer))))
-                      (when (and (listp names)
-                                 (cl-every #'stringp names))
-                        names)))))
+                (let ((names (imoogi-perspective--read-optional-state
+                              imoogi-perspective-treemacs-file)))
+                  (when (and (listp names) (cl-every #'stringp names))
+                    names)))
           (when (file-readable-p imoogi-perspective-active-file)
             (let ((active
-                   (with-temp-buffer
-                     (insert-file-contents imoogi-perspective-active-file)
-                     (read (current-buffer)))))
+                   (imoogi-perspective--read-optional-state
+                    imoogi-perspective-active-file)))
               (when (and (stringp active)
                          (member active (persp-names)))
                 (persp-switch active))))

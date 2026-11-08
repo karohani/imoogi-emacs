@@ -784,6 +784,87 @@ Transient 메뉴에서는 Emacs 내장 입력기를 잠시 꺼 영문 단축키�
 하위 메뉴에서도 유지하고, 메뉴 종료 시 기존 입력기 상태를 복원한다.
 OS 키보드 입력 언어는 변경하지 않는다.
 
+### Mothership 초기화
+
+새 장비에서 imoogi-emacs를 설치한 뒤 `M-x imoogi-mothership-setup`을 실행한다.
+`~/mothership/`에 아래 폴더와 운영 안내 `README.org`를 만들고 안내를 연다.
+
+```text
+00. Inbox/             10. Process/          20. Literature Notes/
+30. Permanent Notes/   40. Docs/             50. Assets/
+60. Collections/       70. Outputs/          80. References/
+90. Settings/
+```
+
+안내에는 폴더별 규약, 질문 → 탐색 → 정리 → 적용 → 갱신 흐름,
+작업 시작·마무리와 주기적 검토 점검표가 들어 있다.
+기존 노트와 `README.org`는 덮어쓰지 않고 빠진 폴더만 보충하므로 재실행해도 된다.
+저장 위치는 `M-x customize-variable RET imoogi-mothership-directory`로 변경한다.
+초기화는 명령 실행 시에만 수행한다. 기존 `~/notes/`를 이동하거나 Org·Org-roam·
+Agenda 설정을 바꾸지 않으며, `~/project-notes/`의 기존 구성도 유지한다.
+이 명령은 새 폴더 구조를 준비하며 다른 장비의 개인 노트를 동기화하지는 않는다.
+
+### Mothership 노트 명령
+
+`C-c n`으로 모선 메인 메뉴를 연다. `C-c h o r`에서도 같은 메뉴로 들어간다.
+모선 명령은 `imoogi-mothership-directory`(기본 `~/mothership/`)를 사용한다.
+
+| 키 | 명령 | 동작 |
+|----|------|------|
+| `o` | `imoogi-mothership-open` | 운영 안내 `README.org` 열기 |
+| `n` | `imoogi-mothership-create-note` | 분류 폴더와 제목을 선택해 Org 노트 생성 |
+| `c` | `imoogi-mothership-capture` | Inbox에 빠른 메모 생성 |
+| `e` | `imoogi-mothership-edit-metadata` | 전체 메타데이터 입력 폼 |
+| `E` | `imoogi-mothership-set-property` | 목록형 속성 하나를 빠르게 선택 |
+| `f` | `imoogi-mothership-find-file` | 전체 모선에서 상대 파일명으로 노트 찾기 |
+| `s` | `imoogi-mothership-search` | Consult와 ripgrep(`rg`)으로 본문 검색 |
+| `i` | `imoogi-mothership-insert-link` | 현재 Org 버퍼에 선택한 노트의 ID 링크 삽입 |
+| `d` | `imoogi-mothership-browse` | 모선 폴더를 Dired로 열기 |
+| `+` | `imoogi-mothership-create-folder` | 부모를 골라 번호가 겹치지 않는 하위 폴더 생성 |
+| `r` | `imoogi-org-roam-transient` | 기존 Org-roam 하위 메뉴 |
+| `S` | `imoogi-mothership-setup` | 초기화·빠진 폴더 복구 |
+
+새 노트는 제목에서 파일명을 만들고 Org ID와 작성일을 기록한다. 같은 파일명이
+있으면 `-2`, `-3`을 붙이며 기존 파일과 저장하지 않은 버퍼를 덮어쓰지 않는다.
+Assets·References·Settings는 새 노트 분류 목록에서 제외하며 Dired에서 관리한다.
+노트 생성 목록에는 기본 노트 분류와 그 안의 기존 하위 폴더가 함께 나타난다.
+Treemacs에서 직접 만든 폴더도 다음 명령 실행 때 다시 검색한다.
+직접 작성한 기존 노트에 ID가 없으면 링크 명령이 ID를 추가하고 저장한다.
+대상 노트에 저장하지 않은 수정이 있으면 먼저 저장하라는 안내와 함께 중단한다.
+모선 파일 탐색과 검색은 Org-roam 데이터베이스에 등록되지 않은 노트에도 사용할 수 있다.
+
+`C-c n +`는 부모 폴더와 이름을 입력받아 `01. 이름`, `02. 이름`처럼 만든다.
+번호는 같은 부모 안에서만 중복을 피하며 부모 번호를 접두어로 붙이지 않는다.
+예를 들어 `30. Permanent Notes/01. 인공지능/01. 언어모델/`처럼 구성한다.
+기존 숫자 접두어의 최댓값 다음 번호를 사용하고, 기존 파일·링크의 숫자도 예약된
+번호로 취급한다. 기존 폴더의 이름이나 번호를 자동으로 바꾸지는 않는다.
+생성 후에는 새 폴더를 Dired로 연다. 같은 부모의 동시 생성은 숨김 잠금 폴더
+`.imoogi-folder-number.lock`으로 막고 성공·실패 시 해제한다. 강제 종료로 잠금이
+남았다면 생성 작업이 없는지 확인한 뒤 해당 잠금 폴더만 직접 제거할 수 있다.
+Treemacs의 일반 폴더 생성에는 이 번호 관리가 적용되지 않는다.
+
+새 노트에는 TYPE·ROAM_ALIASES·CREATED·MODIFIED·SOURCE·RELATED·CONFIDENCE·LAYER·
+STATUS 속성과 AUTHOR·DESCRIPTION·FILETAGS 키워드를 함께 만든다. TYPE은 `note`,
+작성자는 Emacs의 `user-full-name`, 생성일·수정일은 현재 시각으로 입력하며 나머지는
+빈칸으로 둔다. MODIFIED 속성이 있는 모선 노트는 저장할 때 수정일을 갱신한다.
+기존 노트에 속성을 일괄 추가하지 않는다.
+
+`C-c n e`에서 제목·별칭·설명·작성자·태그·출처·관련 노트·LAYER를 입력한다.
+TYPE·STATUS·CONFIDENCE는 선택 목록으로, ID·생성일·수정일은 읽기 전용으로 표시한다.
+TAB/Shift-TAB으로 항목 사이를 이동한다. 각 입력란은 한 줄이며 긴 내용은 화면에서 줄바꿈된다.
+별칭은 `"Memory Extender" "미멕스"`, 태그는 `:concept:history:`처럼 입력하고,
+출처·관련 노트에는 URL이나 Org 링크를 적는다.
+
+`[적용]` 또는 `C-c C-c`는 변경을 원본 노트의 버퍼에 반영한다.
+`[취소]` 또는 `C-c C-k`는 원본을 바꾸지 않고 폼을 닫는다. 적용 후 `C-x C-s`로
+노트를 저장한다. 제목을 바꿔도 파일명과 ID는 유지한다. 폼을 연 뒤 원본 내용이나
+디스크 파일이 변경되면 적용을 중단하므로 원본을 확인하고 폼을 다시 연다.
+
+`C-c n E`에서는 TYPE·STATUS·CONFIDENCE를 선택하고 허용된 값 중 하나를 고른다.
+커서가 본문 제목 아래에 있어도 파일 전체 속성에 적용하며, 저장은 `C-x C-s`로 한다.
+선택 목록은 `M-x customize-variable RET imoogi-mothership-property-values`에서
+추가·변경한다. LAYER도 분류 기준을 정한 뒤 이 설정에 항목과 값 목록을 추가하면 된다.
+
 ### Org 기본 폴더 설정
 
 `M-x imoogi-org-setup`을 실행하면 홈 디렉터리에 `~/notes/`와 영구 노트용
@@ -796,8 +877,9 @@ notes 바로 아래의 기존 `.org` 파일을
 `permanent/`로 복사하고 `agenda.org`와 `scratch.org`는 그대로 둔다.
 원본은 삭제하지 않으며, 같은 이름의 대상 파일도 덮어쓰지 않는다.
 
-Org-roam은 `~/notes/permanent/`를 영구 노트 폴더로 사용한다. `C-c n` 또는
-`C-c h o r`로 중앙 노트 Transient를 연다. `f`는 노트 찾기·만들기,
+Org-roam은 기존 `~/notes/permanent/`를 영구 노트 폴더로 사용한다. `C-c n r`로
+Org-roam 하위 메뉴를 연다. 모선 메뉴를 추가해도 기존 노트나 색인은 이동하지 않는다.
+`f`는 노트 찾기·만들기,
 `n`은 캡처, `i`는 링크 삽입, `r`은 현재 제목 또는 선택 영역을 다른
 노트로 옮기기(`org-roam-refile`), `b`는 백링크 보기다. 별칭(`a/A`),
 태그(`t/T`), 참조(`e/E`)를 관리하고, `d/D`로 일일 노트를 연다.

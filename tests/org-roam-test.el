@@ -17,9 +17,12 @@
 
 (ert-deftest imoogi-org-roam-transient-is-reachable ()
   (should (eq (lookup-key global-map (kbd "C-c n"))
-              #'imoogi-org-roam-transient))
+              #'imoogi-mothership-transient))
   (should (eq (plist-get (cdr (transient-get-suffix
                                'imoogi-org-agenda-transient "r")) :command)
+              #'imoogi-mothership-transient))
+  (should (eq (plist-get (cdr (transient-get-suffix
+                               'imoogi-mothership-transient "r")) :command)
               #'imoogi-org-roam-transient))
   (dolist (binding '(("f" . org-roam-node-find)
                      ("n" . org-roam-capture)
