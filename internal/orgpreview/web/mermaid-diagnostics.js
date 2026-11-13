@@ -2,7 +2,7 @@
 (function (global) {
   'use strict';
   function create(options) {
-    const {document, runtime, version, isCurrent, canNavigate, navigate, clipboard} = options;
+    const {document, runtime, version, isCurrent, canNavigate, navigate, clipboard, rendered} = options;
     const states = new WeakMap();
     let queue = Promise.resolve();
     let sequence = 0;
@@ -93,6 +93,7 @@
           const diagram = element('div'); diagram.innerHTML = result.svg;
           node.replaceChildren(diagram); node.classList.remove('mermaid-error');
           if (result.bindFunctions) result.bindFunctions(diagram);
+          if (rendered) rendered(node);
         } catch (error) {
           if (!current(node, state, attempt, revision)) return;
           state.error = errorInfo(error, stage, state.source);

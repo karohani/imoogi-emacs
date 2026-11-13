@@ -38,6 +38,9 @@ var readerPaginationJS []byte
 //go:embed web/reader-view.js
 var readerViewJS []byte
 
+//go:embed web/mermaid-canvas.js
+var mermaidCanvasJS []byte
+
 //go:embed web/reader.css
 var readerCSS []byte
 
@@ -174,6 +177,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/static/reader-pagination.js", readerAsset(readerPaginationJS, "text/javascript; charset=utf-8"))
 	s.mux.HandleFunc("/static/reader-view.js", readerAsset(readerViewJS, "text/javascript; charset=utf-8"))
 	s.mux.HandleFunc("/static/reader.css", readerAsset(readerCSS, "text/css; charset=utf-8"))
+	s.mux.HandleFunc("/static/mermaid-canvas.js", readerAsset(mermaidCanvasJS, "text/javascript; charset=utf-8"))
 	s.mux.HandleFunc("/static/mermaid.min.js", s.handleMermaidJS)
 	s.mux.HandleFunc("/static/mermaid-diagnostics.js", s.handleMermaidDiagnosticsJS)
 }
@@ -186,6 +190,8 @@ func readerAsset(body []byte, contentType string) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", contentType)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+		// Revalidate every load so a rebuilt binary reaches open tabs without a hard reload.
+		w.Header().Set("Cache-Control", "no-cache")
 		_, _ = w.Write(body)
 	}
 }
@@ -207,6 +213,7 @@ func (s *Server) handleMermaidDiagnosticsJS(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	version, _ := json.Marshal(bundledMermaidVersion())
 	_, _ = fmt.Fprintf(w, "globalThis.OrgMermaidVersion=%s;\n", version)
@@ -227,6 +234,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
 	_, _ = io.WriteString(w, browserShell)
 }
 
@@ -1182,7 +1190,7 @@ body{margin:0;font:16px/1.65 ui-sans-serif,system-ui,-apple-system,BlinkMacSyste
 .org-preview .org-list{list-style:none;margin:.45em 0;padding-left:0}.org-preview .org-list .org-list{margin:.28em 0 .15em;padding-left:1.65rem;border-left:1px solid rgba(255,255,255,.08)}
 .org-preview .org-list-item{margin:.35em 0}.org-preview .list-row{display:flex;align-items:baseline;gap:.5rem;min-width:0}.org-preview .list-marker{flex:0 0 auto;min-width:1.35em;color:var(--active);font-variant-numeric:tabular-nums;text-align:right}.org-preview .list-content{min-width:0;overflow-wrap:anywhere}.org-preview .list-checkbox{flex:0 0 auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:700}.org-preview .checkbox-unchecked{color:var(--muted)}.org-preview .checkbox-partial{color:var(--yellow)}.org-preview .checkbox-checked{color:var(--green)}
 pre,code{border-radius:6px;background:#11151b}code{padding:2px 5px;color:#cdd6e3}pre{padding:14px 16px;overflow:auto;border:1px solid var(--line)}pre code{padding:0;background:transparent}
-.mermaid{margin:1.25em 0;padding:18px;overflow:auto;border:1px solid var(--line);border-radius:8px;background:#11151b;text-align:center}.mermaid svg{max-width:100%;height:auto}
+.mermaid{margin:1.25em 0;padding:18px;overflow:auto;border:1px solid var(--line);border-radius:8px;background:#11151b;text-align:center}.mermaid svg{max-width:100%;height:auto}.mermaid-toolbar{display:flex;justify-content:flex-end;align-items:center;gap:4px;margin:-8px -8px 8px}.mermaid-toolbar button{min-width:30px;padding:3px 8px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:4px;cursor:pointer}.mermaid-zoom{min-width:3.5em;text-align:center;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}.mermaid-viewport{position:relative;overflow:hidden;cursor:grab;touch-action:none;user-select:none;text-align:left}.mermaid-viewport.dragging{cursor:grabbing}.mermaid-viewport:focus-visible{outline:2px solid var(--blue)}.mermaid-stage{position:absolute;left:0;top:0;transform-origin:0 0}.mermaid-expanded{position:fixed;inset:0;z-index:1000;box-sizing:border-box;width:100vw;height:100vh;max-width:none;max-height:none;display:flex;flex-direction:column;margin:0;padding:18px;border:0;border-radius:0;background:#11151b!important;outline:none!important;color:var(--text);overflow:hidden}.mermaid-expanded .mermaid-toolbar{margin:0 0 8px}.mermaid-expanded .mermaid-viewport{flex:1;height:auto!important}body[data-reader-mode=book] .mermaid-toolbar,body[data-reader-mode=present] .mermaid-toolbar{display:none}body[data-reader-mode=book] .mermaid-viewport,body[data-reader-mode=present] .mermaid-viewport{height:auto!important;overflow:visible;cursor:auto;touch-action:auto;user-select:auto;text-align:center}body[data-reader-mode=book] .mermaid-stage,body[data-reader-mode=present] .mermaid-stage{position:static;transform:none!important;width:auto!important;height:auto!important}body[data-reader-mode=book] .mermaid-stage svg,body[data-reader-mode=present] .mermaid-stage svg{width:min(100%,var(--mermaid-w))!important;height:auto!important}
 .mermaid-error{text-align:left}.mermaid-error pre,.mermaid-error p{white-space:pre-wrap}.mermaid-controls{display:flex;gap:8px;flex-wrap:wrap}.mermaid-controls button{padding:6px 10px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:4px;cursor:pointer}.mermaid-controls button:disabled{opacity:.6;cursor:default}.mermaid-copy{display:block;width:100%;min-height:180px;margin-top:8px;background:#11151b;color:var(--text)}
 table{width:100%;border-collapse:collapse;margin:1.1em 0;overflow:hidden;border-radius:7px}td{border:1px solid var(--line);padding:7px 10px}
 [data-org-id].active-block{outline:2px solid var(--active);outline-offset:5px;background-color:rgba(137,221,255,.07)}
@@ -1209,6 +1217,7 @@ table{width:100%;border-collapse:collapse;margin:1.1em 0;overflow:hidden;border-
 <script src="/static/mermaid-diagnostics.js"></script>
 <script src="/static/reader-pagination.js"></script>
 <script src="/static/reader-view.js"></script>
+<script src="/static/mermaid-canvas.js"></script>
 <script>
 mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'dark'});
 const params = new URLSearchParams(location.search);
@@ -1231,6 +1240,7 @@ const reader = OrgReaderView.create({root,document,linked:!!linkedFileID,
 });
 let activeTarget = null;
 let navigationSocket = null;
+const mermaidCanvas = OrgMermaidCanvas.create({document, root});
 const mermaidDiagnostics = OrgMermaidDiagnostics.create({
   document, runtime:mermaid, version:OrgMermaidVersion,
   isCurrent:targetRevision => targetRevision === reader.state.renderGeneration,
@@ -1240,7 +1250,8 @@ const mermaidDiagnostics = OrgMermaidDiagnostics.create({
     if (linkedFileID || !el || !sessionID || !bufferID || !navigationSocket || navigationSocket.readyState !== WebSocket.OPEN) return false;
     sendNavigation(navigationSocket, el); return true;
   },
-  clipboard:navigator.clipboard
+  clipboard:navigator.clipboard,
+  rendered:node => mermaidCanvas.attach(node),
 });
 const blockKinds = new Set(['heading','paragraph','property_drawer','list','list_item','code_block','table','image']);
 const palette = ['red','blue','green','yellow'];
