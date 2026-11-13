@@ -1104,6 +1104,12 @@ backend 생성을 추적할 수 있다. API key, token, secret, password 값은 
 않은 수정도 마지막 변경 후 0.5초 뒤 갱신한다. Org 메뉴의 **`C-c h o V`**나
 `M-x imoogi-org-preview-stop`으로 현재 버퍼의 자동 미리보기를 종료한다.
 
+`M-x imoogi-org-preview-current`는 **현재 문서** 탭을 연다. 미리보기가 켜져 있는
+동안 선택한 창이 파일을 연 Org·Markdown 버퍼로 바뀌면 그 버퍼의 미리보기가 자동으로
+켜지고, 이 탭도 그 문서로 넘어간다. 책자·발표 보기 중에는 화면을 바꾸지 않고
+`Emacs 문서로 이동` 버튼만 보여준다. 다른 미리보기 탭은 처음 연 문서를 계속 보여준다.
+자동으로 따라가지 않으려면 `imoogi-org-preview-follow-current`를 `nil`로 둔다.
+
 왼쪽 **목차**와 본문 제목은 Org 또는 Markdown 제목 깊이에 따라
 빨강·파랑·초록·노랑으로 표시한다.
 7단계 이상에서도 같은 순서를 반복하며, 제목 HTML 자체에 글자색과 배경색을 포함한다.

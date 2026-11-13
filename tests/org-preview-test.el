@@ -348,3 +348,107 @@
         (with-current-buffer buffer (set-buffer-modified-p nil))
         (kill-buffer buffer))
       (delete-directory notes t))))
+
+(defmacro imoogi-org-preview-test--with-follow (&rest body)
+  "Run BODY with a running preview, a stubbed transport and `posted' bound.
+`anchor' is a live buffer that already has a preview; `make' returns a fresh
+buffer in MODE visiting FILE (nil for no file)."
+  (declare (indent 0))
+  `(let* ((anchor (generate-new-buffer " *preview-anchor*"))
+          (imoogi-org-preview--buffers (list anchor))
+          (imoogi-org-preview--followed-buffer nil)
+          (imoogi-org-preview-follow-current t)
+          (imoogi-org-preview-port 32123)
+          (imoogi-org-preview-token "token-follow")
+          (made nil)
+          (posted nil)
+          (make (lambda (mode file)
+                  (let ((buffer (generate-new-buffer "follow-test")))
+                    (with-current-buffer buffer
+                      (funcall mode)
+                      (setq buffer-file-name file))
+                    (push buffer made)
+                    buffer))))
+     (unwind-protect
+         (cl-letf (((symbol-function 'imoogi-org-preview--post-json)
+                    (lambda (path payload _callback) (push (cons path payload) posted))))
+           ,@body)
+       (dolist (buffer made)
+         (when (buffer-live-p buffer)
+           (with-current-buffer buffer
+             (when imoogi-org-preview-mode (imoogi-org-preview-mode -1))
+             (set-buffer-modified-p nil)
+             (setq buffer-file-name nil))
+           (kill-buffer buffer)))
+       (kill-buffer anchor))))
+
+(defun imoogi-org-preview-test--current-posts (posted)
+  "Return the payloads in POSTED that announced a current buffer."
+  (mapcar #'cdr (seq-filter (lambda (entry) (equal (car entry) "/api/emacs/current")) posted)))
+
+(ert-deftest imoogi-org-preview-follow-enables-preview-and-announces-current ()
+  (imoogi-org-preview-test--with-follow
+    (let ((buffer (funcall make #'markdown-mode "/tmp/imoogi-follow-a.md")))
+      (imoogi-org-preview--follow-buffer buffer)
+      (should (buffer-local-value 'imoogi-org-preview-mode buffer))
+      (let ((sent (imoogi-org-preview-test--current-posts posted)))
+        (should (= (length sent) 1))
+        (should (equal (alist-get 'buffer_id (car sent))
+                       (buffer-local-value 'imoogi-org-preview--buffer-id buffer)))
+        (should (equal (alist-get 'origin (car sent)) "emacs"))
+        (should (alist-get 'event_id (car sent))))
+      ;; Selecting the same buffer again sends nothing new.
+      (imoogi-org-preview--follow-buffer buffer)
+      (should (= (length (imoogi-org-preview-test--current-posts posted)) 1)))))
+
+(ert-deftest imoogi-org-preview-follow-skips-buffers-it-cannot-preview ()
+  (imoogi-org-preview-test--with-follow
+    (dolist (buffer (list (funcall make #'org-mode nil)
+                          (funcall make #'fundamental-mode "/tmp/imoogi-follow.txt")))
+      (imoogi-org-preview--follow-buffer buffer)
+      (should-not (buffer-local-value 'imoogi-org-preview-mode buffer)))
+    (should-not (imoogi-org-preview-test--current-posts posted))))
+
+(ert-deftest imoogi-org-preview-follow-waits-for-a-running-preview ()
+  (imoogi-org-preview-test--with-follow
+    (let ((buffer (funcall make #'org-mode "/tmp/imoogi-follow-b.org")))
+      (let ((imoogi-org-preview--buffers nil))
+        (imoogi-org-preview--follow-buffer buffer))
+      (let ((imoogi-org-preview-follow-current nil))
+        (imoogi-org-preview--follow-buffer buffer))
+      (should-not (buffer-local-value 'imoogi-org-preview-mode buffer))
+      (should-not (imoogi-org-preview-test--current-posts posted)))))
+
+(ert-deftest imoogi-org-preview-current-opens-a-follow-tab ()
+  (with-temp-buffer
+    (org-mode)
+    (setq-local imoogi-org-preview-mode t
+                imoogi-org-preview--session-id "session-a"
+                imoogi-org-preview--buffer-id "buffer-a"
+                imoogi-org-preview--browser-view "view-a")
+    (let ((imoogi-org-preview-port 32123)
+          (imoogi-org-preview-token "token-a")
+          opened-url)
+      (cl-letf (((symbol-function 'browse-url)
+                 (lambda (url &rest _args) (setq opened-url url))))
+        (imoogi-org-preview-open t)
+        (should (string-match-p "buffer=buffer-a" opened-url))
+        (should (string-match-p "&follow=1\\'" opened-url))
+        (imoogi-org-preview-open)
+        (should-not (string-match-p "follow=" opened-url))))))
+
+(ert-deftest imoogi-org-preview-buffers-share-a-session-without-clipboard ()
+  (let ((imoogi-org-preview-command '("/no/such/imoogi-org-preview"))
+        (imoogi-org-preview--fallback-session-id nil)
+        (imoogi-org-preview--buffers nil)
+        (imoogi-clipboard--session-id nil)
+        sessions)
+    (cl-letf (((symbol-function 'imoogi-clipboard--ensure-identity) #'ignore))
+      (dotimes (_ 2)
+        (with-temp-buffer
+          (org-mode)
+          (imoogi-org-preview-mode 1)
+          (push imoogi-org-preview--session-id sessions)
+          (imoogi-org-preview-mode -1))))
+    (should (stringp (car sessions)))
+    (should (equal (car sessions) (cadr sessions)))))

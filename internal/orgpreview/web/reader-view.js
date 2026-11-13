@@ -20,9 +20,17 @@
                 return this.displayedRevision === this.latestReceivedRevision;
             } };
     }
+    // A follow tab moves to the buffer Emacs shows, but never pulls a reader out of book or present mode.
+    function followAction(view, msg) {
+        if (!view.follow || !msg || msg.type !== 'current' || !msg.url)
+            return 'ignore';
+        if (msg.buffer_id === view.bufferID)
+            return 'stay';
+        return view.mode === 'document' ? 'go' : 'offer';
+    }
     function create(options) {
         const { root, document } = options, state = createRevisionState(), P = global.OrgReaderPagination;
-        let layout = null, index = 0, spread = 1, preference = 'auto', font = 18, timer = 0, layoutGeneration = 0;
+        let layout = null, index = 0, spread = 1, preference = 'auto', font = 18, timer = 0, layoutGeneration = 0, offered = null;
         const bar = document.createElement('nav');
         bar.className = 'reader-toolbar';
         bar.setAttribute('aria-label', '읽기 보기');
@@ -76,6 +84,10 @@
                 options.navigate(el);
         });
         source.disabled = !!options.linked;
+        const current = button('Emacs 문서로 이동', () => {
+            if (offered)
+                options.go(offered.url);
+        });
         const fullscreen = button('전체 화면', async () => {
             try {
                 if (document.fullscreenElement)
@@ -151,6 +163,10 @@
         function setMode(mode) {
             if (mode === state.mode)
                 return;
+            if (mode === 'document' && offered) {
+                options.go(offered.url);
+                return;
+            }
             if (mode !== 'document' && !root.querySelector('main.org-preview')) {
                 announce('문서를 불러온 뒤 선택하세요.');
                 return;
@@ -198,8 +214,11 @@
             select.hidden = state.mode !== 'book';
             source.hidden = state.mode === 'document';
             fullscreen.hidden = state.mode !== 'present';
+            current.hidden = !offered;
             if (state.pendingRevision)
                 announce('새 내용 있음');
+            if (offered)
+                announce('Emacs에서 다른 문서를 보고 있음 · ' + (offered.title || offered.path || ''));
         }
         function applyPending() {
             if (!state.pendingRevision)
@@ -276,6 +295,16 @@
         refresh();
         modes.document.setAttribute('aria-pressed', 'true');
         return { state, setMode, changed, announce, applyPending, replaceDocument, rendered: schedule,
+            follow(msg) {
+                const action = followAction({ follow: options.follow, bufferID: options.bufferID, mode: state.mode }, msg);
+                if (action === 'go')
+                    options.go(msg.url);
+                else if (action === 'offer' || action === 'stay') {
+                    offered = action === 'offer' ? msg : null;
+                    refresh();
+                }
+                return action;
+            },
             jump(el) {
                 if (!layout)
                     return false;
@@ -290,7 +319,7 @@
                 return false;
             } };
     }
-    const api = { createRevisionState, create };
+    const api = { createRevisionState, followAction, create };
     if (typeof module !== 'undefined' && module.exports)
         module.exports = api;
     else

@@ -57,6 +57,17 @@ test('unmatched and deleted anchors use a verified chapter or document start', (
     assert.deepEqual(pagination.resolveAnchor(records, null), {index:0,fallback:false});
 });
 
+test('a follow tab moves only in document mode and offers the move while reading', () => {
+    const msg = {type: 'current', buffer_id: 'b', url: '/preview?buffer=b'};
+    assert.equal(reader.followAction({follow: true, bufferID: 'a', mode: 'document'}, msg), 'go');
+    assert.equal(reader.followAction({follow: true, bufferID: 'a', mode: 'book'}, msg), 'offer');
+    assert.equal(reader.followAction({follow: true, bufferID: 'a', mode: 'present'}, msg), 'offer');
+    assert.equal(reader.followAction({follow: true, bufferID: 'b', mode: 'book'}, msg), 'stay');
+    assert.equal(reader.followAction({follow: false, bufferID: 'a', mode: 'document'}, msg), 'ignore');
+    assert.equal(reader.followAction({follow: true, bufferID: 'a', mode: 'document'}, {...msg, url: ''}), 'ignore');
+    assert.equal(reader.followAction({follow: true, bufferID: 'a', mode: 'document'}, {html: 'x'}), 'ignore');
+});
+
 test('same-DOM reflow uses original element identity despite repeated context', () => {
     const first = {}, second = {};
     const common = {text:'반복',path:'장',before:'반복',after:'반복'};

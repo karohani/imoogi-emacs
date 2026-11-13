@@ -72,6 +72,10 @@ type sessionState struct {
 	seenEvents map[string]struct{}
 	emacs      map[chan NavigationEvent]struct{}
 	browsers   map[*browserClient]struct{}
+	// current is the buffer in the selected Emacs window; currentSent records
+	// whether follow tabs were told about it yet (see current.go).
+	current     string
+	currentSent bool
 }
 
 type bufferState struct {
@@ -161,6 +165,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/emacs/revisions", s.handleRevision)
 	s.mux.HandleFunc("/api/emacs/events", s.handleEvents)
 	s.mux.HandleFunc("/api/emacs/navigation", s.handleEmacsNavigation)
+	s.mux.HandleFunc("/api/emacs/current", s.handleEmacsCurrent)
 	s.mux.HandleFunc("/api/sessions/", s.handleSessionRender)
 	s.mux.HandleFunc("/api/file-preview", s.handleFilePreview)
 	s.mux.HandleFunc("/api/recent", s.handleRecentFiles)
@@ -316,6 +321,9 @@ func (s *Server) handleRevision(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, resp)
 	if committed {
 		s.broadcastBrowser(req.SessionID, req.BufferID, renderEvent)
+		if ev := s.pendingCurrent(req.SessionID, req.BufferID); ev != nil {
+			s.broadcastSession(req.SessionID, *ev)
+		}
 		if node := FindNodeAt(doc.Nodes, req.CursorByte); node != nil {
 			nav := NavigationEvent{
 				Envelope:  NewEnvelope(req.SessionID, req.BufferID, req.Revision, OriginEmacs, req.EventID+"-cursor"),
@@ -492,6 +500,9 @@ func (s *Server) handleBrowserWebSocket(w http.ResponseWriter, r *http.Request) 
 	defer s.removeBrowser(client)
 	if latest := s.latestRender(sessionID, bufferID); latest != nil {
 		client.send <- *latest
+	}
+	if current := s.currentFor(sessionID, bufferID); current != nil {
+		client.send <- *current
 	}
 	errCh := make(chan error, 2)
 	go func() { errCh <- client.writeLoop() }()
@@ -1210,10 +1221,12 @@ const bufferID = params.get('buffer_id') || params.get('buffer');
 const linkedFileID = params.get('id');
 const generation = params.get('generation') || '';
 const view = params.get('view') || '';
+const follow = params.get('follow') === '1';
 let revision = -1;
 let linkedLoadID = 0;
 const reader = OrgReaderView.create({root,document,linked:!!linkedFileID,
  apply:renderRevision,reload:loadLinkedFile,
+ follow:follow && !linkedFileID,bufferID,go:url=>location.replace(followURL(url)),
  navigate:el=>{if(navigationSocket && navigationSocket.readyState===WebSocket.OPEN)sendNavigation(navigationSocket,el);}
 });
 let activeTarget = null;
@@ -1232,12 +1245,15 @@ const mermaidDiagnostics = OrgMermaidDiagnostics.create({
 const blockKinds = new Set(['heading','paragraph','property_drawer','list','list_item','code_block','table','image']);
 const palette = ['red','blue','green','yellow'];
 function wsURL(){const u=new URL('/ws/browser', location.href);u.protocol=location.protocol==='https:'?'wss:':'ws:';u.searchParams.set('session', sessionID || '');u.searchParams.set('buffer', bufferID || '');u.searchParams.set('generation', generation);u.searchParams.set('view', view);return u;}
+// A follow tab keeps following Emacs after it moves to another buffer's page.
+function followURL(url){const u=new URL(url, location.href);u.searchParams.set('follow','1');return u.toString();}
 function connect(){
   const ws = new WebSocket(wsURL());
   ws.onopen = () => { navigationSocket = ws; statusEl.textContent = 'connected'; refreshRecent(); };
   ws.onclose = () => { if (navigationSocket === ws) navigationSocket = null; statusEl.textContent = 'reconnecting'; setTimeout(connect, 500); };
   ws.onmessage = event => {
     const msg = JSON.parse(event.data);
+    if (msg.type === 'current') { reader.follow(msg); return; }
     if (msg.html) {
       if (reader.state.receive(msg)) renderRevision(msg);
       reader.changed();
@@ -1475,7 +1491,7 @@ function fillRecent(files){
   files.forEach(file => {
     const link = document.createElement('a');
     link.className = 'recent-item' + (file.current ? ' current' : '');
-    link.href = file.url;
+    link.href = follow ? followURL(file.url) : file.url;
     link.title = file.path;
     if (file.current) link.setAttribute('aria-current', 'page');
     const title = document.createElement('span');

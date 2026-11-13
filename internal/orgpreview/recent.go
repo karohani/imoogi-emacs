@@ -51,15 +51,11 @@ func (s *Server) handleRecentFiles(w http.ResponseWriter, r *http.Request) {
 			if buffer.path == "" || buffer.browserView == "" {
 				continue
 			}
-			values := url.Values{
-				"session": {sessionID}, "buffer": {bufferID},
-				"generation": {fmt.Sprint(buffer.generation)}, "view": {buffer.browserView},
-			}
 			candidates = append(candidates, candidate{
 				file: recentFile{
 					Title:   filepath.Base(buffer.path),
 					Path:    buffer.path,
-					URL:     "/preview?" + values.Encode(),
+					URL:     previewURL(sessionID, bufferID, buffer),
 					Current: bufferID == currentID,
 				},
 				touched: buffer.touched,
@@ -77,4 +73,13 @@ func (s *Server) handleRecentFiles(w http.ResponseWriter, r *http.Request) {
 		resp.Files = append(resp.Files, c.file)
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// previewURL is a buffer's live preview page; the caller holds s.mu.
+func previewURL(sessionID, bufferID string, buffer *bufferState) string {
+	values := url.Values{
+		"session": {sessionID}, "buffer": {bufferID},
+		"generation": {fmt.Sprint(buffer.generation)}, "view": {buffer.browserView},
+	}
+	return "/preview?" + values.Encode()
 }

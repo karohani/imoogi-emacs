@@ -60,6 +60,13 @@ The preview scrolls only when that paragraph is off screen."
   "When non-nil, enable optional bidirectional cursor synchronization."
   :type 'boolean)
 
+(defcustom imoogi-org-preview-follow-current t
+  "When non-nil, preview the Org or Markdown file in the selected window.
+While a preview is running, selecting a window that shows such a file turns
+on `imoogi-org-preview-mode' there and moves tabs opened with
+`imoogi-org-preview-current' to it."
+  :type 'boolean)
+
 (defconst imoogi-org-preview-protocol-version "org-preview/v1")
 
 (defvar imoogi-org-preview--server-process nil)
@@ -67,6 +74,11 @@ The preview scrolls only when that paragraph is off screen."
 (defvar imoogi-org-preview--server-port nil)
 (defvar imoogi-org-preview--server-token nil)
 (defvar imoogi-org-preview--buffers nil)
+(defvar imoogi-org-preview--fallback-session-id nil
+  "Session id shared by preview buffers when no clipboard session exists.")
+(defvar imoogi-org-preview--followed-buffer nil
+  "Buffer last announced to the server as the selected window's document.")
+(defvar imoogi-org-preview--follow-timer nil)
 
 (defvar-local imoogi-org-preview--last-point nil)
 (defvar-local imoogi-org-preview--open-pending nil)
@@ -110,8 +122,10 @@ The preview scrolls only when that paragraph is off screen."
   (imoogi-org-preview-open))
 
 ;;;###autoload
-(defun imoogi-org-preview-open ()
-  "Open the current buffer's preview page in the default browser."
+(defun imoogi-org-preview-open (&optional follow)
+  "Open the current buffer's preview page in the default browser.
+With FOLLOW non-nil, the page follows the Org or Markdown file in the
+selected window (see `imoogi-org-preview-follow-current')."
   (interactive)
   (unless imoogi-org-preview-mode
     (imoogi-org-preview-mode 1))
@@ -121,20 +135,76 @@ The preview scrolls only when that paragraph is off screen."
       (progn
         (setq imoogi-org-preview--open-pending nil)
         (browse-url
-       (format "http://%s:%d/preview?session=%s&buffer=%s&generation=%d&view=%s"
-               imoogi-org-preview-host port
-               (url-hexify-string session)
-               (url-hexify-string imoogi-org-preview--buffer-id)
-	       (imoogi-org-preview--generation)
-	       (url-hexify-string view))))
-    (setq imoogi-org-preview--open-pending t)
+       (concat
+        (format "http://%s:%d/preview?session=%s&buffer=%s&generation=%d&view=%s"
+                imoogi-org-preview-host port
+                (url-hexify-string session)
+                (url-hexify-string imoogi-org-preview--buffer-id)
+	        (imoogi-org-preview--generation)
+	        (url-hexify-string view))
+        (if follow "&follow=1" ""))))
+    (setq imoogi-org-preview--open-pending (if follow 'follow t))
     (message "Org preview is starting; the browser will open when ready")))
+
+;;;###autoload
+(defun imoogi-org-preview-current ()
+  "Open a preview tab that follows the Org or Markdown file in the selected window."
+  (interactive)
+  (unless (derived-mode-p 'org-mode 'markdown-mode)
+    (user-error "Preview is available only in Org and Markdown buffers"))
+  (imoogi-org-preview-mode 1)
+  (imoogi-org-preview-open t)
+  (imoogi-org-preview--follow-buffer (current-buffer)))
 
 ;;;###autoload
 (defun imoogi-org-preview-stop ()
   "Stop live document preview for the current buffer."
   (interactive)
   (imoogi-org-preview-mode -1))
+
+(defun imoogi-org-preview--follow-buffer (buffer)
+  "Preview BUFFER and announce it as the selected window's document.
+Does nothing unless a preview is already running and BUFFER visits an Org or
+Markdown file."
+  (when (and imoogi-org-preview-follow-current
+             (buffer-live-p buffer)
+             (not (eq buffer imoogi-org-preview--followed-buffer))
+             (seq-some #'buffer-live-p imoogi-org-preview--buffers)
+             (imoogi-org-preview--port)
+             (imoogi-org-preview--token))
+    (with-current-buffer buffer
+      (when (and buffer-file-name (derived-mode-p 'org-mode 'markdown-mode))
+        (unless imoogi-org-preview-mode
+          (imoogi-org-preview-mode 1))
+        (when imoogi-org-preview-mode
+          (setq imoogi-org-preview--followed-buffer buffer)
+          (imoogi-org-preview--post-json
+           "/api/emacs/current"
+           (imoogi-org-preview--base-payload
+            `((event_id . ,(imoogi-org-preview--make-id "current"))))
+           #'imoogi-org-preview--current-callback))))))
+
+(defun imoogi-org-preview--current-callback (status source-buffer)
+  "Forget SOURCE-BUFFER as followed when its announcement failed with STATUS."
+  (let ((ok (and (not (plist-get status :error))
+                 (imoogi-org-preview--http-ok-p))))
+    (kill-buffer (current-buffer))
+    (when (and (not ok) (eq imoogi-org-preview--followed-buffer source-buffer))
+      (setq imoogi-org-preview--followed-buffer nil))))
+
+(defun imoogi-org-preview--window-changed (&rest _)
+  "Follow the selected window's buffer once window changes settle."
+  (when (and imoogi-org-preview-follow-current imoogi-org-preview--buffers)
+    (imoogi-org-preview--cancel-timer imoogi-org-preview--follow-timer)
+    (setq imoogi-org-preview--follow-timer
+          (run-at-time 0.2 nil
+                       (lambda ()
+                         (setq imoogi-org-preview--follow-timer nil)
+                         (imoogi-org-preview--follow-buffer
+                          (window-buffer (selected-window))))))))
+
+(add-hook 'window-selection-change-functions #'imoogi-org-preview--window-changed)
+(add-hook 'window-buffer-change-functions #'imoogi-org-preview--window-changed)
 
 (defun imoogi-org-preview--enable ()
   "Enable preview state and hooks for the current buffer."
@@ -147,7 +217,11 @@ The preview scrolls only when that paragraph is off screen."
         (or (and (boundp 'imoogi-clipboard--session-id)
                  imoogi-clipboard--session-id)
             imoogi-org-preview--session-id
-            (imoogi-org-preview--make-id "session"))
+            ;; One session per Emacs, so follow tabs and the recent list see
+            ;; every preview buffer.
+            imoogi-org-preview--fallback-session-id
+            (setq imoogi-org-preview--fallback-session-id
+                  (imoogi-org-preview--make-id "session")))
         imoogi-org-preview--buffer-id
         (or (and (boundp 'imoogi-clipboard--buffer-id)
                  imoogi-clipboard--buffer-id)
@@ -186,6 +260,8 @@ The preview scrolls only when that paragraph is off screen."
         imoogi-org-preview--suppress-navigation nil)
   (setq imoogi-org-preview--buffers
         (delq (current-buffer) imoogi-org-preview--buffers))
+  (when (eq imoogi-org-preview--followed-buffer (current-buffer))
+    (setq imoogi-org-preview--followed-buffer nil))
   (when (and (null imoogi-org-preview--buffers)
              (process-live-p imoogi-org-preview--server-process))
     (delete-process imoogi-org-preview--server-process)))
@@ -302,7 +378,7 @@ The preview scrolls only when that paragraph is off screen."
     (when imoogi-org-preview-navigation-sync
       (imoogi-org-preview--connect-sse))
     (when imoogi-org-preview--open-pending
-      (imoogi-org-preview-open))
+      (imoogi-org-preview-open (eq imoogi-org-preview--open-pending 'follow)))
     (imoogi-org-preview--schedule-update)))
 
 (defun imoogi-org-preview--mark-buffers-failed (message)
@@ -525,7 +601,7 @@ document directory and any VCS project, so it must be allowed explicitly."
 	(setq imoogi-org-preview--browser-view
 	      (alist-get 'browser_view payload))
 	(when imoogi-org-preview--open-pending
-	  (imoogi-org-preview-open)))))
+	  (imoogi-org-preview-open (eq imoogi-org-preview--open-pending 'follow))))))
   (when (buffer-live-p source-buffer)
     (with-current-buffer source-buffer
       (setq imoogi-org-preview--sending nil)
