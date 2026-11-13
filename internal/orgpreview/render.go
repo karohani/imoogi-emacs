@@ -73,7 +73,12 @@ func (r Renderer) renderNode(b *strings.Builder, n Node) {
 		r.renderChildrenOrText(b, n)
 		b.WriteString("</p>")
 	case "property_drawer":
-		r.openMappedAttrs(b, "table", n, map[string]string{"class": "org-properties", "aria-label": "Properties"})
+		attrs := map[string]string{"class": "org-properties", "aria-label": "Properties"}
+		if n.Attrs["format"] == "yaml" {
+			attrs["data-org-format"] = "yaml"
+			attrs["style"] = "white-space:pre-wrap"
+		}
+		r.openMappedAttrs(b, "table", n, attrs)
 		b.WriteString("<tbody>")
 		for _, property := range n.Children {
 			b.WriteString("<tr><th scope=\"row\">")

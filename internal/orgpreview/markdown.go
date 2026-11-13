@@ -21,7 +21,11 @@ var (
 
 func (p MarkdownParser) Parse(text string) (Document, error) {
 	lines, ids, nodes := splitLines(text), map[string]int{}, []Node{}
-	for i := 0; i < len(lines); {
+	start := 0
+	if metadata, next, ok := parseMarkdownFrontmatter(lines, ids); ok {
+		nodes, start = append(nodes, metadata), next
+	}
+	for i := start; i < len(lines); {
 		line, trim := lines[i], strings.TrimRight(lines[i].Text, "\r\n")
 		if strings.TrimSpace(trim) == "" {
 			i++

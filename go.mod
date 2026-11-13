@@ -4,6 +4,7 @@ go 1.26
 
 require (
 	github.com/niklasfasching/go-org v1.9.1
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.56.0
 )
 
