@@ -32,6 +32,15 @@ var mermaidJS []byte
 //go:embed web/mermaid-diagnostics.js
 var mermaidDiagnosticsJS []byte
 
+//go:embed web/reader-pagination.js
+var readerPaginationJS []byte
+
+//go:embed web/reader-view.js
+var readerViewJS []byte
+
+//go:embed web/reader.css
+var readerCSS []byte
+
 // Read the bundled package's getVersion metadata, rather than a README version.
 var bundledMermaidVersion = sync.OnceValue(func() string {
 	matches := regexp.MustCompile(`version:"([0-9]+\.[0-9]+\.[0-9]+[^"\s]*)"\},[A-Za-z0-9_$]+=i\(\(\)=>[A-Za-z0-9_$]+\.version,"getVersion"\)`).FindAllSubmatch(mermaidJS, -1)
@@ -157,8 +166,23 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/recent", s.handleRecentFiles)
 	s.mux.HandleFunc("/ws/browser", s.handleBrowserWebSocket)
 	s.mux.HandleFunc("/asset", s.handleAsset)
+	s.mux.HandleFunc("/static/reader-pagination.js", readerAsset(readerPaginationJS, "text/javascript; charset=utf-8"))
+	s.mux.HandleFunc("/static/reader-view.js", readerAsset(readerViewJS, "text/javascript; charset=utf-8"))
+	s.mux.HandleFunc("/static/reader.css", readerAsset(readerCSS, "text/css; charset=utf-8"))
 	s.mux.HandleFunc("/static/mermaid.min.js", s.handleMermaidJS)
 	s.mux.HandleFunc("/static/mermaid-diagnostics.js", s.handleMermaidDiagnosticsJS)
+}
+
+func readerAsset(body []byte, contentType string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_, _ = w.Write(body)
+	}
 }
 
 func (s *Server) handleMermaidJS(w http.ResponseWriter, r *http.Request) {
@@ -1155,6 +1179,7 @@ table{width:100%;border-collapse:collapse;margin:1.1em 0;overflow:hidden;border-
 .recent-item{display:block;border-radius:6px;padding:7px 8px;color:var(--text);text-decoration:none;font-size:13px;line-height:1.35}.recent-item:hover{background:rgba(255,255,255,.055)}.recent-item.current{background:rgba(137,221,255,.10);box-shadow:inset 2px 0 0 var(--active)}.recent-title,.recent-dir{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.recent-dir{color:var(--muted);font-size:11px}
 @media (max-width:980px){#app{display:block;padding:18px 14px 42px}.preview-sidebar{position:relative;top:auto;margin:0 0 18px;max-height:none}.panel{max-height:240px}.org-preview{padding:24px 22px}.org-preview h1,.org-preview h2,.org-preview h3,.org-preview h4,.org-preview h5,.org-preview h6{margin-left:-10px;margin-right:-10px;padding-left:10px;padding-right:10px}}
 </style>
+<link rel="stylesheet" href="/static/reader.css">
 <div id="app">
   <aside class="preview-sidebar" aria-label="Document overview">
     <header><strong>Org Preview</strong><span id="status">disconnected</span></header>
@@ -1171,6 +1196,8 @@ table{width:100%;border-collapse:collapse;margin:1.1em 0;overflow:hidden;border-
 </div>
 <script src="/static/mermaid.min.js"></script>
 <script src="/static/mermaid-diagnostics.js"></script>
+<script src="/static/reader-pagination.js"></script>
+<script src="/static/reader-view.js"></script>
 <script>
 mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'dark'});
 const params = new URLSearchParams(location.search);
@@ -1184,12 +1211,17 @@ const linkedFileID = params.get('id');
 const generation = params.get('generation') || '';
 const view = params.get('view') || '';
 let revision = -1;
+let linkedLoadID = 0;
+const reader = OrgReaderView.create({root,document,linked:!!linkedFileID,
+ apply:renderRevision,reload:loadLinkedFile,
+ navigate:el=>{if(navigationSocket && navigationSocket.readyState===WebSocket.OPEN)sendNavigation(navigationSocket,el);}
+});
 let activeTarget = null;
 let navigationSocket = null;
 const mermaidDiagnostics = OrgMermaidDiagnostics.create({
   document, runtime:mermaid, version:OrgMermaidVersion,
-  isCurrent:targetRevision => targetRevision === revision,
-  canNavigate:() => !linkedFileID,
+  isCurrent:targetRevision => targetRevision === reader.state.renderGeneration,
+  canNavigate:() => !linkedFileID && reader.state.canNavigate(),
   navigate:node => {
     const el = blockFor(node);
     if (linkedFileID || !el || !sessionID || !bufferID || !navigationSocket || navigationSocket.readyState !== WebSocket.OPEN) return false;
@@ -1206,8 +1238,11 @@ function connect(){
   ws.onclose = () => { if (navigationSocket === ws) navigationSocket = null; statusEl.textContent = 'reconnecting'; setTimeout(connect, 500); };
   ws.onmessage = event => {
     const msg = JSON.parse(event.data);
-    if (msg.html) renderRevision(msg);
-    markFromMessage(msg);
+    if (msg.html) {
+      if (reader.state.receive(msg)) renderRevision(msg);
+      reader.changed();
+    }
+    if (reader.state.mode === 'document' && reader.state.canNavigate()) markFromMessage(msg);
   };
   root.onclick = event => {
     if (event.target.closest('[data-mermaid-controls]')) return;
@@ -1215,15 +1250,17 @@ function connect(){
     const link = event.target.closest('a[data-org-kind="link"]');
     if (link && !/^https?:/i.test(link.getAttribute('href') || '')) {
       event.preventDefault();
-      if (sessionID && bufferID && ws.readyState === WebSocket.OPEN) sendOpen(ws, link);
+      if (reader.guard() && sessionID && bufferID && ws.readyState === WebSocket.OPEN) sendOpen(ws, link);
       return;
     }
+    if (reader.state.mode !== 'document') return;
     const el = blockFor(event.target.closest('[data-org-id]'));
     if (!el || !sessionID || !bufferID || ws.readyState !== WebSocket.OPEN) return;
     sendNavigation(ws, el);
   };
 }
 async function loadLinkedFile(){
+  const ticket = ++linkedLoadID;
   statusEl.textContent = 'saved snapshot';
   const endpoint = new URL('/api/file-preview', location.href);
   endpoint.searchParams.set('id', linkedFileID || '');
@@ -1235,21 +1272,34 @@ async function loadLinkedFile(){
     const response = await fetch(endpoint);
     if (!response.ok) throw new Error('linked file unavailable');
     const payload = await response.json();
+    if (ticket !== linkedLoadID) return;
+    reader.state.renderGeneration++;
+    reader.replaceDocument(() => {
     root.innerHTML = payload.html;
     if (payload.title) document.title = payload.title + ' · Org Preview';
     decorateDocument();
     rebuildSidebars();
-    renderMermaid(revision);
+    renderMermaid(reader.state.renderGeneration);
+    });
   } catch (_) {
+    if (ticket !== linkedLoadID) return;
+    if (root.querySelector('main.org-preview')) {
+      reader.announce('다시 불러올 수 없습니다. 원래 문서에서 새 미리보기를 열어 주세요.');
+      statusEl.textContent = 'unavailable';
+      return;
+    }
+    reader.state.renderGeneration++;
     root.innerHTML = '<main class="org-preview linked-file"><section class="unsupported-preview"><h1>파일을 열 수 없음</h1><p>링크 대상이 없거나 미리보기 허용 범위 밖에 있습니다.</p></section></main>';
     rebuildSidebars();
     statusEl.textContent = 'unavailable';
   }
 }
 function sendNavigation(ws, el){
+  if (linkedFileID || !reader.guard()) return;
   ws.send(JSON.stringify({version:'org-preview/v1',session_id:sessionID,buffer_id:bufferID,revision:revision,event_id:String(Date.now()),origin:'browser',element_id:el.dataset.orgId,range:{start:Number(el.dataset.orgRangeStart||0),end:Number(el.dataset.orgRangeEnd||0)}}));
 }
 function sendOpen(ws, link){
+  if (linkedFileID || !reader.guard()) return;
   ws.send(JSON.stringify({version:'org-preview/v1',session_id:sessionID,buffer_id:bufferID,revision:revision,event_id:'open-'+Date.now(),origin:'browser',type:'open',element_id:link.dataset.orgId}));
 }
 function renderRevision(msg){
@@ -1257,18 +1307,19 @@ function renderRevision(msg){
   const x = window.scrollX;
   const y = window.scrollY;
   revision = msg.revision;
+  reader.state.applied(msg);
   root.innerHTML = msg.html;
   decorateDocument();
   rebuildSidebars();
   // Restore the old viewport first, then let the active block pull it into view.
   window.scrollTo(x, y);
   restoreActive();
-  renderMermaid(revision);
+  renderMermaid(reader.state.renderGeneration);
   refreshRecent();
 }
 async function renderMermaid(targetRevision){
   await mermaidDiagnostics.render(root.querySelectorAll('.mermaid'), targetRevision);
-  if (targetRevision === revision) restoreActive();
+  if (targetRevision === reader.state.renderGeneration) { if(reader.state.mode === 'document') restoreActive(); reader.rendered(); }
 }
 function markFromMessage(msg){
   if (!msg.element_id && !msg.range) return;
@@ -1290,6 +1341,7 @@ function markElement(el, reveal){
   document.querySelectorAll(selector).forEach(n => n.classList.add('active'));
 }
 function restoreActive(){
+  if (reader.state.mode !== 'document') return;
   if (!activeTarget) return;
   const reveal = activeTarget.reveal;
   const el =root.querySelector('[data-org-id="'+CSS.escape(activeTarget.id)+'"]') || root.querySelector('[data-org-range-start="'+CSS.escape(activeTarget.start)+'"][data-org-range-end="'+CSS.escape(activeTarget.end)+'"]');
@@ -1369,6 +1421,7 @@ function baseButton(el, className){
 function jumpTo(id){
   const el = root.querySelector('[data-org-id="'+CSS.escape(id)+'"]');
   if (!el) return;
+  if (reader.jump(el)) return;
   markElement(el);
   el.scrollIntoView({block:'start',behavior:'smooth'});
 }
