@@ -329,6 +329,11 @@ dist-ssr/
 *.elc
 .cache/
 .local/
+# claude-agent-acp bundles Anthropic's claude-agent-sdk ("All rights reserved"),
+# which this public repository must not redistribute. Only its package.json and
+# package-lock.json are committed; `make toolchain-setup` builds the bundle
+# locally and checks it against the SHA-256 in toolchains.lock.json.
+/vendor/toolchains/acp/claude-agent-acp/
 !vendor/elpa/**/*.elc
 vendor/elpa/archives/
 vendor/elpa/.last-refresh

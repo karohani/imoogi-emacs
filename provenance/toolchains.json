@@ -29,6 +29,37 @@
       ]
     },
     {
+      "id": "toolchain/claude-agent-acp",
+      "kind": "toolchain-archive",
+      "version": "0.99.1",
+      "source": {
+        "type": "archive",
+        "url": "https://registry.npmjs.org/@agentclientprotocol/claude-agent-acp/-/claude-agent-acp-0.99.1.tgz"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "go run ./cmd/imoogi-toolchain fetch (bundle is local-build: make toolchain-setup builds it from the committed package-lock.json)",
+      "files": [
+        {
+          "path": "toolchains/acp/claude-agent-acp/package-lock.json",
+          "sha256": "e52a4b14db9677c677c4c2296ea85f94d8200ef1cf46aa9e8d61aabace8cd568",
+          "size": 55162
+        },
+        {
+          "path": "toolchains/acp/claude-agent-acp/package.json",
+          "sha256": "b412a8ffe547118eec950f9333bf097c2e31e2d081925a4cb0a92cbf64ed7b46",
+          "size": 320
+        },
+        {
+          "path": "vendor/toolchains/licenses/claude-agent-acp-LICENSE",
+          "sha256": "6ed4f049cce59e05197d585bdf8a39980b45d546d6ea718ee344555f3a867c3a",
+          "size": 10783
+        }
+      ]
+    },
+    {
       "id": "toolchain/clojure-lsp",
       "kind": "toolchain-archive",
       "version": "2026.07.06-14.34.19",
@@ -54,6 +85,42 @@
           "path": "vendor/toolchains/licenses/clojure-lsp-LICENSE",
           "sha256": "f2ea07ed625651b1e4a88ae49b620f0fecd32b64fe1f6609e4d0f12754d77e72",
           "size": 1080
+        }
+      ]
+    },
+    {
+      "id": "toolchain/codex-acp",
+      "kind": "toolchain-archive",
+      "version": "2.5.0",
+      "source": {
+        "type": "archive",
+        "url": "https://registry.npmjs.org/@agentclientprotocol/codex-acp/-/codex-acp-2.5.0.tgz"
+      },
+      "platform": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "workflow": "go run ./cmd/imoogi-toolchain fetch",
+      "files": [
+        {
+          "path": "toolchains/acp/codex-acp/package-lock.json",
+          "sha256": "adae776b239d5cd93695766ceaea419ef2a5e73531c3bd8c7e37dc7a42c5bbb7",
+          "size": 14899
+        },
+        {
+          "path": "toolchains/acp/codex-acp/package.json",
+          "sha256": "88286ee6a396263f15249d237d603afbf5fde0050e9867a23432e211112a19c0",
+          "size": 299
+        },
+        {
+          "path": "vendor/toolchains/acp/codex-acp/2.5.0/darwin-arm64/bundle.tgz",
+          "sha256": "512813968e23dd5d92715c15d96758a5ba1044cc3c5b257ccd91314ca7302ed4",
+          "size": 2458580
+        },
+        {
+          "path": "vendor/toolchains/licenses/codex-acp-LICENSE",
+          "sha256": "72ea310b40e1ee2c4aa61935d22065155c50bfde288b114c9cfd3e1fa34f8049",
+          "size": 10760
         }
       ]
     },
@@ -102,13 +169,13 @@
       "files": [
         {
           "path": "vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain",
-          "sha256": "79c8bab41d7c9311bb0fdc21b7b44bf3a53124e527b300871eba154b54c30be3",
-          "size": 9802994
+          "sha256": "37ead6001230fa32a5266f1f4f42692640cd0f05cdb71c58ad3dc4b009e479eb",
+          "size": 9976386
         },
         {
           "path": "vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain.provenance.json",
-          "sha256": "9139ec9b71770b79561e409d9bdff7bc8d45fb379c968ba55f9aa8a5eb9d2228",
-          "size": 557
+          "sha256": "19e737d369397917bc43964914d791c95e5af23bcb7e9be7fb623d26d6450e3e",
+          "size": 558
         }
       ]
     },

@@ -1,0 +1,10 @@
+{
+  "name": "imoogi-codex-acp-bundle",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pins the Codex ACP adapter for imoogi-emacs; imoogi-toolchain builds the bundle from this lockfile.",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@agentclientprotocol/codex-acp": "2.5.0"
+  }
+}

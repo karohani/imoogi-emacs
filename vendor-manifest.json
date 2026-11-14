@@ -11,6 +11,7 @@
     "provenance/sources.json",
     "toolchains.json",
     "toolchains.lock.json",
+    "toolchains/acp",
     "vendor/elpa",
     "vendor/ghostel-module",
     "vendor/toolchains",

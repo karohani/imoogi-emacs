@@ -1,7 +1,7 @@
 {
   "schema": "imoogi-toolchains-lock/v1",
   "cli_version": "1.0.0",
-  "bundle": "2026.10.12.1",
+  "bundle": "2026.11.14.1",
   "target": {
     "os": "darwin",
     "arch": "arm64"
@@ -28,7 +28,7 @@
       },
       "provenance": {
         "builder": "darwin/arm64",
-        "toolchain": "go1.26.4",
+        "toolchain": "go1.26.11",
         "command": "curl https://registry.npmjs.org/basedpyright/-/basedpyright-1.39.10.tgz"
       },
       "install": [
@@ -54,6 +54,49 @@
       }
     },
     {
+      "name": "claude-agent-acp",
+      "kind": "acp-adapter",
+      "source": "npm:@agentclientprotocol/claude-agent-acp",
+      "upstream_version": "0.99.1",
+      "revision": "e52a4b14db9677c677c4c2296ea85f94d8200ef1cf46aa9e8d61aabace8cd568",
+      "artifact_policy": "local-build",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "artifact": {
+        "path": "vendor/toolchains/acp/claude-agent-acp/0.99.1/darwin-arm64/bundle.tgz",
+        "size": 9035075,
+        "sha256": "240a90a8dd38ae8607c697c4ebde4759b892ab78be5cb2038d5d11a3caddde0a",
+        "source_url": "https://registry.npmjs.org/@agentclientprotocol/claude-agent-acp/-/claude-agent-acp-0.99.1.tgz",
+        "retrieved_at": "2026-11-14T11:20:12Z"
+      },
+      "license": {
+        "path": "vendor/toolchains/licenses/claude-agent-acp-LICENSE"
+      },
+      "provenance": {
+        "builder": "darwin/arm64",
+        "toolchain": "go1.26.11",
+        "command": "npm ci --omit=optional --ignore-scripts --no-audit --no-fund --no-bin-links --install-strategy=hoisted (toolchains/acp/claude-agent-acp/package-lock.json, npm bundled with the locked node) then deterministic tar.gz of node_modules"
+      },
+      "install": [
+        {
+          "path": "bin/claude-agent-acp",
+          "mode": "executable"
+        },
+        {
+          "path": "lib/acp/claude-agent-acp",
+          "mode": "directory"
+        }
+      ],
+      "runtime": {
+        "node_engine": "\u003e=22.0.0"
+      },
+      "probe": {
+        "command": "bin/claude-agent-acp"
+      }
+    },
+    {
       "name": "clojure-lsp",
       "kind": "clojure-language-server",
       "source": "github.com/clojure-lsp/clojure-lsp",
@@ -75,7 +118,7 @@
       },
       "provenance": {
         "builder": "darwin/arm64",
-        "toolchain": "go1.26.4",
+        "toolchain": "go1.26.11",
         "command": "curl -L https://github.com/clojure-lsp/clojure-lsp/releases/download/2026.07.06-14.34.19/clojure-lsp-native-macos-aarch64.zip"
       },
       "install": [
@@ -90,6 +133,46 @@
         "args": [
           "--version"
         ]
+      }
+    },
+    {
+      "name": "codex-acp",
+      "kind": "acp-adapter",
+      "source": "npm:@agentclientprotocol/codex-acp",
+      "upstream_version": "2.5.0",
+      "revision": "adae776b239d5cd93695766ceaea419ef2a5e73531c3bd8c7e37dc7a42c5bbb7",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "artifact": {
+        "path": "vendor/toolchains/acp/codex-acp/2.5.0/darwin-arm64/bundle.tgz",
+        "size": 2458580,
+        "sha256": "512813968e23dd5d92715c15d96758a5ba1044cc3c5b257ccd91314ca7302ed4",
+        "source_url": "https://registry.npmjs.org/@agentclientprotocol/codex-acp/-/codex-acp-2.5.0.tgz",
+        "retrieved_at": "2026-11-14T11:20:17Z"
+      },
+      "license": {
+        "path": "vendor/toolchains/licenses/codex-acp-LICENSE"
+      },
+      "provenance": {
+        "builder": "darwin/arm64",
+        "toolchain": "go1.26.11",
+        "command": "npm ci --omit=optional --ignore-scripts --no-audit --no-fund --no-bin-links --install-strategy=hoisted (toolchains/acp/codex-acp/package-lock.json, npm bundled with the locked node) then deterministic tar.gz of node_modules"
+      },
+      "install": [
+        {
+          "path": "bin/codex-acp",
+          "mode": "executable"
+        },
+        {
+          "path": "lib/acp/codex-acp",
+          "mode": "directory"
+        }
+      ],
+      "runtime": {},
+      "probe": {
+        "command": "bin/codex-acp"
       }
     },
     {
@@ -114,7 +197,7 @@
       },
       "provenance": {
         "builder": "darwin/arm64",
-        "toolchain": "go1.26.4",
+        "toolchain": "go1.26.11",
         "command": "go install -trimpath -ldflags=-buildid= golang.org/x/tools/gopls@v0.23.0"
       },
       "install": [
@@ -153,7 +236,7 @@
       },
       "provenance": {
         "builder": "darwin/arm64",
-        "toolchain": "go1.26.4",
+        "toolchain": "go1.26.11",
         "command": "curl https://download.eclipse.org/jdtls/milestones/1.61.0/jdt-language-server-1.61.0-202609031315.tar.gz"
       },
       "install": [
@@ -197,7 +280,7 @@
       },
       "provenance": {
         "builder": "darwin/arm64",
-        "toolchain": "go1.26.4",
+        "toolchain": "go1.26.11",
         "command": "curl -L https://github.com/fwcd/kotlin-language-server/releases/download/1.3.13/server.zip"
       },
       "install": [
@@ -239,7 +322,7 @@
       },
       "provenance": {
         "builder": "darwin/arm64",
-        "toolchain": "go1.26.4",
+        "toolchain": "go1.26.11",
         "command": "curl https://nodejs.org/dist/v24.19.0/node-v24.19.0-darwin-arm64.tar.gz"
       },
       "install": [
@@ -282,7 +365,7 @@
       },
       "provenance": {
         "builder": "darwin/arm64",
-        "toolchain": "go1.26.4",
+        "toolchain": "go1.26.11",
         "command": "curl https://registry.npmjs.org/typescript/-/typescript-6.0.3.tgz"
       },
       "install": [
@@ -325,7 +408,7 @@
       },
       "provenance": {
         "builder": "darwin/arm64",
-        "toolchain": "go1.26.4",
+        "toolchain": "go1.26.11",
         "command": "curl https://registry.npmjs.org/typescript-language-server/-/typescript-language-server-6.0.0.tgz"
       },
       "install": [
