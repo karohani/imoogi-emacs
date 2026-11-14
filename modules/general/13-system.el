@@ -10,6 +10,21 @@
 
 (eval-when-compile (require 'transient))
 
+;;; CLI doctor — bin/ tools and installer links must come from this checkout.
+;; The checks live in Go (cmd/imoogi-doctor, run with `go run' so the doctor is
+;; never stale itself); these commands only run them in a compilation buffer.
+(defun imoogi-doctor ()
+  "Check that bin/ CLI tools and ~/.local/bin links are built from this checkout."
+  (interactive)
+  (let ((default-directory (file-name-as-directory imoogi-emacs-dir)))
+    (compile "make doctor")))
+
+(defun imoogi-doctor-fix ()
+  "Rebuild stale CLI tools, remove obsolete ones and relink, then check again."
+  (interactive)
+  (let ((default-directory (file-name-as-directory imoogi-emacs-dir)))
+    (compile "make doctor ARGS=--fix")))
+
 (defcustom imoogi-system-config-file
   (expand-file-name "imoogi-system.json" user-emacs-directory)
   "Persistent non-secret Emacs system configuration."
@@ -89,7 +104,10 @@
     [["네트워크·인증서 --------"
       ("P" "사설 CA PEM 설정" imoogi-system-set-ca-certificate)
       ("X" "사설 CA 설정 해제" imoogi-system-clear-ca-certificate)
-      ("q" "종료" transient-quit-one)]])
+      ("q" "종료" transient-quit-one)]
+     ["CLI 도구 --------"
+      ("d" "doctor (점검)" imoogi-doctor)
+      ("D" "doctor --fix (다시 빌드·연결)" imoogi-doctor-fix)]])
   (transient-append-suffix 'imoogi-transient-master "R"
     '("s" "시스템 설정" imoogi-system-transient)))
 

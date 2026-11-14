@@ -62,6 +62,22 @@ Claude Code나 Codex의 `Ctrl+G`를 누르면 실행 중인 Emacs에 새 프레�
 나중에 별도로 설치하거나 다시 검증하려면 `make toolchain-setup`만 실행하면 된다.
 자세한 무결성·rollback 절차는 [`docs/toolchains.md`](docs/toolchains.md)를 따른다.
 
+### CLI 도구 점검 — `make doctor`
+
+`make doctor`(Emacs에서는 `M-x imoogi-doctor`, `C-c h s d`)는 `bin/`의 Go CLI 도구와
+설치기가 만든 링크가 지금 저장소 그대로인지 확인한다. 도구마다 실제 바이너리에 기록된
+빌드 정보를 읽어 다음을 본다.
+
+- `bin/` 에 빌드돼 있는지, `go.work`에 고정한 Go 버전으로 빌드됐는지
+- 빌드한 커밋 이후 그 도구가 쓰는 패키지나 `go.mod`·`go.sum`·`go.work`가 바뀌지 않았는지
+  (커밋하지 않은 변경으로 빌드했다면 경고로 알린다)
+- 더 이상 없는 도구의 바이너리가 `bin/`에 남아 있지 않은지
+- `~/.config/imoogi-emacs`가 이 저장소를, `~/.local/bin`의 링크가 올바른 대상을 가리키는지
+
+문제가 있으면 종료 코드 1로 끝난다. `make doctor ARGS=--fix`(`C-c h s D`)는 `make build-all`과
+설치기(`--without-toolchain`)로 다시 빌드·연결하고 남은 바이너리를 지운 뒤 다시 점검한다.
+점검 도구는 항상 `go run`으로 실행돼 그 자체가 낡을 일이 없다. `ARGS=--json`도 쓸 수 있다.
+
 모든 패키지가 저장소 안 `vendor/elpa/` 에 동봉돼 있어, **인터넷 없이도 첫 실행부터 그대로 동작한다**(망분리/air-gap 지원).
 
 ### 코딩 에이전트 알림 — `imoogi-emacsctl`

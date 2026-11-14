@@ -187,6 +187,8 @@
     (imoogi-system-transient
      (imoogi-system-set-ca-certificate   transient--do-exit)
      (imoogi-system-clear-ca-certificate transient--do-exit)
+     (imoogi-doctor                      transient--do-exit)
+     (imoogi-doctor-fix                  transient--do-exit)
      (transient-quit-one                 transient--do-quit-one))
     (imoogi-transient-master                      ; §C.5 (6)
      (imoogi-transient-window          transient--do-stack)
@@ -780,3 +782,14 @@ tests/assert-boot.el 이 잘못 읽는다(실제로 발생했던 버그).
 
 (provide 'transient-menu-test)
 ;;; transient-menu-test.el ends here
+
+(ert-deftest imoogi-doctor-runs-make-doctor-in-the-repository ()
+  "M-x imoogi-doctor runs the repository's doctor; the fix variant passes --fix."
+  (let (calls)
+    (cl-letf (((symbol-function 'compile)
+               (lambda (command &rest _) (push (cons default-directory command) calls))))
+      (imoogi-doctor)
+      (imoogi-doctor-fix))
+    (should (equal (reverse calls)
+                   (list (cons (file-name-as-directory imoogi-emacs-dir) "make doctor")
+                         (cons (file-name-as-directory imoogi-emacs-dir) "make doctor ARGS=--fix"))))))
