@@ -20,6 +20,7 @@ import (
 
 	"github.com/karohani/imoogi-emacs/internal/activation"
 	"github.com/karohani/imoogi-emacs/internal/config"
+	"github.com/karohani/imoogi-emacs/internal/npmbundle"
 )
 
 const generatedBy = "imoogi-toolchain fetch"
@@ -32,6 +33,8 @@ type Options struct {
 	Now     func() time.Time
 	Sources Sources
 	Go      string
+	// NPMRunner runs npm for ACP adapter builds; nil runs the real npm.
+	NPMRunner npmbundle.Runner
 }
 
 type Sources struct {
@@ -116,13 +119,32 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	defer os.RemoveAll(staging)
 	var staged []stagedArtifact
+	var adapters []config.DesiredComponent
 	for _, component := range desired.Components {
+		if component.Kind == config.KindACPAdapter {
+			adapters = append(adapters, component) // built after node is locked
+			continue
+		}
 		locked, artifacts, err := fetchComponent(ctx, opts, repoRoot, staging, previous, component)
 		if err != nil {
 			return fmt.Errorf("fetch %s: %w", component.Name, err)
 		}
 		resolved.Components = append(resolved.Components, locked)
 		staged = append(staged, artifacts...)
+	}
+	if len(adapters) > 0 {
+		nodeLock, nodeArchive, err := lockedNode(repoRoot, resolved.Components, staged)
+		if err != nil {
+			return err
+		}
+		for _, component := range adapters {
+			locked, artifacts, err := fetchACPAdapter(ctx, opts, repoRoot, staging, previous, component, nodeLock, nodeArchive)
+			if err != nil {
+				return fmt.Errorf("fetch %s: %w", component.Name, err)
+			}
+			resolved.Components = append(resolved.Components, locked)
+			staged = append(staged, artifacts...)
+		}
 	}
 	bootstrapArtifacts, err := buildBootstrap(ctx, opts, repoRoot, staging, desired.CLI)
 	if err != nil {
@@ -165,6 +187,27 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	fmt.Fprintf(opts.Stdout, "fetch wrote %s\n", filepath.Base(lockPath))
 	return nil
+}
+
+// lockedNode returns the node component this run locked and the file holding
+// its artifact: the staged download, or the published file when reused.
+func lockedNode(repoRoot string, locked []config.LockComponent, staged []stagedArtifact) (config.LockComponent, string, error) {
+	for _, component := range locked {
+		if component.Name != "node" && component.Kind != "node-runtime" {
+			continue
+		}
+		final, err := containedPath(repoRoot, component.Artifact.Path)
+		if err != nil {
+			return config.LockComponent{}, "", err
+		}
+		for _, artifact := range staged {
+			if artifact.FinalPath == final {
+				return component, artifact.StagePath, nil
+			}
+		}
+		return component, final, nil
+	}
+	return config.LockComponent{}, "", errors.New("ACP adapters are built with the locked node, but toolchains.json has no node component")
 }
 
 func findRoot(start string) (string, error) {
@@ -979,6 +1022,7 @@ func lock(component config.DesiredComponent, target config.Target, rel, sourceUR
 		Source:          component.Source,
 		UpstreamVersion: component.UpstreamVersion,
 		Revision:        component.Revision,
+		ArtifactPolicy:  component.ArtifactPolicy,
 		Target:          target,
 		Artifact: config.Artifact{
 			Path:        rel,
