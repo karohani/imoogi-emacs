@@ -17,8 +17,10 @@ type toolchainLock struct {
 
 type toolchainLockComponent struct {
 	Name            string `json:"name"`
+	Kind            string `json:"kind"`
 	UpstreamVersion string `json:"upstream_version"`
 	Revision        string `json:"revision"`
+	ArtifactPolicy  string `json:"artifact_policy"`
 	Artifact        struct {
 		Path      string `json:"path"`
 		Size      int64  `json:"size"`
@@ -44,6 +46,20 @@ type cliProvenance struct {
 	Artifact   string `json:"artifact"`
 	Size       int64  `json:"size"`
 	SHA256     string `json:"sha256"`
+}
+
+const (
+	acpAdapterKind   = "acp-adapter"
+	localBuildPolicy = "local-build"
+)
+
+func ownsLockfile(component Component, digest string) bool {
+	for _, file := range component.Files {
+		if strings.HasSuffix(file.Path, "/package-lock.json") && file.SHA256 == digest {
+			return true
+		}
+	}
+	return false
 }
 
 func verifyCompatibility(repoRoot string, domains map[string]Domain) []error {
@@ -119,7 +135,13 @@ func verifyToolchainsLock(root string, domain Domain) []error {
 		if component.Version != item.UpstreamVersion {
 			issues = append(issues, fmt.Errorf("toolchains.lock version mismatch for %s", item.Name))
 		}
-		if item.Revision != "" && component.Source.Commit != item.Revision {
+		if item.Kind == acpAdapterKind {
+			// An ACP adapter's revision is the digest of its committed
+			// package-lock.json, which the component must own.
+			if !ownsLockfile(component, item.Revision) {
+				issues = append(issues, fmt.Errorf("toolchains.lock revision for %s is not the sha256 of an owned package-lock.json", item.Name))
+			}
+		} else if item.Revision != "" && component.Source.Commit != item.Revision {
 			issues = append(issues, fmt.Errorf("toolchains.lock revision mismatch for %s", item.Name))
 		}
 		artifactURL := component.Source.ArtifactURL
@@ -138,7 +160,13 @@ func verifyToolchainsLock(root string, domain Domain) []error {
 				}
 			}
 		}
-		if !found {
+		switch {
+		case item.ArtifactPolicy == localBuildPolicy && found:
+			issues = append(issues, fmt.Errorf("toolchains.lock local-build artifact must not be vendored for %s: %s", item.Name, item.Artifact.Path))
+		case item.ArtifactPolicy == localBuildPolicy:
+			// Built by setup from the committed inputs and gitignored; the
+			// component owns those inputs instead.
+		case !found:
 			issues = append(issues, fmt.Errorf("toolchains.lock artifact is not owned for %s: %s", item.Name, item.Artifact.Path))
 		}
 	}
