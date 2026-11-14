@@ -1,6 +1,8 @@
 module github.com/karohani/imoogi-emacs
 
-go 1.26
+go 1.26.0
+
+toolchain go1.26.11
 
 require (
 	github.com/niklasfasching/go-org v1.9.1
@@ -14,8 +16,8 @@ require (
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	golang.org/x/net v0.38.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 	modernc.org/libc v1.74.4 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect

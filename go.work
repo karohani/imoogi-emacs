@@ -5,7 +5,10 @@
 //
 // 이 go.work 는 워크스페이스 모드를 켜서 vendor/ 를 무시하게 만든다.
 // make 뿐 아니라 맨손 `go test ./...` 과 gopls(eglot) 에도 똑같이 적용된다.
-go 1.26
+go 1.26.0
+
+toolchain go1.26.11
 
 use .
+
 use ./web-clipper/native-host
