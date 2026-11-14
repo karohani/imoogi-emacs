@@ -32,7 +32,7 @@ CLIPBOARD_PREFIX ?= $(HOME)/.local/bin
 IMOOGI_CLIP_VERSION ?= dev
 
 .DEFAULT_GOAL := help
-.PHONY: help emacs-install emacs-prewarm emacs-where install toolchain-setup tmux-install tmux-check grammars build build-all build-anki-bin build-toolchain build-provenance build-anki build-org-preview build-clipboard build-notes build-agent install-clipboard clipboard-version provenance-generate provenance-verify verify-vendor fmt fmt-check lint test test-elisp test-go test-shell ci-local clean-elc clean
+.PHONY: help emacs-install emacs-prewarm emacs-where install toolchain-setup tmux-install tmux-check grammars build build-all build-anki-bin build-toolchain build-provenance build-anki build-org-preview build-clipboard build-notes build-agent install-clipboard clipboard-version provenance-generate provenance-verify outdated verify-vendor fmt fmt-check lint test test-elisp test-go test-shell ci-local clean-elc clean
 
 help: ## 이 도움말
 	@echo "imoogi-emacs"
@@ -51,6 +51,7 @@ help: ## 이 도움말
 	@echo "  make test                elisp + go 테스트"
 	@echo "  make provenance-verify   동봉 외부 파일의 출처·SHA-256·누락 여부 검사"
 	@echo "  make verify-vendor       provenance-verify의 CI용 이름"
+	@echo "  make outdated            동봉 외부 구성 요소의 새 버전 확인 (온라인, ARGS=--all|--json)"
 	@echo "  make provenance-generate 온라인 갱신 후 provenance manifest 재생성"
 	@echo "  make lint                go vet"
 	@echo "  make fmt                 go fmt"
@@ -186,6 +187,9 @@ provenance-generate: ## 온라인 vendoring/build 후 고정 출처와 파일 SH
 
 provenance-verify: ## 동봉 외부 파일이 provenance manifest와 정확히 일치하는지 검사한다
 	@$(GO) run ./cmd/imoogi-provenance verify
+
+outdated: ## 동봉 외부 구성 요소의 새 버전을 확인한다 (온라인, 읽기 전용)
+	@$(GO) run ./cmd/imoogi-provenance outdated $(ARGS)
 
 verify-vendor: provenance-verify ## CI/감사용 vendored provenance 검사
 
