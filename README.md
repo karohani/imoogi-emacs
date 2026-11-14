@@ -107,7 +107,7 @@ Gemini는 `gemini --experimental-acp`. 앞의 둘은 툴체인 구성요소라 `
 `.local/bin`에 설치하고, `make doctor`가 ACP `initialize`에 답하는지와 `claude` / `codex` CLI가 있는지
 확인한다(자세한 내용은 [`docs/toolchains.md`](docs/toolchains.md)의 ACP 어댑터 절). claude-agent-acp는
 Anthropic SDK를 포함해 아티팩트를 커밋하지 않고 setup이 커밋된 lockfile로 로컬 빌드한 뒤 SHA-256을
-검증한다. 어댑터가 없으면 `imoogi-agent-start`가 어떤 프로그램이 필요한지 알려 준다.
+검증한다(오프라인이라 빌드할 수 없으면 경고와 함께 이 어댑터만 건너뛴다). 어댑터가 없으면 `imoogi-agent-start`가 어떤 프로그램이 필요한지 알려 준다.
 
 ### 코딩 에이전트 알림 — `imoogi-emacsctl`
 

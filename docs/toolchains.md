@@ -9,7 +9,7 @@ Emacs 부팅 경로에서는 두 명령 모두 자동 실행하지 않는다.
 | 구분 | 버전 |
 |---|---|
 | CLI | `1.0.0` |
-| bundle | `2026.11.14.1` |
+| bundle | `2026.11.14.2` |
 | target | `darwin/arm64` |
 | gopls | `v0.23.0` (`014f87ff5c01915bc90f4f11a6bb8aea3e0edbd7`) |
 | Node.js | `v24.19.0` LTS |
@@ -55,7 +55,8 @@ $TOOL version
 - `fetch`: 온라인 전용. `toolchains.json`의 정확한 핀만 내려받고, Node 공식
   `SHASUMS256.txt`를 확인하며, gopls와 bootstrap을 재현 가능한 Go 빌드 옵션으로
   만든다. 결과는 `vendor/toolchains/`와 `toolchains.lock.json`에 기록한다.
-- `setup`: 오프라인 전용(예외: 아래 ACP 어댑터의 로컬 빌드). 네트워크나 시스템
+- `setup`: 오프라인 전용(예외: 아래 ACP 어댑터의 로컬 빌드 — 실패하면 그 어댑터만
+  건너뛴다). 네트워크나 시스템
   Go/Node를 사용하지 않는다. 모든
   아티팩트의 크기와 SHA-256을 먼저 확인한 뒤 같은 파일시스템의 staging에서
   materialize/probe하고, `.local/toolchains/<bundle>/`을 불변 설치한 후 상대
@@ -144,13 +145,30 @@ reserved")를 포함하므로 공개 저장소에 재배포하지 않는다. 이
 자체의 Apache-2.0 라이선스, 그리고 lock의 SHA-256뿐이다.
 
 `setup`은 이 아티팩트가 없으면 커밋된 lockfile로 위와 같은 빌드를 실행한 뒤 lock의
-크기·SHA-256과 비교한다. 다르면 종료 코드 `10`으로 실패하고 아무것도 설치하지
-않으며 lock을 고치지 않는다. 이 빌드만 npm 레지스트리에 접속하므로, 폐쇄망
-타겟에서는 온라인 머신에서 만든 `vendor/toolchains/acp/claude-agent-acp/0.99.1/darwin-arm64/bundle.tgz`를
-같은 경로에 복사해 둔다. 파일이 있으면 setup은 빌드하지 않고 SHA-256만 검증한다.
+크기·SHA-256과 비교한다. 이 빌드만 npm 레지스트리에 접속한다.
+
+- **npm 설치가 끝나지 못하면(오프라인, 레지스트리 오류, npm 비정상 종료) 이 구성요소만
+  건너뛴다.** setup은 구성요소 이름·원인·해결 방법을 담은 `warning:`을 출력하고,
+  나머지 언어 서버와 다른 어댑터는 그대로 설치·활성화한 뒤 종료 코드 `0`으로 끝난다.
+  건너뛴 구성요소에는 런처가 생기지 않고, `install.json`의 `skipped`에 기록된다.
+  `make doctor`는 이 어댑터를 조치가 필요한 항목(`missing`)으로 보고하며 해결 방법을
+  함께 보여 준다.
+- **해결 방법:** 네트워크가 되는 곳에서 `make toolchain-setup`을 다시 실행하거나, 온라인
+  머신에서 만든 `vendor/toolchains/acp/claude-agent-acp/0.99.1/darwin-arm64/bundle.tgz`를
+  같은 경로에 복사한 뒤 `make toolchain-setup`을 실행한다. 파일이 있으면 setup은
+  빌드하지 않고 SHA-256만 검증한다.
+- 구성요소를 건너뛴 bundle은 그 구성요소를 여전히 빌드할 수 없는 동안에만 재사용한다.
+  빌드가 성공하면 setup은 완전한 bundle을 새로 만들어 같은 bundle 디렉터리를 교체한다.
+- **다음은 여전히 종료 코드 `10`인 실패다:** 빌드했거나 미리 놓아 둔 아티팩트의 크기·
+  SHA-256이 lock과 다를 때, 커밋된 `package-lock.json`의 SHA-256이 `revision`과 다를 때,
+  그리고 커밋된(local-build가 아닌) 구성요소의 모든 실패. 이때는 아무것도 활성화하지
+  않으며 lock을 고치지 않는다.
 
 codex-acp와 그 의존성은 모두 허용 라이선스(Apache-2.0, MIT, ISC, BSD-3-Clause)라
-아티팩트를 그대로 커밋한다.
+아티팩트를 그대로 커밋한다. 그중 `@openai/codex` 0.165.0은 package.json에
+Apache-2.0을 선언하지만 npm 배포물에 라이선스 파일이 없어,
+`vendor/toolchains/licenses/codex-acp-NOTICE`에 그 사실을 적고 lock의
+`license.notice`로 연결한다(전문은 `codex-acp-LICENSE`).
 
 ## 감사와 무결성
 
