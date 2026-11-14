@@ -110,6 +110,31 @@ func TestAdapterInstallProblemsAreClassified(t *testing.T) {
 	}
 }
 
+func TestAdapterSkippedBySetupNeedsAttentionWithTheRemedy(t *testing.T) {
+	env := withAdapters()
+	record := strings.Replace(string(installJSON(lockDigest(), claudeSHA)), `"components"`, `"skipped":["claude-agent-acp"],"components"`, 1)
+	env.files[installRec] = []byte(record)
+	env.exists[claudeBin] = false
+	lock := strings.Replace(lockJSON, `"upstream_version":"0.99.1",`, `"upstream_version":"0.99.1","artifact_policy":"local-build",`, 1)
+	lock = strings.Replace(lock, `"artifact":{"sha256":"`+claudeSHA+`"}`, `"artifact":{"path":"vendor/toolchains/acp/claude-agent-acp/0.99.1/darwin-arm64/bundle.tgz","sha256":"`+claudeSHA+`"}`, 1)
+	env.files[lockPath] = []byte(lock)
+	sum := sha256.Sum256([]byte(lock))
+	env.files[installRec] = []byte(strings.Replace(record, lockDigest(), hex.EncodeToString(sum[:]), 1))
+
+	findings := Check(env)
+	f := find(t, findings, "claude-agent-acp")
+	if f.Status != StatusMissing || !strings.Contains(f.Detail, "skipped") ||
+		!strings.Contains(f.Fix, "make toolchain-setup") || !strings.Contains(f.Fix, "vendor/toolchains/acp/claude-agent-acp/0.99.1/darwin-arm64/bundle.tgz") {
+		t.Fatalf("finding = %+v", f)
+	}
+	if find(t, findings, "codex-acp").Status != StatusOK {
+		t.Fatal("the other adapter must still be checked normally")
+	}
+	if Healthy(findings) {
+		t.Fatal("a skipped adapter needs attention")
+	}
+}
+
 func TestMissingAgentCLIIsAWarning(t *testing.T) {
 	env := withAdapters()
 	delete(env.path, "codex")

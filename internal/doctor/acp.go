@@ -22,6 +22,7 @@ type installRecord struct {
 		Name           string `json:"name"`
 		ArtifactSHA256 string `json:"artifact_sha256"`
 	} `json:"components"`
+	Skipped []string `json:"skipped"` // local-build components setup could not build
 }
 
 // checkAdapters reports, for every ACP adapter in toolchains.lock.json, whether
@@ -94,6 +95,14 @@ func checkAdapter(env Env, c config.LockComponent, state installState) Finding {
 	if state.status != "" {
 		f.Status, f.Detail = state.status, state.detail
 		return f
+	}
+	for _, name := range state.record.Skipped {
+		if name == c.Name {
+			f.Status = StatusMissing
+			f.Detail = "skipped by setup: its locally built bundle could not be built (npm registry unreachable?)"
+			f.Fix = fixToolchain + " once online, or copy a built bundle to " + c.Artifact.Path + " and run " + fixToolchain
+			return f
+		}
 	}
 	installed := ""
 	for _, rc := range state.record.Components {
