@@ -107,8 +107,23 @@ func buildLocalArtifact(ctx context.Context, opts Options, repoRoot string, lock
 
 // warnSkipped tells the operator which component is missing and how to get it.
 func warnSkipped(w io.Writer, c config.LockComponent, reason error) {
-	fmt.Fprintf(w, "warning: skipped %s %s: its bundle is built locally and the build did not complete (%v).\n", c.Name, c.UpstreamVersion, reason)
+	fmt.Fprintf(w, "warning: skipped %s %s: its bundle is built locally and the build did not complete (%s).\n", c.Name, c.UpstreamVersion, summarizeNpmError(reason))
 	fmt.Fprintf(w, "warning: every other toolchain component is installed. To add %s, run `make toolchain-setup` again once the npm registry is reachable, or copy a bundle built elsewhere to %s.\n", c.Name, c.Artifact.Path)
+}
+
+// summarizeNpmError keeps the first line of npm's failure and the line naming
+// the request that failed, dropping stack frames and the path of a debug log
+// that lived in the (already removed) build directory.
+func summarizeNpmError(err error) string {
+	lines := strings.Split(strings.TrimSpace(err.Error()), "\n")
+	summary := strings.TrimSpace(lines[0])
+	for _, line := range lines[1:] {
+		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "npm error"))
+		if strings.Contains(line, "request to ") || strings.Contains(line, "reason:") {
+			return summary + "; " + line
+		}
+	}
+	return summary
 }
 
 // withoutComponents returns lock without the named components.

@@ -289,6 +289,31 @@ func TestSetupSkipsALocalBuildThatCannotBuildAndActivatesTheRest(t *testing.T) {
 	}
 }
 
+func TestSkipWarningKeepsTheCauseAndDropsNpmNoise(t *testing.T) {
+	reason := errors.New(`npm install did not complete: npm ci for @x/y@1.0.0: exit status 1: npm error code ECONNREFUSED
+npm error syscall connect
+npm error FetchError: request to http://127.0.0.1:9/z/-/z-1.tgz failed, reason: connect ECONNREFUSED 127.0.0.1:9
+npm error     at ClientRequest.<anonymous> (/tmp/x/minipass-fetch/lib/index.js:130:14)
+npm error }
+npm error A complete log of this run can be found in: /tmp/imoogi-npm-build-1/npm-cache/_logs/debug-0.log`)
+	var out bytes.Buffer
+	warnSkipped(&out, config.LockComponent{Name: "claude-agent-acp", UpstreamVersion: "0.99.1", Artifact: config.Artifact{Path: "vendor/x/bundle.tgz"}}, reason)
+	got := out.String()
+	if lines := strings.Count(got, "\n"); lines != 2 {
+		t.Fatalf("warning has %d lines, want 2:\n%s", lines, got)
+	}
+	for _, want := range []string{"ECONNREFUSED", "request to http://127.0.0.1:9/z/-/z-1.tgz failed", "make toolchain-setup", "vendor/x/bundle.tgz"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("warning lacks %q:\n%s", want, got)
+		}
+	}
+	for _, noise := range []string{"ClientRequest", "complete log", "imoogi-npm-build"} {
+		if strings.Contains(got, noise) {
+			t.Fatalf("warning keeps npm noise %q:\n%s", noise, got)
+		}
+	}
+}
+
 func TestSetupStillFailsHardOnAStaleLockfileRevision(t *testing.T) {
 	root, adapter := localBuildRepo(t)
 	lockfile := filepath.Join(root, filepath.FromSlash(config.ACPPackageDir(adapterName)), "package-lock.json")
