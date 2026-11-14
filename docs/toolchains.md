@@ -9,12 +9,14 @@ Emacs 부팅 경로에서는 두 명령 모두 자동 실행하지 않는다.
 | 구분 | 버전 |
 |---|---|
 | CLI | `1.0.0` |
-| bundle | `2026.08.22.1` |
+| bundle | `2026.11.14.1` |
 | target | `darwin/arm64` |
 | gopls | `v0.23.0` (`014f87ff5c01915bc90f4f11a6bb8aea3e0edbd7`) |
 | Node.js | `v24.19.0` LTS |
 | TypeScript | `6.0.3` |
 | typescript-language-server | `6.0.0` (`1c0f224eb44c626d96dae07aaf5d78654de0e1f2`) |
+| claude-agent-acp | `0.99.1` (ACP 어댑터, 아티팩트는 로컬 빌드) |
+| codex-acp | `2.5.0` (ACP 어댑터) |
 
 CLI는 SemVer(`MAJOR.MINOR.PATCH`), 설치 bundle은 CalVer
 (`YYYY.MM.DD.N`)를 쓴다. 예를 들어 같은 날 두 번째 bundle은
@@ -53,7 +55,8 @@ $TOOL version
 - `fetch`: 온라인 전용. `toolchains.json`의 정확한 핀만 내려받고, Node 공식
   `SHASUMS256.txt`를 확인하며, gopls와 bootstrap을 재현 가능한 Go 빌드 옵션으로
   만든다. 결과는 `vendor/toolchains/`와 `toolchains.lock.json`에 기록한다.
-- `setup`: 오프라인 전용. 네트워크나 시스템 Go/Node를 사용하지 않는다. 모든
+- `setup`: 오프라인 전용(예외: 아래 ACP 어댑터의 로컬 빌드). 네트워크나 시스템
+  Go/Node를 사용하지 않는다. 모든
   아티팩트의 크기와 SHA-256을 먼저 확인한 뒤 같은 파일시스템의 staging에서
   materialize/probe하고, `.local/toolchains/<bundle>/`을 불변 설치한 후 상대
   symlink `.local/bin`을 원자적으로 활성화한다. 설치 트리의 결정적 SHA-256은
@@ -107,6 +110,47 @@ setup은 반복 실행해도 같은 lock이면 `setup reused <bundle>`로 끝난
 `.local/bin`이 저장소 내부의 유효한 상대 symlink일 때만 `exec-path`와 `PATH`의
 맨 앞에 한 번 추가한다. 설치가 없거나 링크가 잘못되면 시스템 PATH를 변경하지
 않고 해당 언어 설정만 기존 fallback 동작을 유지한다.
+
+## ACP 어댑터 (claude-agent-acp, codex-acp)
+
+agent-shell(`modules/development/31-agent.el`)이 Claude Code와 Codex에 붙을 때 쓰는
+ACP 어댑터도 툴체인 구성요소다. kind는 `acp-adapter`이고, 동봉 Node로 실행된다.
+
+- 입력: `toolchains/acp/<name>/package.json`과 `package-lock.json`을 커밋한다.
+  lockfile은 사용자 `~/.npmrc`(`min-release-age` 포함)를 그대로 둔 채
+  `npm install --package-lock-only --save-exact --omit=optional --ignore-scripts`로
+  만든다. `toolchains.json`의 `revision`은 이 lockfile의 SHA-256이며, fetch와
+  setup은 둘이 다르면 npm을 실행하기 전에 실패한다.
+- 빌드: 잠긴 Node 아티팩트 안의 npm으로 `npm ci --omit=optional --ignore-scripts
+  --no-audit --no-fund --no-bin-links --install-strategy=hoisted`를 실행한다.
+  플랫폼별 네이티브 바이너리(optional 의존성)는 받지 않는다. npm 캐시만 임시
+  디렉터리로 분리하고 사용자 npmrc는 그대로 적용한다. 설치된 `node_modules`는
+  정렬된 항목, mtime 0, uid/gid 0, 소유자 이름 없음, 0644/0755 모드, 이름·시각 없는
+  gzip 헤더로 묶으므로 같은 입력이면 바이트가 같다(두 번 빌드해 SHA-256이 같음을
+  확인했다).
+- 설치: `lib/acp/<name>/`에 풀고 `bin/claude-agent-acp`, `bin/codex-acp` 런처를
+  만든다. 런처는 `CLAUDE_CODE_EXECUTABLE` / `CODEX_PATH`가 비어 있으면 PATH에서
+  `claude` / `codex`를 찾아 넣고, 없으면 비워 둔다(어댑터가 첫 세션에서 알려 준다).
+- 점검: `make doctor`(또는 `M-x imoogi-doctor`)가 활성 bundle이 현재 lock으로 설치됐는지,
+  런처가 있는지, ACP `initialize`에 5초 안에 답하는지 확인한다. `claude` / `codex`
+  CLI가 없으면 실패가 아니라 `warn`으로 표시한다.
+
+### claude-agent-acp는 아티팩트를 커밋하지 않는다
+
+claude-agent-acp는 Anthropic의 `@anthropic-ai/claude-agent-sdk`("All rights
+reserved")를 포함하므로 공개 저장소에 재배포하지 않는다. 이 구성요소는
+`"artifact_policy": "local-build"`이며 `vendor/toolchains/acp/claude-agent-acp/`는
+`.gitignore` 대상이다. 커밋되는 것은 `package.json`, `package-lock.json`, 어댑터
+자체의 Apache-2.0 라이선스, 그리고 lock의 SHA-256뿐이다.
+
+`setup`은 이 아티팩트가 없으면 커밋된 lockfile로 위와 같은 빌드를 실행한 뒤 lock의
+크기·SHA-256과 비교한다. 다르면 종료 코드 `10`으로 실패하고 아무것도 설치하지
+않으며 lock을 고치지 않는다. 이 빌드만 npm 레지스트리에 접속하므로, 폐쇄망
+타겟에서는 온라인 머신에서 만든 `vendor/toolchains/acp/claude-agent-acp/0.99.1/darwin-arm64/bundle.tgz`를
+같은 경로에 복사해 둔다. 파일이 있으면 setup은 빌드하지 않고 SHA-256만 검증한다.
+
+codex-acp와 그 의존성은 모두 허용 라이선스(Apache-2.0, MIT, ISC, BSD-3-Clause)라
+아티팩트를 그대로 커밋한다.
 
 ## 감사와 무결성
 

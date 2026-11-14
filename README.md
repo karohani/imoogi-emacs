@@ -103,7 +103,11 @@ agent-shell은 처음 쓸 때 로드되어 부팅 시간에 영향을 주지 않
 | 복사·기록 | `c` 마지막 답 복사, `i` 세션 ID 복사, `l` ACP 로그 |
 
 에이전트마다 ACP 어댑터가 PATH에 있어야 한다: Claude Code는 `claude-agent-acp`, Codex는 `codex-acp`,
-Gemini는 `gemini --experimental-acp`. 없으면 `imoogi-agent-start`가 어떤 프로그램이 필요한지 알려 준다.
+Gemini는 `gemini --experimental-acp`. 앞의 둘은 툴체인 구성요소라 `make toolchain-setup`이 동봉 Node로
+`.local/bin`에 설치하고, `make doctor`가 ACP `initialize`에 답하는지와 `claude` / `codex` CLI가 있는지
+확인한다(자세한 내용은 [`docs/toolchains.md`](docs/toolchains.md)의 ACP 어댑터 절). claude-agent-acp는
+Anthropic SDK를 포함해 아티팩트를 커밋하지 않고 setup이 커밋된 lockfile로 로컬 빌드한 뒤 SHA-256을
+검증한다. 어댑터가 없으면 `imoogi-agent-start`가 어떤 프로그램이 필요한지 알려 준다.
 
 ### 코딩 에이전트 알림 — `imoogi-emacsctl`
 
