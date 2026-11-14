@@ -90,6 +90,8 @@ type metadata struct {
 	LockSHA256   string              `json:"lock_sha256"`
 	BundleSHA256 string              `json:"bundle_sha256"`
 	Components   []metadataComponent `json:"components"`
+	// Skipped names local-build components this bundle was installed without.
+	Skipped []string `json:"skipped,omitempty"`
 }
 
 type metadataComponent struct {
@@ -140,6 +142,7 @@ func Run(ctx context.Context, opts Options) error {
 		return classify(KindSetup, err)
 	}
 	var release func()
+	skipped := map[string]bool{}
 	if len(toBuild) > 0 {
 		// Local builds write into the repository, so they run under the setup
 		// lock; without them nothing is touched before artifacts verify.
@@ -148,12 +151,18 @@ func Run(ctx context.Context, opts Options) error {
 		}
 		defer release()
 		for _, component := range toBuild {
-			if err := buildLocalArtifact(ctx, opts, repoRoot, *lock, component); err != nil {
+			reason, err := buildLocalArtifact(ctx, opts, repoRoot, *lock, component)
+			if err != nil {
 				return err
+			}
+			if reason != nil {
+				skipped[component.Name] = true
+				warnSkipped(opts.Stderr, component, reason)
 			}
 		}
 	}
-	if err := verifyArtifacts(repoRoot, lock.Components); err != nil {
+	installable := withoutComponents(*lock, skipped)
+	if err := verifyArtifacts(repoRoot, installable.Components); err != nil {
 		return classify(KindConfigIntegrity, err)
 	}
 	if release == nil {
@@ -164,20 +173,28 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	bundleRoot := filepath.Join(localRoot, "toolchains", lock.Bundle)
-	if same, err := installedMatches(bundleRoot, lockDigest); err != nil {
+	installed, err := readInstalled(bundleRoot, lockDigest)
+	if err != nil {
 		return classify(KindConfigIntegrity, err)
-	} else if same {
-		if err := runLockProbes(ctx, opts, *lock, bundleRoot, localRoot); err != nil {
+	}
+	// An installed bundle is reused unless it lacks a component this run can
+	// install; a bundle that skipped a local build is replaced once it builds.
+	if installed != nil && subsetOf(installed.Skipped, skipped) {
+		without := map[string]bool{}
+		for _, name := range installed.Skipped {
+			without[name] = true
+		}
+		if err := runLockProbes(ctx, opts, withoutComponents(*lock, without), bundleRoot, localRoot); err != nil {
 			return err
 		}
 		if err := activate(localRoot, lock.Bundle); err != nil {
 			return classify(KindSetup, err)
 		}
-		fmt.Fprintf(opts.Stdout, "setup reused %s\n", lock.Bundle)
+		fmt.Fprintf(opts.Stdout, "setup reused %s%s\n", lock.Bundle, skippedNote(installed.Skipped))
 		return nil
 	}
 
-	providers, err := opts.ProviderFactory(*lock)
+	providers, err := opts.ProviderFactory(installable)
 	if err != nil {
 		return classify(KindConfigIntegrity, err)
 	}
@@ -201,7 +218,7 @@ func Run(ctx context.Context, opts Options) error {
 		}
 		probes = append(probes, providerProbes...)
 	}
-	if err := writeMetadata(staging, *lock, lockDigest); err != nil {
+	if err := writeMetadata(staging, *lock, lockDigest, sortedNames(skipped)); err != nil {
 		return classify(KindSetup, err)
 	}
 	if opts.Failpoints.AfterStaging != nil {
@@ -220,7 +237,12 @@ func Run(ctx context.Context, opts Options) error {
 	if err := ensureRealDir(filepath.Dir(bundleRoot)); err != nil {
 		return classify(KindSetup, err)
 	}
-	if err := publish(staging, bundleRoot, lockDigest); err != nil {
+	if installed != nil {
+		err = replaceBundle(staging, bundleRoot)
+	} else {
+		err = publish(staging, bundleRoot, lockDigest)
+	}
+	if err != nil {
 		return classify(KindSetup, err)
 	}
 	published = true
@@ -237,7 +259,7 @@ func Run(ctx context.Context, opts Options) error {
 	if err := activate(localRoot, lock.Bundle); err != nil {
 		return classify(KindSetup, err)
 	}
-	fmt.Fprintf(opts.Stdout, "setup activated %s\n", lock.Bundle)
+	fmt.Fprintf(opts.Stdout, "setup activated %s%s\n", lock.Bundle, skippedNote(sortedNames(skipped)))
 	return nil
 }
 
@@ -480,53 +502,61 @@ func activate(localRoot, bundle string) error {
 }
 
 func installedMatches(bundleRoot, lockDigest string) (bool, error) {
+	meta, err := readInstalled(bundleRoot, lockDigest)
+	return meta != nil, err
+}
+
+// readInstalled returns the install record of a bundle installed from this
+// lock, nil when none is installed, and an error when the bundle conflicts
+// with the lock or fails its content check.
+func readInstalled(bundleRoot, lockDigest string) (*metadata, error) {
 	info, err := os.Lstat(bundleRoot)
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+		return nil, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("inspect existing bundle: %w", err)
+		return nil, fmt.Errorf("inspect existing bundle: %w", err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return false, fmt.Errorf("existing bundle %s is a symlink", bundleRoot)
+		return nil, fmt.Errorf("existing bundle %s is a symlink", bundleRoot)
 	}
 	if !info.IsDir() {
-		return false, fmt.Errorf("existing bundle %s is not a directory", bundleRoot)
+		return nil, fmt.Errorf("existing bundle %s is not a directory", bundleRoot)
 	}
 	metadataPath := filepath.Join(bundleRoot, installMetadataName)
 	if err := requireRegularFile(metadataPath); err != nil {
-		return false, fmt.Errorf("existing bundle %s has invalid install metadata: %w", bundleRoot, err)
+		return nil, fmt.Errorf("existing bundle %s has invalid install metadata: %w", bundleRoot, err)
 	}
 	data, err := os.ReadFile(metadataPath)
 	if err != nil {
-		return false, fmt.Errorf("existing bundle %s has no readable install metadata", bundleRoot)
+		return nil, fmt.Errorf("existing bundle %s has no readable install metadata", bundleRoot)
 	}
 	var meta metadata
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&meta); err != nil {
-		return false, fmt.Errorf("existing bundle install metadata is invalid: %w", err)
+		return nil, fmt.Errorf("existing bundle install metadata is invalid: %w", err)
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return false, errors.New("existing bundle install metadata has trailing JSON values")
+			return nil, errors.New("existing bundle install metadata has trailing JSON values")
 		}
-		return false, fmt.Errorf("existing bundle install metadata is invalid: %w", err)
+		return nil, fmt.Errorf("existing bundle install metadata is invalid: %w", err)
 	}
 	if meta.Schema != metadataSchema || meta.LockSHA256 != lockDigest {
-		return false, fmt.Errorf("existing bundle %s conflicts with lock digest", bundleRoot)
+		return nil, fmt.Errorf("existing bundle %s conflicts with lock digest", bundleRoot)
 	}
 	bundleDigest, err := bundleTreeSHA256(bundleRoot)
 	if err != nil {
-		return false, fmt.Errorf("verify existing bundle %s: %w", bundleRoot, err)
+		return nil, fmt.Errorf("verify existing bundle %s: %w", bundleRoot, err)
 	}
 	if meta.BundleSHA256 != bundleDigest {
-		return false, fmt.Errorf("existing bundle %s failed content integrity verification", bundleRoot)
+		return nil, fmt.Errorf("existing bundle %s failed content integrity verification", bundleRoot)
 	}
-	return true, nil
+	return &meta, nil
 }
 
-func writeMetadata(root string, lock config.ResolvedLock, lockDigest string) error {
+func writeMetadata(root string, lock config.ResolvedLock, lockDigest string, skipped []string) error {
 	bundleDigest, err := bundleTreeSHA256(root)
 	if err != nil {
 		return fmt.Errorf("hash installed bundle: %w", err)
@@ -539,6 +569,7 @@ func writeMetadata(root string, lock config.ResolvedLock, lockDigest string) err
 		LockSHA256:   lockDigest,
 		BundleSHA256: bundleDigest,
 		Components:   make([]metadataComponent, 0, len(lock.Components)),
+		Skipped:      skipped,
 	}
 	for _, component := range lock.Components {
 		meta.Components = append(meta.Components, metadataComponent{

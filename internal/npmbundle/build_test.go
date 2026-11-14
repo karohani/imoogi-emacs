@@ -201,6 +201,12 @@ func TestBuildRejectsInputsBeforeRunningNpm(t *testing.T) {
 			if len(calls) != 0 {
 				t.Fatal("npm ran despite invalid inputs")
 			}
+			if errors.Is(err, ErrNPM) {
+				t.Fatalf("input error %v is classified as an npm failure", err)
+			}
+			if (name == "lockfile digest" || name == "pinned version") && !errors.Is(err, ErrInputs) {
+				t.Fatalf("Build() error = %v, want ErrInputs", err)
+			}
 		})
 	}
 }
@@ -218,8 +224,9 @@ func TestBuildRejectsAnInstallThatDoesNotMatchThePin(t *testing.T) {
 
 func TestBuildSurfacesNpmFailure(t *testing.T) {
 	opts := buildOptions(t, func(context.Context, string, []string) error { return errors.New("ENOTFOUND registry.npmjs.org") })
-	if _, err := Build(context.Background(), opts); err == nil || !strings.Contains(err.Error(), "ENOTFOUND") {
-		t.Fatalf("Build() error = %v", err)
+	_, err := Build(context.Background(), opts)
+	if err == nil || !strings.Contains(err.Error(), "ENOTFOUND") || !errors.Is(err, ErrNPM) || errors.Is(err, ErrInputs) {
+		t.Fatalf("Build() error = %v, want ErrNPM carrying npm's message", err)
 	}
 }
 

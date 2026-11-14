@@ -30,6 +30,15 @@ var CIArgs = []string{
 	"--install-strategy=hoisted",
 }
 
+var (
+	// ErrInputs marks committed inputs that do not match the pin (lockfile
+	// digest, package.json, lockfile resolution): a configuration fault.
+	ErrInputs = errors.New("bundle inputs do not match the pin")
+	// ErrNPM marks an npm ci that did not complete with valid inputs: offline,
+	// a registry error, or another npm failure.
+	ErrNPM = errors.New("npm install did not complete")
+)
+
 // Command describes a build for lock provenance.
 func Command(lockfile string) string {
 	return "npm " + strings.Join(CIArgs, " ") + " (" + lockfile + ", npm bundled with the locked node) then deterministic tar.gz of node_modules"
@@ -72,14 +81,14 @@ func Build(ctx context.Context, opts BuildOptions) (artifact.Digest, error) {
 	}
 	sum := sha256.Sum256(lockData)
 	if got := hex.EncodeToString(sum[:]); got != opts.LockSHA256 {
-		return artifact.Digest{}, fmt.Errorf("package-lock.json sha256 %s does not match the locked revision %s", got, opts.LockSHA256)
+		return artifact.Digest{}, fmt.Errorf("%w: package-lock.json sha256 %s does not match the locked revision %s", ErrInputs, got, opts.LockSHA256)
 	}
 	pkgData, err := os.ReadFile(filepath.Join(opts.PackageDir, "package.json"))
 	if err != nil {
 		return artifact.Digest{}, err
 	}
 	if err := checkPin(pkgData, lockData, opts.Package, opts.Version); err != nil {
-		return artifact.Digest{}, err
+		return artifact.Digest{}, fmt.Errorf("%w: %w", ErrInputs, err)
 	}
 
 	work, err := os.MkdirTemp("", "imoogi-npm-build-*")
@@ -125,7 +134,7 @@ func Build(ctx context.Context, opts BuildOptions) (artifact.Digest, error) {
 	argv := append([]string{nodeBin, npmCLI}, CIArgs...)
 	argv = append(argv, "--cache", filepath.Join(work, "npm-cache"))
 	if err := opts.Run(ctx, project, argv); err != nil {
-		return artifact.Digest{}, fmt.Errorf("npm ci for %s@%s: %w", opts.Package, opts.Version, err)
+		return artifact.Digest{}, fmt.Errorf("%w: npm ci for %s@%s: %w", ErrNPM, opts.Package, opts.Version, err)
 	}
 
 	installed := filepath.Join(project, "node_modules", filepath.FromSlash(opts.Package))

@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -189,15 +190,123 @@ func TestSetupRejectsALocalBuildThatDoesNotMatchTheLock(t *testing.T) {
 	}
 }
 
-func TestSetupSurfacesAnOfflineLocalBuild(t *testing.T) {
-	root, _ := localBuildRepo(t)
-	err := Run(context.Background(), Options{Workdir: root, ProviderFactory: fakeProviderFactory(t, nil), RunProbe: okProbe,
-		NPMRunner: func(context.Context, string, []string) error {
-			return errors.New("getaddrinfo ENOTFOUND registry.npmjs.org")
-		}})
-	if err == nil || !strings.Contains(err.Error(), "ENOTFOUND") || !strings.Contains(err.Error(), adapterName) {
-		t.Fatalf("Run() error = %v", err)
+func offlineNPM(calls *int) npmbundle.Runner {
+	return func(context.Context, string, []string) error {
+		*calls++
+		return errors.New("getaddrinfo ENOTFOUND registry.npmjs.org")
 	}
+}
+
+func activeBin(root, name string) string {
+	return filepath.Join(root, ".local", "bin", name)
+}
+
+func readInstallRecord(t *testing.T, root string) metadata {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, ".local", "toolchains", "2026.08.22.1", installMetadataName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var meta metadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		t.Fatal(err)
+	}
+	return meta
+}
+
+func TestSetupSkipsALocalBuildThatCannotBuildAndActivatesTheRest(t *testing.T) {
+	root, adapter := localBuildRepo(t)
+	var calls int
+	var stdout, stderr bytes.Buffer
+	err := Run(context.Background(), Options{Workdir: root, Stdout: &stdout, Stderr: &stderr,
+		ProviderFactory: fakeProviderFactory(t, nil), RunProbe: okProbe, NPMRunner: offlineNPM(&calls)})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want setup to finish without the local-build component", err)
+	}
+	assertActiveBundle(t, root, "2026.08.22.1")
+	for _, name := range []string{"one", "node"} {
+		if _, err := os.Stat(activeBin(root, name)); err != nil {
+			t.Fatalf("%s was not installed: %v", name, err)
+		}
+	}
+	if _, err := os.Lstat(activeBin(root, adapterName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a launcher was installed for the skipped %s (%v)", adapterName, err)
+	}
+	warning := stderr.String()
+	for _, want := range []string{adapterName, "ENOTFOUND", "make toolchain-setup", adapter.Artifact.Path} {
+		if !strings.Contains(warning, want) {
+			t.Fatalf("warning %q does not mention %q", warning, want)
+		}
+	}
+	if meta := readInstallRecord(t, root); len(meta.Skipped) != 1 || meta.Skipped[0] != adapterName {
+		t.Fatalf("install.json skipped = %v", meta.Skipped)
+	}
+	assertNoBuildTemp(t, root, adapter)
+
+	// Still offline: the incomplete bundle is reused and the warning repeats.
+	stdout.Reset()
+	stderr.Reset()
+	if err := Run(context.Background(), Options{Workdir: root, Stdout: &stdout, Stderr: &stderr,
+		ProviderFactory: fakeProviderFactory(t, nil), RunProbe: okProbe, NPMRunner: offlineNPM(&calls)}); err != nil {
+		t.Fatalf("offline rerun: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "setup reused") || !strings.Contains(stderr.String(), adapterName) {
+		t.Fatalf("offline rerun stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+
+	// Online again: the build succeeds and the bundle is completed, not reused.
+	stdout.Reset()
+	if err := Run(context.Background(), Options{Workdir: root, Stdout: &stdout, Stderr: &stderr,
+		ProviderFactory: fakeProviderFactory(t, nil), RunProbe: okProbe, NPMRunner: fakeNPM(&calls, "v1")}); err != nil {
+		t.Fatalf("online rerun: %v", err)
+	}
+	if strings.Contains(stdout.String(), "setup reused") {
+		t.Fatalf("a bundle that skipped %s was reused after the build succeeded: %q", adapterName, stdout.String())
+	}
+	if _, err := os.Stat(activeBin(root, adapterName)); err != nil {
+		t.Fatalf("%s was not installed once its build succeeded: %v", adapterName, err)
+	}
+	if meta := readInstallRecord(t, root); len(meta.Skipped) != 0 {
+		t.Fatalf("install.json still records skipped %v", meta.Skipped)
+	}
+	assertActiveBundle(t, root, "2026.08.22.1")
+	assertNoTransactionTemp(t, root)
+	entries, err := os.ReadDir(filepath.Join(root, ".local", "toolchains"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() != "2026.08.22.1" {
+			t.Fatalf("replacement left %s behind", e.Name())
+		}
+	}
+
+	// Complete now: a further run reuses it.
+	stdout.Reset()
+	if err := Run(context.Background(), Options{Workdir: root, Stdout: &stdout,
+		ProviderFactory: fakeProviderFactory(t, nil), RunProbe: okProbe, NPMRunner: offlineNPM(&calls)}); err != nil || !strings.Contains(stdout.String(), "setup reused") {
+		t.Fatalf("complete rerun: %v %q", err, stdout.String())
+	}
+}
+
+func TestSetupStillFailsHardOnAStaleLockfileRevision(t *testing.T) {
+	root, adapter := localBuildRepo(t)
+	lockfile := filepath.Join(root, filepath.FromSlash(config.ACPPackageDir(adapterName)), "package-lock.json")
+	if err := os.WriteFile(lockfile, []byte(adapterLock+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var calls int
+	err := Run(context.Background(), Options{Workdir: root, ProviderFactory: fakeProviderFactory(t, nil), RunProbe: okProbe, NPMRunner: fakeNPM(&calls, "v1")})
+	if err == nil || kindOf(err) != KindConfigIntegrity || !strings.Contains(err.Error(), "package-lock.json") {
+		t.Fatalf("Run() error = %v (kind %q), want config-integrity on the lockfile revision", err, kindOf(err))
+	}
+	if calls != 0 {
+		t.Fatal("npm ran with a stale lockfile")
+	}
+	if _, err := os.Lstat(filepath.Join(root, ".local", "bin")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("setup activated despite a stale lockfile revision")
+	}
+	_ = adapter
 }
 
 func TestDefaultProviderFactoryRoutesACPAdaptersWithTheNodeComponent(t *testing.T) {
