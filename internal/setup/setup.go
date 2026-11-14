@@ -20,10 +20,12 @@ import (
 	"github.com/karohani/imoogi-emacs/internal/artifact"
 	"github.com/karohani/imoogi-emacs/internal/config"
 	"github.com/karohani/imoogi-emacs/internal/lang"
+	"github.com/karohani/imoogi-emacs/internal/lang/acp"
 	"github.com/karohani/imoogi-emacs/internal/lang/clojure"
 	"github.com/karohani/imoogi-emacs/internal/lang/golang"
 	"github.com/karohani/imoogi-emacs/internal/lang/jvm"
 	"github.com/karohani/imoogi-emacs/internal/lang/typescript"
+	"github.com/karohani/imoogi-emacs/internal/npmbundle"
 )
 
 const (
@@ -66,6 +68,8 @@ type Options struct {
 	ProviderFactory ProviderFactory
 	RunProbe        ProbeRunner
 	Failpoints      Failpoints
+	// NPMRunner runs npm for local-build artifacts; nil runs the real npm.
+	NPMRunner npmbundle.Runner
 }
 
 type ProviderFactory func(config.ResolvedLock) ([]lang.Provider, error)
@@ -130,23 +134,34 @@ func Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return classify(KindConfigIntegrity, err)
 	}
+	localRoot := filepath.Join(repoRoot, ".local")
+	toBuild, err := missingLocalBuilds(repoRoot, *lock)
+	if err != nil {
+		return classify(KindSetup, err)
+	}
+	var release func()
+	if len(toBuild) > 0 {
+		// Local builds write into the repository, so they run under the setup
+		// lock; without them nothing is touched before artifacts verify.
+		if release, err = prepareAndLock(localRoot); err != nil {
+			return err
+		}
+		defer release()
+		for _, component := range toBuild {
+			if err := buildLocalArtifact(ctx, opts, repoRoot, *lock, component); err != nil {
+				return err
+			}
+		}
+	}
 	if err := verifyArtifacts(repoRoot, lock.Components); err != nil {
 		return classify(KindConfigIntegrity, err)
 	}
-
-	localRoot := filepath.Join(repoRoot, ".local")
-	if err := ensureRealDir(localRoot); err != nil {
-		return classify(KindSetup, fmt.Errorf("prepare .local: %w", err))
+	if release == nil {
+		if release, err = prepareAndLock(localRoot); err != nil {
+			return err
+		}
+		defer release()
 	}
-	toolchainsRoot := filepath.Join(localRoot, "toolchains")
-	if err := ensureRealDir(toolchainsRoot); err != nil {
-		return classify(KindSetup, fmt.Errorf("prepare .local/toolchains: %w", err))
-	}
-	release, err := acquireLock(filepath.Join(localRoot, "setup.lock"))
-	if err != nil {
-		return classify(KindBusy, err)
-	}
-	defer release()
 
 	bundleRoot := filepath.Join(localRoot, "toolchains", lock.Bundle)
 	if same, err := installedMatches(bundleRoot, lockDigest); err != nil {
@@ -226,6 +241,20 @@ func Run(ctx context.Context, opts Options) error {
 	return nil
 }
 
+func prepareAndLock(localRoot string) (func(), error) {
+	if err := ensureRealDir(localRoot); err != nil {
+		return nil, classify(KindSetup, fmt.Errorf("prepare .local: %w", err))
+	}
+	if err := ensureRealDir(filepath.Join(localRoot, "toolchains")); err != nil {
+		return nil, classify(KindSetup, fmt.Errorf("prepare .local/toolchains: %w", err))
+	}
+	release, err := acquireLock(filepath.Join(localRoot, "setup.lock"))
+	if err != nil {
+		return nil, classify(KindBusy, err)
+	}
+	return release, nil
+}
+
 func (o Options) withDefaults() Options {
 	if o.Workdir == "" {
 		o.Workdir = "."
@@ -275,9 +304,16 @@ func FindRoot(start string) (string, error) {
 func DefaultProviderFactory(lock config.ResolvedLock) ([]lang.Provider, error) {
 	var providers []lang.Provider
 	processed := map[string]struct{}{}
-	var tsComponents []config.LockComponent
+	var tsComponents, acpComponents []config.LockComponent
+	var nodeComponent config.LockComponent
 	for _, component := range lock.Components {
+		if component.Name == "node" || component.Kind == "node-runtime" {
+			nodeComponent = component
+		}
 		switch {
+		case acp.SupportsComponent(component):
+			acpComponents = append(acpComponents, component)
+			processed[component.Name] = struct{}{}
 		case component.Name == "gopls" || component.Kind == "go-language-server":
 			providers = append(providers, golang.New(component))
 			processed[component.Name] = struct{}{}
@@ -294,6 +330,13 @@ func DefaultProviderFactory(lock config.ResolvedLock) ([]lang.Provider, error) {
 	}
 	if len(tsComponents) > 0 {
 		providers = append(providers, typescript.New(tsComponents))
+	}
+	if len(acpComponents) > 0 {
+		if nodeComponent.Name == "" {
+			return nil, fmt.Errorf("ACP adapters run on the bundled node, but the lock has no node component")
+		}
+		// After typescript: either may stage node first, the other reuses it.
+		providers = append(providers, acp.New(acpComponents, nodeComponent))
 	}
 	for _, component := range lock.Components {
 		if _, ok := processed[component.Name]; !ok {
