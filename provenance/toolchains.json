@@ -174,12 +174,12 @@
       "files": [
         {
           "path": "vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain",
-          "sha256": "16c72203c0925b69b401e725842b5811fe370cc83284606e2f3bb5b4063f94c4",
-          "size": 9976802
+          "sha256": "07351f04b9f1438449325a90e8d489731ac96962f1866d0ef844a8fdd9558a07",
+          "size": 9976898
         },
         {
           "path": "vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain.provenance.json",
-          "sha256": "5ef76f7dcc60ed645e2bdf4aa874898863972666321c61a5ba04fc72f2835fb5",
+          "sha256": "b8bda75e8d5714e3df6738aa6c064cf6f729321315d2e5140ffcb55d7c01b198",
           "size": 558
         }
       ]
