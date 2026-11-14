@@ -77,6 +77,10 @@ func packageDir(t *testing.T) (string, string) {
 func installer(calls *[][]string, version string) Runner {
 	return func(_ context.Context, dir string, argv []string) error {
 		*calls = append(*calls, append([]string{dir}, argv...))
+		// The extractor writes 0644 files; node must be made executable to run.
+		if info, err := os.Stat(argv[0]); err != nil || info.Mode().Perm()&0o100 == 0 {
+			return errors.New("node is not executable: " + argv[0])
+		}
 		for _, required := range []string{"package.json", "package-lock.json"} {
 			if _, err := os.Stat(filepath.Join(dir, required)); err != nil {
 				return err

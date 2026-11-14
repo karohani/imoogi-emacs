@@ -104,9 +104,13 @@ func Build(ctx context.Context, opts BuildOptions) (artifact.Digest, error) {
 	nodeBin := filepath.Join(dist, "bin", "node")
 	npmCLI := filepath.Join(dist, "lib", "node_modules", "npm", "bin", "npm-cli.js")
 	for _, required := range []string{nodeBin, npmCLI} {
-		if info, err := os.Stat(required); err != nil || !info.Mode().IsRegular() {
+		if info, err := os.Lstat(required); err != nil || !info.Mode().IsRegular() {
 			return artifact.Digest{}, fmt.Errorf("locked node distribution has no %s", filepath.Base(required))
 		}
+	}
+	// The extractor writes every file 0644 regardless of the archive's modes.
+	if err := os.Chmod(nodeBin, 0o755); err != nil {
+		return artifact.Digest{}, err
 	}
 
 	project := filepath.Join(work, "project")
