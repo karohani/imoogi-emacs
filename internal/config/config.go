@@ -50,6 +50,7 @@ type DesiredComponent struct {
 	Source          string            `json:"source"`
 	UpstreamVersion string            `json:"upstream_version"`
 	Revision        string            `json:"revision,omitempty"`
+	ArtifactPolicy  string            `json:"artifact_policy,omitempty"`
 	Runtime         RuntimeConstraint `json:"runtime,omitempty"`
 }
 
@@ -72,6 +73,7 @@ type LockComponent struct {
 	Source          string            `json:"source"`
 	UpstreamVersion string            `json:"upstream_version"`
 	Revision        string            `json:"revision,omitempty"`
+	ArtifactPolicy  string            `json:"artifact_policy,omitempty"`
 	Target          Target            `json:"target"`
 	Artifact        Artifact          `json:"artifact"`
 	License         License           `json:"license"`
@@ -225,7 +227,7 @@ func (c DesiredComponent) validate() error {
 	if err := c.Runtime.validate(c.Name); err != nil {
 		return err
 	}
-	return nil
+	return validateArtifactPolicy(c.Name, c.Kind, c.Source, c.UpstreamVersion, c.Revision, c.ArtifactPolicy)
 }
 
 func (l ResolvedLock) Validate() error {
@@ -277,6 +279,9 @@ func (c LockComponent) validate() error {
 		return fmt.Errorf("lock component %q upstream_version: %w", c.Name, err)
 	}
 	if err := validateTarget("lock component "+c.Name+" target", c.Target); err != nil {
+		return err
+	}
+	if err := validateArtifactPolicy(c.Name, c.Kind, c.Source, c.UpstreamVersion, c.Revision, c.ArtifactPolicy); err != nil {
 		return err
 	}
 	if err := c.Artifact.validate(c.Name); err != nil {
@@ -479,6 +484,9 @@ func (m DesiredManifest) ValidateLock(lock ResolvedLock) error {
 		}
 		if desired.Runtime != locked.Runtime {
 			return fmt.Errorf("component %q runtime constraints differ between desired manifest and lock", desired.Name)
+		}
+		if desired.ArtifactPolicy != locked.ArtifactPolicy {
+			return fmt.Errorf("component %q artifact_policy differs between desired manifest and lock", desired.Name)
 		}
 		delete(lockByName, desired.Name)
 	}
