@@ -1,14 +1,20 @@
 package doctor
 
 import (
+	"bufio"
 	"bytes"
 	"debug/buildinfo"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
+	"time"
 )
 
 // SystemEnv inspects a real checkout with go and git.
@@ -149,4 +155,108 @@ func (e SystemEnv) Readlink(path string) (string, error) { return os.Readlink(pa
 func (e SystemEnv) Exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+func (e SystemEnv) ReadFile(path string) ([]byte, error) { return os.ReadFile(path) }
+func (e SystemEnv) LookPath(name string) (string, error) { return exec.LookPath(name) }
+func (e SystemEnv) Getenv(key string) string             { return os.Getenv(key) }
+
+// handshakeTimeout bounds the ACP initialize exchange.
+var handshakeTimeout = 5 * time.Second
+
+const initializeRequest = `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{}}}` + "\n"
+
+// Handshake starts launcher, sends an ACP initialize request on stdin and waits
+// for the response with id 1 on stdout. The adapter runs in its own process
+// group, killed as a whole afterwards, so helpers it spawned (codex-acp starts
+// codex app-server) do not outlive the check.
+//
+// @MX:WARN: [AUTO] spawns the adapter and reads its stdout in a goroutine
+// @MX:REASON: the reader goroutine ends when the process group is killed and its pipe closes; timeout + group kill are what bound it
+func (e SystemEnv) Handshake(launcher string) error {
+	cmd := exec.Command(launcher)
+	cmd.Dir = os.TempDir()
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+	// An owned pipe rather than StdoutPipe: Wait must not close the read end
+	// while the reader is still draining the response.
+	stdout, stdoutW, err := os.Pipe()
+	if err != nil {
+		return err
+	}
+	defer stdout.Close()
+	cmd.Stdout = stdoutW
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	cmd.WaitDelay = time.Second
+	startErr := cmd.Start()
+	stdoutW.Close()
+	if startErr != nil {
+		return startErr
+	}
+	waited := make(chan struct{})
+	go func() { _ = cmd.Wait(); close(waited) }()
+	defer func() {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		<-waited
+		_ = stdout.Close() // unblocks the reader if a helper still holds the pipe
+	}()
+	if _, err := io.WriteString(stdin, initializeRequest); err != nil {
+		return fmt.Errorf("send initialize: %w", err)
+	}
+	result := make(chan error, 1)
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		scanner.Buffer(make([]byte, 64<<10), 8<<20)
+		for scanner.Scan() {
+			var msg struct {
+				ID     *int            `json:"id"`
+				Result json.RawMessage `json:"result"`
+				Error  *struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if json.Unmarshal(scanner.Bytes(), &msg) != nil || msg.ID == nil || *msg.ID != 1 {
+				continue
+			}
+			switch {
+			case msg.Error != nil:
+				result <- fmt.Errorf("adapter error: %s", msg.Error.Message)
+			case len(msg.Result) == 0:
+				result <- errors.New("initialize response has no result")
+			default:
+				result <- nil
+			}
+			return
+		}
+		result <- errExited
+	}()
+	select {
+	case err := <-result:
+		if errors.Is(err, errExited) {
+			// stderr is safe to read only once Wait has returned.
+			select {
+			case <-waited:
+				return fmt.Errorf("adapter exited without answering: %s", lastLines(stderr.String()))
+			case <-time.After(2 * time.Second):
+				return errors.New("adapter closed stdout without answering")
+			}
+		}
+		return err
+	case <-time.After(handshakeTimeout):
+		return fmt.Errorf("no initialize response within %s", handshakeTimeout)
+	}
+}
+
+var errExited = errors.New("exited")
+
+func lastLines(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	if len(lines) > 3 {
+		lines = lines[len(lines)-3:]
+	}
+	return strings.Join(lines, " | ")
 }

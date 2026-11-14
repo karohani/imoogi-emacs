@@ -17,6 +17,10 @@ type fakeEnv struct {
 	required string
 	links    map[string]string
 	exists   map[string]bool
+	files    map[string][]byte // ReadFile contents
+	path     map[string]string // LookPath results
+	vars     map[string]string // Getenv
+	answers  map[string]error  // Handshake results by launcher; absent = no answer
 }
 
 const root, home = "/repo", "/home/u"
@@ -44,6 +48,25 @@ func (f fakeEnv) Readlink(path string) (string, error) {
 	return "", os.ErrNotExist
 }
 func (f fakeEnv) Exists(path string) bool { return f.exists[path] }
+func (f fakeEnv) ReadFile(path string) ([]byte, error) {
+	if data, ok := f.files[path]; ok {
+		return data, nil
+	}
+	return nil, os.ErrNotExist
+}
+func (f fakeEnv) LookPath(name string) (string, error) {
+	if p, ok := f.path[name]; ok {
+		return p, nil
+	}
+	return "", errors.New("executable file not found in $PATH")
+}
+func (f fakeEnv) Getenv(key string) string { return f.vars[key] }
+func (f fakeEnv) Handshake(launcher string) error {
+	if err, ok := f.answers[launcher]; ok {
+		return err
+	}
+	return errors.New("no initialize response within 5s")
+}
 
 func healthy() fakeEnv {
 	built := BuildInfo{GoVersion: "go1.26.11", Revision: "abc1234def", Main: ModulePath}

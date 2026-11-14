@@ -1,5 +1,6 @@
 // Package doctor reports whether the CLI tools in bin/ and the links the
-// installer makes are built from, and pointing at, the current repository.
+// installer makes are built from, and pointing at, the current repository, and
+// whether the ACP adapters in the toolchain bundle are installed and answer.
 package doctor
 
 import (
@@ -21,11 +22,13 @@ const (
 	StatusObsolete  = "obsolete"  // a leftover from a tool that no longer exists
 	StatusWrongLink = "wrong"     // link points somewhere else
 	StatusUnknown   = "unknown"   // could not be inspected
+	StatusFailed    = "failed"    // installed but does not work
+	StatusWarn      = "warn"      // a warning that does not fail the doctor
 )
 
 // Finding is one checked item.
 type Finding struct {
-	Kind   string `json:"kind"` // tool, bin, link
+	Kind   string `json:"kind"` // tool, bin, link, acp, cli
 	Name   string `json:"name"`
 	Status string `json:"status"`
 	Detail string `json:"detail,omitempty"`
@@ -53,6 +56,10 @@ type Env interface {
 	ChangedSince(revision string, paths []string) ([]string, error)
 	Readlink(path string) (string, error)
 	Exists(path string) bool
+	ReadFile(path string) ([]byte, error)
+	LookPath(name string) (string, error)
+	Getenv(key string) string
+	Handshake(launcher string) error // ACP initialize answered within 5s
 }
 
 // Link is a ~/.local/bin entry the installer creates.
@@ -90,6 +97,7 @@ func Check(env Env) []Finding {
 	}
 	out = append(out, leftovers(env, known)...)
 	out = append(out, checkLinks(env)...)
+	out = append(out, checkAdapters(env)...)
 	return out
 }
 
@@ -194,10 +202,10 @@ func checkLinks(env Env) []Finding {
 	return out
 }
 
-// Healthy reports whether nothing needs fixing; a dirty build is only a warning.
+// Healthy reports whether nothing needs fixing; dirty and warn are only warnings.
 func Healthy(findings []Finding) bool {
 	for _, f := range findings {
-		if f.Status != StatusOK && f.Status != StatusDirty {
+		if f.Status != StatusOK && f.Status != StatusDirty && f.Status != StatusWarn {
 			return false
 		}
 	}
