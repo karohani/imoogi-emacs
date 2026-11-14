@@ -29,6 +29,7 @@ type recentFilesResponse struct {
 // view of every file buffer in the same session (never another session):
 // the sidebar must open their live previews. Same Emacs, same user.
 func (s *Server) handleRecentFiles(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store") // document text, file lists and assets
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return

@@ -31,6 +31,13 @@ func watchBrowser(server *Server, sessionID, bufferID string) *browserClient {
 	return client
 }
 
+// watchFollower is a tab opened with follow=1, the only kind told about other buffers.
+func watchFollower(server *Server, sessionID, bufferID string) *browserClient {
+	client := &browserClient{sessionID: sessionID, bufferID: bufferID, follow: true, send: make(chan any, 8)}
+	server.addBrowser(client)
+	return client
+}
+
 func drainCurrent(t *testing.T, client *browserClient) []CurrentEvent {
 	t.Helper()
 	var out []CurrentEvent
@@ -63,15 +70,17 @@ func TestServerCurrentRequiresEmacsToken(t *testing.T) {
 	}
 }
 
-func TestServerCurrentTellsEverySessionTabWithTheTargetURL(t *testing.T) {
+func TestServerCurrentTellsOnlyFollowTabsTheTargetURL(t *testing.T) {
 	server := newRecentTestServer(t)
 	a := &recentTestBuffer{session: "s1", buffer: "a", path: "/notes/a.org", generation: 1}
 	b := &recentTestBuffer{session: "s1", buffer: "b", path: "/notes/b.md", generation: 3}
 	postRecentBuffer(t, server, 1, a)
 	postRecentBuffer(t, server, 1, b)
-	onA, onB, other := watchBrowser(server, "s1", "a"), watchBrowser(server, "s1", "b"), watchBrowser(server, "s2", "a")
+	onA, onB, other := watchFollower(server, "s1", "a"), watchFollower(server, "s1", "b"), watchFollower(server, "s2", "a")
+	plain := watchBrowser(server, "s1", "a")
 	drainCurrent(t, onA)
 	drainCurrent(t, onB)
+	drainCurrent(t, plain)
 
 	if code := postCurrent(t, server, "test-token", "s1", "b"); code != http.StatusOK {
 		t.Fatalf("current: %d", code)
@@ -97,13 +106,34 @@ func TestServerCurrentTellsEverySessionTabWithTheTargetURL(t *testing.T) {
 	if got := drainCurrent(t, other); len(got) != 0 {
 		t.Fatalf("another session must not hear about this Emacs: %#v", got)
 	}
+	// A plain tab holds one buffer's view token; it must not learn other buffers' tokens.
+	if got := drainCurrent(t, plain); len(got) != 0 {
+		t.Fatalf("a tab without follow=1 must not receive other buffers' URLs: %#v", got)
+	}
+}
+
+func TestServerCurrentSkipsBuffersWithoutAFile(t *testing.T) {
+	server := newRecentTestServer(t)
+	a := &recentTestBuffer{session: "s1", buffer: "a", path: "/notes/a.org", generation: 1}
+	scratch := &recentTestBuffer{session: "s1", buffer: "scratch", generation: 1}
+	postRecentBuffer(t, server, 1, a)
+	postRecentBuffer(t, server, 1, scratch)
+	tab := watchFollower(server, "s1", "a")
+	drainCurrent(t, tab)
+	postCurrent(t, server, "test-token", "s1", "scratch")
+	if got := drainCurrent(t, tab); len(got) != 0 {
+		t.Fatalf("a buffer that /api/recent hides must not be announced either: %#v", got)
+	}
+	if ev := server.currentFor("s1", "a"); ev != nil {
+		t.Fatalf("a connecting tab must not learn a pathless buffer: %#v", ev)
+	}
 }
 
 func TestServerCurrentWaitsForTheFirstRevision(t *testing.T) {
 	server := newRecentTestServer(t)
 	a := &recentTestBuffer{session: "s1", buffer: "a", path: "/notes/a.org", generation: 1}
 	postRecentBuffer(t, server, 1, a)
-	tab := watchBrowser(server, "s1", "a")
+	tab := watchFollower(server, "s1", "a")
 	drainCurrent(t, tab)
 
 	// Emacs announces a buffer whose first revision is still debounced.
@@ -148,6 +178,7 @@ func TestBrowserShellFollowsCurrentBuffer(t *testing.T) {
 		"const follow = params.get('follow') === '1';",
 		"if (msg.type === 'current') { reader.follow(msg); return; }",
 		"function followURL(",
+		"if (follow && !linkedFileID) u.searchParams.set('follow', '1');",
 	} {
 		if !strings.Contains(browserShell, want) {
 			t.Fatalf("preview shell missing %q", want)

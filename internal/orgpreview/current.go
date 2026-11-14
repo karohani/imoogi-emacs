@@ -43,7 +43,7 @@ func (s *Server) handleEmacsCurrent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ev := s.setCurrent(env.SessionID, env.BufferID); ev != nil {
-		s.broadcastSession(env.SessionID, *ev)
+		s.broadcastFollowers(env.SessionID, *ev)
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
@@ -86,7 +86,8 @@ func (s *Server) currentFor(sessionID, bufferID string) *CurrentEvent {
 
 func currentEventLocked(sessionID string, state *sessionState) *CurrentEvent {
 	buffer := state.buffers[state.current]
-	if buffer == nil || buffer.browserView == "" {
+	// Like /api/recent, never hand out a token for a buffer without a file.
+	if buffer == nil || buffer.browserView == "" || buffer.path == "" {
 		return nil
 	}
 	title := ""
@@ -102,7 +103,9 @@ func currentEventLocked(sessionID string, state *sessionState) *CurrentEvent {
 	}
 }
 
-func (s *Server) broadcastSession(sessionID string, payload any) {
+// broadcastFollowers tells only tabs opened with follow=1. A plain tab holds one
+// buffer's view token and must not learn the tokens of other buffers.
+func (s *Server) broadcastFollowers(sessionID string, payload any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	state := s.sessions[sessionID]
@@ -110,6 +113,9 @@ func (s *Server) broadcastSession(sessionID string, payload any) {
 		return
 	}
 	for client := range state.browsers {
+		if !client.follow {
+			continue
+		}
 		select {
 		case client.send <- payload:
 		default:

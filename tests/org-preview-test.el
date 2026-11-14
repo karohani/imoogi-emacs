@@ -409,6 +409,17 @@ buffer in MODE visiting FILE (nil for no file)."
       (should-not (buffer-local-value 'imoogi-org-preview-mode buffer)))
     (should-not (imoogi-org-preview-test--current-posts posted))))
 
+;; Switching windows must not push decrypted or remote text to the server;
+;; the user can still preview such a buffer explicitly.
+(ert-deftest imoogi-org-preview-follow-skips-encrypted-and-remote-files ()
+  (imoogi-org-preview-test--with-follow
+    (dolist (file '("/tmp/imoogi-secret.org.gpg" "/tmp/imoogi-secret.md.age"
+                    "/ssh:imoogi-test-host:/tmp/imoogi-remote.org"))
+      (let ((buffer (funcall make #'org-mode file)))
+        (imoogi-org-preview--follow-buffer buffer)
+        (should-not (buffer-local-value 'imoogi-org-preview-mode buffer))))
+    (should-not (imoogi-org-preview-test--current-posts posted))))
+
 (ert-deftest imoogi-org-preview-follow-waits-for-a-running-preview ()
   (imoogi-org-preview-test--with-follow
     (let ((buffer (funcall make #'org-mode "/tmp/imoogi-follow-b.org")))

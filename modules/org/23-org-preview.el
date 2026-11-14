@@ -173,7 +173,9 @@ Markdown file."
              (imoogi-org-preview--port)
              (imoogi-org-preview--token))
     (with-current-buffer buffer
-      (when (and buffer-file-name (derived-mode-p 'org-mode 'markdown-mode))
+      (when (and buffer-file-name (derived-mode-p 'org-mode 'markdown-mode)
+                 (or imoogi-org-preview-mode
+                     (not (imoogi-org-preview--private-file-p buffer-file-name))))
         (unless imoogi-org-preview-mode
           (imoogi-org-preview-mode 1))
         (when imoogi-org-preview-mode
@@ -183,6 +185,14 @@ Markdown file."
            (imoogi-org-preview--base-payload
             `((event_id . ,(imoogi-org-preview--make-id "current"))))
            #'imoogi-org-preview--current-callback))))))
+
+(defun imoogi-org-preview--private-file-p (file)
+  "Return non-nil when FILE must not be previewed just because its window was selected.
+Encrypted files would send their decrypted text to the preview server, and
+remote files would be read over the network; both still preview on request."
+  (or (file-remote-p file)
+      (and (boundp 'epa-file-name-regexp) (string-match-p epa-file-name-regexp file))
+      (string-match-p "\\.\\(?:gpg\\|asc\\|age\\)\\'" file)))
 
 (defun imoogi-org-preview--current-callback (status source-buffer)
   "Forget SOURCE-BUFFER as followed when its announcement failed with STATUS."

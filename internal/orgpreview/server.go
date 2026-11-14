@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/subtle"
 	_ "embed"
 	"encoding/base64"
 	"encoding/binary"
@@ -97,6 +98,7 @@ type bufferState struct {
 type browserClient struct {
 	sessionID string
 	bufferID  string
+	follow    bool // opened with follow=1: may receive other buffers' preview URLs
 	conn      net.Conn
 	send      chan any
 }
@@ -149,7 +151,12 @@ func (s *Server) Listen(ctx context.Context, addr string) (*http.Server, net.Lis
 		_ = ln.Close()
 		return nil, nil, fmt.Errorf("refusing non-loopback listener %s", ln.Addr())
 	}
-	httpServer := &http.Server{Handler: s.Handler()}
+	_, port, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		_ = ln.Close()
+		return nil, nil, err
+	}
+	httpServer := &http.Server{Handler: localOnly(port, s.Handler())}
 	go func() {
 		<-ctx.Done()
 		_ = httpServer.Shutdown(context.Background())
@@ -330,7 +337,7 @@ func (s *Server) handleRevision(w http.ResponseWriter, r *http.Request) {
 	if committed {
 		s.broadcastBrowser(req.SessionID, req.BufferID, renderEvent)
 		if ev := s.pendingCurrent(req.SessionID, req.BufferID); ev != nil {
-			s.broadcastSession(req.SessionID, *ev)
+			s.broadcastFollowers(req.SessionID, *ev)
 		}
 		if node := FindNodeAt(doc.Nodes, req.CursorByte); node != nil {
 			nav := NavigationEvent{
@@ -503,22 +510,28 @@ func (s *Server) handleBrowserWebSocket(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	client := &browserClient{sessionID: sessionID, bufferID: bufferID, conn: conn, send: make(chan any, 16)}
+	follow := r.URL.Query().Get("follow") == "1"
+	client := &browserClient{sessionID: sessionID, bufferID: bufferID, follow: follow, conn: conn, send: make(chan any, 16)}
 	s.addBrowser(client)
 	defer s.removeBrowser(client)
+	// Start the writer before queueing the greeting so a broadcast burst that
+	// fills the channel cannot park this handler.
+	errCh := make(chan error, 2)
+	go func() { errCh <- client.writeLoop() }()
 	if latest := s.latestRender(sessionID, bufferID); latest != nil {
 		client.send <- *latest
 	}
-	if current := s.currentFor(sessionID, bufferID); current != nil {
-		client.send <- *current
+	if follow {
+		if current := s.currentFor(sessionID, bufferID); current != nil {
+			client.send <- *current
+		}
 	}
-	errCh := make(chan error, 2)
-	go func() { errCh <- client.writeLoop() }()
 	go func() { errCh <- s.browserReadLoop(client, brw) }()
 	<-errCh
 }
 
 func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store") // document text, file lists and assets
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -562,6 +575,7 @@ type filePreviewResponse struct {
 }
 
 func (s *Server) handleFilePreview(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store") // document text, file lists and assets
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -764,13 +778,14 @@ func (s *Server) authorized(r *http.Request) bool {
 			token = strings.TrimPrefix(auth, "Bearer ")
 		}
 	}
-	return token != "" && token == s.token
+	return token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(s.token)) == 1
 }
 
 func (s *Server) browserAuthorized(r *http.Request) bool {
 	query := r.URL.Query()
 	state := s.bufferState(query.Get("session"), query.Get("buffer"))
-	if state == nil || query.Get("view") == "" || query.Get("view") != state.browserView {
+	view := query.Get("view")
+	if state == nil || view == "" || subtle.ConstantTimeCompare([]byte(view), []byte(state.browserView)) != 1 {
 		return false
 	}
 	return query.Get("generation") == fmt.Sprint(state.generation)
@@ -1255,7 +1270,7 @@ const mermaidDiagnostics = OrgMermaidDiagnostics.create({
 });
 const blockKinds = new Set(['heading','paragraph','property_drawer','list','list_item','code_block','table','image']);
 const palette = ['red','blue','green','yellow'];
-function wsURL(){const u=new URL('/ws/browser', location.href);u.protocol=location.protocol==='https:'?'wss:':'ws:';u.searchParams.set('session', sessionID || '');u.searchParams.set('buffer', bufferID || '');u.searchParams.set('generation', generation);u.searchParams.set('view', view);return u;}
+function wsURL(){const u=new URL('/ws/browser', location.href);u.protocol=location.protocol==='https:'?'wss:':'ws:';u.searchParams.set('session', sessionID || '');u.searchParams.set('buffer', bufferID || '');u.searchParams.set('generation', generation);u.searchParams.set('view', view);if (follow && !linkedFileID) u.searchParams.set('follow', '1');return u;}
 // A follow tab keeps following Emacs after it moves to another buffer's page.
 function followURL(url){const u=new URL(url, location.href);u.searchParams.set('follow','1');return u.toString();}
 function connect(){

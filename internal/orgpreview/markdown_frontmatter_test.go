@@ -1,6 +1,7 @@
 package orgpreview
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -141,5 +142,58 @@ func TestMarkdownFrontmatterDoesNotHideTrailingYAMLContent(t *testing.T) {
 	}
 	if !strings.Contains((Renderer{}).Render(doc), "not valid: [yaml") {
 		t.Fatal("trailing YAML content disappeared")
+	}
+}
+
+// YAML counts bare CR and Unicode line separators as line breaks while the
+// Markdown line splitter does not; such front matter must fall back, not panic.
+func TestMarkdownFrontmatterWithForeignLineBreaksFallsBack(t *testing.T) {
+	for _, source := range []string{
+		"---\na: 1\rb: 2\rc: 3\rd: 4\re: 5\n---\nbody\n",
+		"---\na: 1 # x        \nb: 2\n---\nbody\n",
+		"---\na: |\n  x\u0085y\u0085z\u0085w\nb: 2\n---\nbody\n",
+	} {
+		t.Run(strings.ReplaceAll(source, "\n", `\n`), func(t *testing.T) {
+			doc, err := (MarkdownParser{}).Parse(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if contains(flattenTypes(doc.Nodes), "property_drawer") {
+				t.Fatal("front matter with foreign line breaks must not become metadata")
+			}
+		})
+	}
+}
+
+// Large front matter is treated as ordinary text so one file cannot pin a CPU
+// core (yaml.v3's duplicate-key check is quadratic) or inflate the response.
+func TestMarkdownFrontmatterSizeLimits(t *testing.T) {
+	keys := func(n int) string {
+		var b strings.Builder
+		b.WriteString("---\n")
+		for i := 0; i < n; i++ {
+			fmt.Fprintf(&b, "k%d: v\n", i)
+		}
+		b.WriteString("---\nbody\n")
+		return b.String()
+	}
+	for _, tc := range []struct {
+		name   string
+		source string
+		want   bool
+	}{
+		{"at key limit", keys(maxFrontmatterKeys), true},
+		{"over key limit", keys(maxFrontmatterKeys + 1), false},
+		{"over byte limit", "---\nbig: [" + strings.Repeat("a,", maxFrontmatterBytes/2) + "a]\n---\nbody\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doc, err := (MarkdownParser{}).Parse(tc.source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := contains(flattenTypes(doc.Nodes), "property_drawer"); got != tc.want {
+				t.Fatalf("property_drawer = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

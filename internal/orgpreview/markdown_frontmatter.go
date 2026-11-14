@@ -8,6 +8,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Front matter beyond these limits is left to the Markdown parser as plain text:
+// yaml.v3 checks duplicate keys pairwise, and non-scalar values are re-encoded.
+const (
+	maxFrontmatterBytes = 64 << 10
+	maxFrontmatterKeys  = 1000
+)
+
 // Only a closed mapping at the beginning of the document is metadata. On a
 // malformed or unfinished edit, leave the original text to the Markdown parser.
 func parseMarkdownFrontmatter(lines []lineSpan, ids map[string]int) (Node, int, bool) {
@@ -22,6 +29,9 @@ func parseMarkdownFrontmatter(lines []lineSpan, ids map[string]int) (Node, int, 
 		for _, line := range lines[1:end] {
 			source.WriteString(line.Text)
 		}
+		if source.Len() > maxFrontmatterBytes || hasForeignLineBreak(source.String()) {
+			return Node{}, 0, false
+		}
 		var document yaml.Node
 		decoder := yaml.NewDecoder(strings.NewReader(source.String()))
 		if err := decoder.Decode(&document); err != nil || len(document.Content) != 1 {
@@ -31,7 +41,7 @@ func parseMarkdownFrontmatter(lines []lineSpan, ids map[string]int) (Node, int, 
 			return Node{}, 0, false
 		}
 		mapping := document.Content[0]
-		if mapping.Kind != yaml.MappingNode {
+		if mapping.Kind != yaml.MappingNode || len(mapping.Content)/2 > maxFrontmatterKeys {
 			return Node{}, 0, false
 		}
 		// Node parsing preserves order; decoding additionally rejects duplicate keys
@@ -58,6 +68,11 @@ func parseMarkdownFrontmatter(lines []lineSpan, ids map[string]int) (Node, int, 
 			if i+2 < len(mapping.Content) {
 				next = mapping.Content[i+2].Line
 			}
+			// yaml.v3 lines are 1-based within the front matter, which is offset by
+			// the opening marker; anything outside it means the two disagree.
+			if key.Line < 1 || key.Line >= end || next < key.Line || next > end {
+				return Node{}, 0, false
+			}
 			endByte := lines[next].Start
 			if next == key.Line {
 				endByte = lines[key.Line].End
@@ -71,4 +86,20 @@ func parseMarkdownFrontmatter(lines []lineSpan, ids map[string]int) (Node, int, 
 		return Node{Kind: "block", Type: "property_drawer", ID: nextID(ids, "property_drawer", fmt.Sprintf("%d:%d", lines[0].Start, lines[end].End)), Range: SourceRange{Start: lines[0].Start, End: lines[end].End}, Attrs: map[string]string{"format": "yaml"}, Children: properties}, end + 1, true
 	}
 	return Node{}, 0, false
+}
+
+// yaml.v3 also breaks lines on a bare CR, NEL, LS and PS, which the Markdown
+// line splitter does not; their line numbers would no longer match.
+func hasForeignLineBreak(text string) bool {
+	for i, r := range text {
+		switch r {
+		case '\r':
+			if i+1 >= len(text) || text[i+1] != '\n' {
+				return true
+			}
+		case '\u0085', '\u2028', '\u2029':
+			return true
+		}
+	}
+	return false
 }
