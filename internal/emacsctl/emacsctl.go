@@ -1,7 +1,7 @@
-// Package agentipc implements the imoogi-agent CLI: it turns one command-line
+// Package emacsctl implements the imoogi-emacsctl CLI: it turns one command-line
 // invocation into one protocol version 1 event (SPEC-AGENTIPC-001 § 2) and
 // hands it to the running Emacs through emacsclient.
-package agentipc
+package emacsctl
 
 import (
 	"errors"
@@ -17,7 +17,7 @@ const (
 	ExitNotSent   = 1 // delivery not confirmed: no emacsclient, no server, timeout, event file failure
 	ExitUsage     = 2 // invalid invocation, rejected before sending
 	ExitRejected  = 3 // Emacs was reached but refused the event
-	programPrefix = "imoogi-agent: "
+	programPrefix = "imoogi-emacsctl: "
 )
 
 // Result is the outcome of one delivery attempt: an exit code and, for any
@@ -42,16 +42,16 @@ type Deps struct {
 	Transport Transport
 }
 
-// Main runs one imoogi-agent invocation and returns its exit code. On success
+// Main runs one imoogi-emacsctl invocation and returns its exit code. On success
 // it writes nothing; on failure it writes exactly one diagnostic line to
 // stderr. Writes to stdout/stderr discard their errors: they are the only
 // channels left to report on.
 //
-// @MX:ANCHOR: [AUTO] Main is the single entry point shared by cmd/imoogi-agent run and all CLI tests.
+// @MX:ANCHOR: [AUTO] Main is the single entry point shared by cmd/imoogi-emacsctl run and all CLI tests.
 // @MX:REASON: The exit-code contract of spec.md § 2.4 is decided here; every caller depends on it.
 func Main(args []string, stdout, stderr io.Writer, deps Deps) int {
 	if len(args) == 1 && args[0] == "--version" {
-		_, _ = fmt.Fprintf(stdout, "imoogi-agent %s\n", deps.Version)
+		_, _ = fmt.Fprintf(stdout, "imoogi-emacsctl %s\n", deps.Version)
 		return ExitOK
 	}
 	req, err := parseRequest(args, deps.Getenv, deps.Getwd, deps.Now())

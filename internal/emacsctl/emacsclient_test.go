@@ -1,4 +1,4 @@
-package agentipc
+package emacsctl
 
 import (
 	"encoding/json"
@@ -15,8 +15,8 @@ import (
 // shapes emacsclient 30.2 produced in the plan-phase measurements
 // (acceptance.md § 0.3).
 const (
-	fakeModeEnv   = "IMOOGI_AGENT_FAKE_MODE"
-	fakeRecordEnv = "IMOOGI_AGENT_FAKE_RECORD"
+	fakeModeEnv   = "IMOOGI_EMACSCTL_FAKE_MODE"
+	fakeRecordEnv = "IMOOGI_EMACSCTL_FAKE_RECORD"
 )
 
 type fakeRecord struct {
@@ -152,7 +152,7 @@ func TestAC13DeliveryArgumentsPermissionsAndCleanup(t *testing.T) {
 func TestAC13EvalExpressionConsumesPathFirst(t *testing.T) {
 	pop := strings.Index(evalExpr, "(pop server-eval-args-left)")
 	fbound := strings.Index(evalExpr, "fboundp")
-	receiver := strings.Index(evalExpr, "imoogi-agent-receive-file")
+	receiver := strings.Index(evalExpr, "imoogi-emacsctl-receive-file")
 	if pop < 0 || fbound < 0 || receiver < 0 {
 		t.Fatalf("evalExpr %q lacks pop, fboundp or the receiver name", evalExpr)
 	}
@@ -480,8 +480,8 @@ func TestAIPH06PrivateDirectoryAndCleanup(t *testing.T) {
 			if record.DirPerm != "700" {
 				t.Errorf("event directory mode = %s, want 700", record.DirPerm)
 			}
-			if !strings.HasPrefix(record.DirName, "imoogi-agent-") {
-				t.Errorf("event directory name = %q, want prefix imoogi-agent-", record.DirName)
+			if !strings.HasPrefix(record.DirName, "imoogi-emacsctl-") {
+				t.Errorf("event directory name = %q, want prefix imoogi-emacsctl-", record.DirName)
 			}
 			if !sameDir(t, record.DirParent, tmp) {
 				t.Errorf("event directory parent = %q, want TMPDIR %q", record.DirParent, tmp)

@@ -15,8 +15,8 @@ import (
 // runs; fakeModeEnv selects its answer. When fakeMarkerEnv is set, this test
 // binary behaves as that fake instead of running tests.
 const (
-	fakeMarkerEnv = "IMOOGI_AGENT_TEST_FAKE_MARKER"
-	fakeModeEnv   = "IMOOGI_AGENT_TEST_FAKE_MODE"
+	fakeMarkerEnv = "IMOOGI_EMACSCTL_TEST_FAKE_MARKER"
+	fakeModeEnv   = "IMOOGI_EMACSCTL_TEST_FAKE_MODE"
 )
 
 type fakeRecord struct {
@@ -91,7 +91,7 @@ func useFakeEmacsclient(t *testing.T, mode ...string) string {
 	t.Setenv("EMACSCLIENT", self)
 	t.Setenv(fakeMarkerEnv, marker)
 	t.Setenv(fakeModeEnv, strings.Join(mode, ""))
-	t.Setenv("IMOOGI_AGENT_TIMEOUT", "")
+	t.Setenv("IMOOGI_EMACSCTL_TIMEOUT", "")
 	return marker
 }
 
@@ -142,7 +142,7 @@ func TestAC12CLIRejectsBeforeSending(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("IMOOGI_AGENT_TIMEOUT", tc.env)
+			t.Setenv("IMOOGI_EMACSCTL_TIMEOUT", tc.env)
 			code, stdout, stderr := invoke(tc.args...)
 			if code != 2 {
 				t.Errorf("code = %d, want 2", code)
@@ -166,7 +166,7 @@ func TestAC12CLIRejectsBeforeSending(t *testing.T) {
 func TestAC11CLIVersion(t *testing.T) {
 	marker := useFakeEmacsclient(t)
 	code, stdout, stderr := invoke("--version")
-	if code != 0 || stdout != "imoogi-agent dev\n" || stderr != "" {
+	if code != 0 || stdout != "imoogi-emacsctl dev\n" || stderr != "" {
 		t.Errorf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
@@ -179,7 +179,7 @@ func TestMainExitsWithRunCode(t *testing.T) {
 	t.Cleanup(func() { os.Args, exit = savedArgs, savedExit })
 	got := -1
 	exit = func(code int) { got = code }
-	os.Args = []string{"imoogi-agent", "frobnicate"}
+	os.Args = []string{"imoogi-emacsctl", "frobnicate"}
 	main()
 	if got != 2 {
 		t.Errorf("main exited with %d, want 2", got)
@@ -320,13 +320,13 @@ func TestAC14CLITimeLimits(t *testing.T) {
 		within   time.Duration
 	}{
 		{"--timeout 1 kills a hung emacsclient", "", []string{"--timeout", "1"}, "sleep:30", 1, 2 * time.Second},
-		{"--timeout 3 beats IMOOGI_AGENT_TIMEOUT=1", "1", []string{"--timeout", "3"}, "sleep:2", 0, 3 * time.Second},
+		{"--timeout 3 beats IMOOGI_EMACSCTL_TIMEOUT=1", "1", []string{"--timeout", "3"}, "sleep:2", 0, 3 * time.Second},
 		{"default limit is 5 seconds", "", nil, "sleep:7", 1, 6 * time.Second},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			useFakeEmacsclient(t, tc.sleep)
-			t.Setenv("IMOOGI_AGENT_TIMEOUT", tc.env)
+			t.Setenv("IMOOGI_EMACSCTL_TIMEOUT", tc.env)
 			start := time.Now()
 			code, _, stderr := invoke(append([]string{"message", "hi"}, tc.args...)...)
 			elapsed := time.Since(start)

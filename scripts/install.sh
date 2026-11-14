@@ -17,7 +17,9 @@ CONFIG_LINK="${HOME}/.config/imoogi-emacs"
 EMACS_DIR="${HOME}/.emacs.d"
 EDITOR_BIN_DIR="${HOME}/.local/bin"
 EDITOR_LINK="${EDITOR_BIN_DIR}/imoogi-editor"
-AGENT_LINK="${EDITOR_BIN_DIR}/imoogi-agent"
+EMACSCTL_LINK="${EDITOR_BIN_DIR}/imoogi-emacsctl"
+# Pre-rename name of imoogi-emacsctl; removed only when it still points at our build.
+LEGACY_AGENT_LINK="${EDITOR_BIN_DIR}/imoogi-agent"
 INSTALL_TOOLCHAIN=1
 
 usage() {
@@ -88,10 +90,14 @@ configure_external_editor() {
   mkdir -p "${EDITOR_BIN_DIR}"
   ln -sfn "${CONFIG_LINK}/scripts/imoogi-editor" "${EDITOR_LINK}"
   echo "== linked ${EDITOR_LINK} -> ${CONFIG_LINK}/scripts/imoogi-editor"
-  ln -sfn "${CONFIG_LINK}/bin/imoogi-agent" "${AGENT_LINK}"
-  echo "== linked ${AGENT_LINK} -> ${CONFIG_LINK}/bin/imoogi-agent"
-  if [[ ! -x "${CONFIG_LINK}/bin/imoogi-agent" ]]; then
-    echo "== imoogi-agent is not built yet; run 'make build-agent' in ${REPO_ROOT}"
+  ln -sfn "${CONFIG_LINK}/bin/imoogi-emacsctl" "${EMACSCTL_LINK}"
+  echo "== linked ${EMACSCTL_LINK} -> ${CONFIG_LINK}/bin/imoogi-emacsctl"
+  if [[ -L "${LEGACY_AGENT_LINK}" && "$(readlink "${LEGACY_AGENT_LINK}")" == "${CONFIG_LINK}/bin/imoogi-agent" ]]; then
+    rm -f "${LEGACY_AGENT_LINK}"
+    echo "== removed ${LEGACY_AGENT_LINK} (renamed to imoogi-emacsctl)"
+  fi
+  if [[ ! -x "${CONFIG_LINK}/bin/imoogi-emacsctl" ]]; then
+    echo "== imoogi-emacsctl is not built yet; run 'make build-emacsctl' in ${REPO_ROOT}"
   fi
 
   mkdir -p "$(dirname "${profile}")"

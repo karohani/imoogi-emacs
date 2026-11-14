@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/karohani/imoogi-emacs/internal/agentipc"
 	"github.com/karohani/imoogi-emacs/internal/anki/protocol"
+	"github.com/karohani/imoogi-emacs/internal/emacsctl"
 )
 
 // Exit codes of `imoogi-anki open`.
@@ -97,7 +97,7 @@ type Deps struct {
 // DefaultDeps returns the real seams with plan.md DD-6's limits.
 func DefaultDeps(stderr io.Writer) Deps {
 	return Deps{
-		FindEmacsclient: agentipc.FindEmacsclient,
+		FindEmacsclient: emacsctl.FindEmacsclient,
 		Run:             ExecRunner,
 		Now:             time.Now,
 		Sleep:           time.Sleep,
@@ -236,10 +236,10 @@ func launchArgs(client string) []string {
 
 // classify returns "" for a normal receiver result, otherwise a one-line
 // description of what went wrong (REQ-ASRC-010.2). It is this package's own
-// classifier: agentipc's accepts only "ok" and error:* and would call
+// classifier: emacsctl's accepts only "ok" and error:* and would call
 // "not-found" an unrecognized response.
 func classify(r CmdResult) string {
-	status, parsed := agentipc.ParseLispString(r.Stdout)
+	status, parsed := emacsctl.ParseLispString(r.Stdout)
 	if r.Err == nil && r.ExitCode == 0 && parsed && normalResults[status] {
 		return ""
 	}

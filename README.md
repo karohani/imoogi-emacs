@@ -64,25 +64,25 @@ Claude Code나 Codex의 `Ctrl+G`를 누르면 실행 중인 Emacs에 새 프레�
 
 모든 패키지가 저장소 안 `vendor/elpa/` 에 동봉돼 있어, **인터넷 없이도 첫 실행부터 그대로 동작한다**(망분리/air-gap 지원).
 
-### 코딩 에이전트 알림 — `imoogi-agent`
+### 코딩 에이전트 알림 — `imoogi-emacsctl`
 
-`imoogi-agent`는 Claude Code 같은 코딩 에이전트가 실행 중인 Emacs에 소식을 전하는
+`imoogi-emacsctl`는 Claude Code 같은 코딩 에이전트가 실행 중인 Emacs에 소식을 전하는
 작은 CLI다. 다른 Go CLI는 Emacs가 하위 프로세스로 부르지만, 이 도구는 방향이 반대다.
 에이전트가 명령을 실행하면 이벤트 하나를 소유자 전용(0600) 파일로 쓰고
 `emacsclient --eval`로 Emacs 서버에 넘긴다. 이 파일은 호출마다 새로 만드는
 소유자 전용(0700) 임시 폴더 안에 두며, 성공하든 실패하든 폴더째 지운다. Emacs 쪽 수신기는
-`modules/development/30-agent.el`이다. 따라서 Emacs 서버가 떠 있어야 한다.
+`modules/development/30-emacsctl.el`이다. 따라서 Emacs 서버가 떠 있어야 한다.
 
-설치기(`make install`)가 `~/.local/bin/imoogi-agent`를 `imoogi-editor`와 같은 방식으로
-연결한다. 바이너리는 `make build-agent`로 따로 만들 수 있고 `make build-all`에도 포함된다.
+설치기(`make install`)가 `~/.local/bin/imoogi-emacsctl`를 `imoogi-editor`와 같은 방식으로
+연결한다. 바이너리는 `make build-emacsctl`로 따로 만들 수 있고 `make build-all`에도 포함된다.
 
 ```bash
-imoogi-agent message "빌드 끝남"
-imoogi-agent open-file README.md
-imoogi-agent goto internal/agentipc/request.go 42 5
-imoogi-agent artifact notes/report.md --type report --title "리뷰 결과"
-imoogi-agent finish success "테스트 전부 통과" --artifact notes/report.md
-imoogi-agent --version
+imoogi-emacsctl message "빌드 끝남"
+imoogi-emacsctl open-file README.md
+imoogi-emacsctl goto internal/emacsctl/request.go 42 5
+imoogi-emacsctl artifact notes/report.md --type report --title "리뷰 결과"
+imoogi-emacsctl finish success "테스트 전부 통과" --artifact notes/report.md
+imoogi-emacsctl --version
 ```
 
 모든 하위 명령에 `--project P`, `--session S`, `--timeout SECONDS`를 붙일 수 있다.
@@ -91,8 +91,8 @@ imoogi-agent --version
 
 - 파일은 지금 선택된 창이 아닌 다른 창에 열린다. 커서와 포커스는 그대로다.
 - 알림은 에코 영역에 한 줄로 뜨고, 받은 이벤트와 거부된 이벤트는 모두
-  `*imoogi-agent*` 버퍼에 한 줄씩 쌓인다(읽기 전용, 세션 동안만 유지).
-- 시간 상한은 기본 5초이며 `--timeout`이나 `IMOOGI_AGENT_TIMEOUT`으로 바꾼다.
+  `*imoogi-emacsctl*` 버퍼에 한 줄씩 쌓인다(읽기 전용, 세션 동안만 유지).
+- 시간 상한은 기본 5초이며 `--timeout`이나 `IMOOGI_EMACSCTL_TIMEOUT`으로 바꾼다.
   `emacsclient` 위치는 `EMACSCLIENT`로 지정할 수 있다.
   `emacsclient`처럼 폴더 없이 이름만 주면 PATH에서만 찾고 현재 디렉터리는 보지 않는다.
   PATH에서 처음 찾은 것이 현재 디렉터리(`.`·상대 경로·빈 항목)에 있으면 전달 실패(1)로 끝난다.

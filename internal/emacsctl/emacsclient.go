@@ -1,4 +1,4 @@
-package agentipc
+package emacsctl
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 // path from server-eval-args-left before anything else runs, so the path is
 // never evaluated as Lisp even when the receiver is not loaded
 // (REQ-AIPC-012.3). It never embeds the event or its path.
-const evalExpr = `(let ((f (pop server-eval-args-left))) (if (fboundp 'imoogi-agent-receive-file) (imoogi-agent-receive-file f) "error:not-loaded"))`
+const evalExpr = `(let ((f (pop server-eval-args-left))) (if (fboundp 'imoogi-emacsctl-receive-file) (imoogi-emacsctl-receive-file f) "error:not-loaded"))`
 
 // outputLimit bounds how much emacsclient stdout and stderr is kept.
 const outputLimit = 64 << 10
@@ -92,7 +92,7 @@ func (Emacsclient) Deliver(event []byte, timeout time.Duration) Result {
 // even on a later failure, so the caller can remove it with everything in it;
 // the file path is absolute.
 func writeEventFile(event []byte) (dir, path string, err error) {
-	dir, err = os.MkdirTemp("", "imoogi-agent-*")
+	dir, err = os.MkdirTemp("", "imoogi-emacsctl-*")
 	if err != nil {
 		return "", "", fmt.Errorf("cannot create event directory: %w", err)
 	}
@@ -166,7 +166,7 @@ func findEmacsclient() (string, error) {
 
 // FindEmacsclient exposes findEmacsclient's discovery rule ($EMACSCLIENT,
 // PATH, then the app-bundle candidates) so the imoogi-anki open handler finds
-// emacsclient exactly as imoogi-agent does (SPEC-ANKISRC-001 REQ-ASRC-009.2).
+// emacsclient exactly as imoogi-emacsctl does (SPEC-ANKISRC-001 REQ-ASRC-009.2).
 func FindEmacsclient() (string, error) {
 	return findEmacsclient()
 }

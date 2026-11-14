@@ -1,4 +1,4 @@
-package agentipc
+package emacsctl
 
 import (
 	"bytes"
@@ -18,11 +18,11 @@ import (
 const maxEventBytes = 1 << 20
 
 // defaultTimeout bounds one emacsclient call when neither --timeout nor
-// IMOOGI_AGENT_TIMEOUT is set (plan.md D-9).
+// IMOOGI_EMACSCTL_TIMEOUT is set (plan.md D-9).
 const defaultTimeout = 5 * time.Second
 
 // timeoutEnv overrides the default time limit; --timeout overrides it.
-const timeoutEnv = "IMOOGI_AGENT_TIMEOUT"
+const timeoutEnv = "IMOOGI_EMACSCTL_TIMEOUT"
 
 // usageError marks an invocation rejected before anything is sent (exit 2).
 type usageError struct{ msg string }
@@ -275,7 +275,7 @@ func encodeEvent(event envelope) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// resolveTimeout applies --timeout > IMOOGI_AGENT_TIMEOUT > 5s. The
+// resolveTimeout applies --timeout > IMOOGI_EMACSCTL_TIMEOUT > 5s. The
 // environment variable is read only when the option is absent.
 func resolveTimeout(options map[string]string, getenv func(string) string) (time.Duration, error) {
 	if value, ok := options["--timeout"]; ok {

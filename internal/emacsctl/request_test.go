@@ -1,4 +1,4 @@
-package agentipc
+package emacsctl
 
 import (
 	"bytes"
@@ -195,7 +195,7 @@ func TestAC11EventIsNotHTMLEscaped(t *testing.T) {
 func TestAC11Version(t *testing.T) {
 	transport := &fakeTransport{}
 	code, stdout, stderr := runMain(t, nil, transport, "--version")
-	if code != 0 || stdout != "imoogi-agent test-1.2.3\n" || stderr != "" {
+	if code != 0 || stdout != "imoogi-emacsctl test-1.2.3\n" || stderr != "" {
 		t.Errorf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 	if transport.calls != 0 {
@@ -230,7 +230,7 @@ func TestAC12InvalidInvocationsExit2(t *testing.T) {
 		{"timeout zero", nil, []string{"message", "hi", "--timeout", "0"}},
 		{"timeout negative looks like option", nil, []string{"message", "hi", "--timeout", "-1"}},
 		{"timeout overflow", nil, []string{"message", "hi", "--timeout", "99999999999"}},
-		{"env timeout not a number", map[string]string{"IMOOGI_AGENT_TIMEOUT": "abc"}, []string{"message", "hi"}},
+		{"env timeout not a number", map[string]string{"IMOOGI_EMACSCTL_TIMEOUT": "abc"}, []string{"message", "hi"}},
 		{"type option on message", nil, []string{"message", "hi", "--type", "t"}},
 		{"artifact option on goto", nil, []string{"goto", "f.go", "1", "--artifact", "x"}},
 		{"empty path", nil, []string{"open-file", ""}},
@@ -288,10 +288,10 @@ func TestTimeoutPrecedence(t *testing.T) {
 		want time.Duration
 	}{
 		{"default", nil, nil, 5 * time.Second},
-		{"environment", map[string]string{"IMOOGI_AGENT_TIMEOUT": "7"}, nil, 7 * time.Second},
-		{"empty environment is unset", map[string]string{"IMOOGI_AGENT_TIMEOUT": ""}, nil, 5 * time.Second},
-		{"option beats environment", map[string]string{"IMOOGI_AGENT_TIMEOUT": "7"}, []string{"--timeout", "3"}, 3 * time.Second},
-		{"option ignores invalid environment", map[string]string{"IMOOGI_AGENT_TIMEOUT": "abc"}, []string{"--timeout", "2"}, 2 * time.Second},
+		{"environment", map[string]string{"IMOOGI_EMACSCTL_TIMEOUT": "7"}, nil, 7 * time.Second},
+		{"empty environment is unset", map[string]string{"IMOOGI_EMACSCTL_TIMEOUT": ""}, nil, 5 * time.Second},
+		{"option beats environment", map[string]string{"IMOOGI_EMACSCTL_TIMEOUT": "7"}, []string{"--timeout", "3"}, 3 * time.Second},
+		{"option ignores invalid environment", map[string]string{"IMOOGI_EMACSCTL_TIMEOUT": "abc"}, []string{"--timeout", "2"}, 2 * time.Second},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -310,7 +310,7 @@ func TestTimeoutPrecedence(t *testing.T) {
 func TestTransportResultBecomesExitCode(t *testing.T) {
 	transport := &fakeTransport{response: Result{Code: 3, Diag: "rejected by Emacs: bad-path"}}
 	code, stdout, stderr := runMain(t, nil, transport, "message", "hi")
-	if code != 3 || stdout != "" || stderr != "imoogi-agent: rejected by Emacs: bad-path\n" {
+	if code != 3 || stdout != "" || stderr != "imoogi-emacsctl: rejected by Emacs: bad-path\n" {
 		t.Errorf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 }

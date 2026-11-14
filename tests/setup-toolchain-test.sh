@@ -6,6 +6,13 @@ SCRIPT_SOURCE="${PROJECT_ROOT}/scripts/setup-toolchain.sh"
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/imoogi-toolchain-wrapper.XXXXXX")"
 trap 'rm -rf "${TEST_ROOT}"' EXIT
 
+# Every install run below must name its own HOME. Point the default HOME into the
+# sandbox so a run that forgets cannot touch the real ~/.config, ~/.emacs.d,
+# ~/.local/bin or shell profile; the end of the script fails if it was used.
+STRAY_HOME="${TEST_ROOT}/stray-home"
+mkdir -p "${STRAY_HOME}"
+export HOME="${STRAY_HOME}"
+
 fail() {
   echo "FAIL: $*" >&2
   exit 1
@@ -96,14 +103,18 @@ chmod +x "${install_root}/scripts/setup-toolchain.sh"
 
 install_log="${TEST_ROOT}/install-toolchain.log"
 install_output="${TEST_ROOT}/install-output.log"
+# A link left by the pre-rename CLI name is ours to remove.
+mkdir -p "${install_home}/.local/bin"
+ln -sfn "${install_home}/.config/imoogi-emacs/bin/imoogi-agent" "${install_home}/.local/bin/imoogi-agent"
 HOME="${install_home}" SHELL=/bin/zsh IMOOGI_FAKE_INSTALL_LOG="${install_log}" \
 bash "${install_root}/scripts/install.sh" >"${install_output}"
 [[ "$(cat "${install_log}")" == "--if-available" ]] || fail "install.sh did not auto-run optional setup"
+[[ ! -e "${install_home}/.local/bin/imoogi-agent" && ! -L "${install_home}/.local/bin/imoogi-agent" ]] || fail "legacy imoogi-agent link was not removed"
 [[ -L "${install_home}/.local/bin/imoogi-editor" ]] || fail "external-editor wrapper was not linked"
 [[ "$(readlink "${install_home}/.local/bin/imoogi-editor")" == "${install_home}/.config/imoogi-emacs/scripts/imoogi-editor" ]] || fail "external-editor link target is wrong"
-[[ -L "${install_home}/.local/bin/imoogi-agent" ]] || fail "imoogi-agent CLI was not linked"
-[[ "$(readlink "${install_home}/.local/bin/imoogi-agent")" == "${install_home}/.config/imoogi-emacs/bin/imoogi-agent" ]] || fail "imoogi-agent link target is wrong"
-[[ "$(grep -c 'make build-agent' "${install_output}")" == "1" ]] || fail "missing imoogi-agent binary did not print the make build-agent hint"
+[[ -L "${install_home}/.local/bin/imoogi-emacsctl" ]] || fail "imoogi-emacsctl CLI was not linked"
+[[ "$(readlink "${install_home}/.local/bin/imoogi-emacsctl")" == "${install_home}/.config/imoogi-emacs/bin/imoogi-emacsctl" ]] || fail "imoogi-emacsctl link target is wrong"
+[[ "$(grep -c 'make build-emacsctl' "${install_output}")" == "1" ]] || fail "missing imoogi-emacsctl binary did not print the make build-emacsctl hint"
 profile="${install_home}/.zshrc"
 [[ "$(grep -Fxc '# >>> imoogi-emacs external editor >>>' "${profile}")" == "1" ]] || fail "editor block start marker is missing"
 [[ "$(grep -Fxc "export VISUAL=\"${install_home}/.local/bin/imoogi-editor\"" "${profile}")" == "1" ]] || fail "VISUAL was not configured"
@@ -114,13 +125,16 @@ cp "${profile}" "${expected_profile}"
 
 rm -f "${install_log}"
 mkdir -p "${install_root}/bin"
-printf '%s\n' '#!/usr/bin/env bash' >"${install_root}/bin/imoogi-agent"
-chmod +x "${install_root}/bin/imoogi-agent"
+printf '%s\n' '#!/usr/bin/env bash' >"${install_root}/bin/imoogi-emacsctl"
+chmod +x "${install_root}/bin/imoogi-emacsctl"
+ln -sfn /usr/bin/true "${install_home}/.local/bin/imoogi-agent"
 HOME="${install_home}" SHELL=/bin/zsh IMOOGI_FAKE_INSTALL_LOG="${install_log}" \
 bash "${install_root}/scripts/install.sh" --without-toolchain >"${install_output}"
 [[ ! -e "${install_log}" ]] || fail "--without-toolchain still ran setup"
-[[ "$(grep -c 'make build-agent' "${install_output}" || true)" == "0" ]] || fail "built imoogi-agent binary still printed the build hint"
-[[ "$(readlink "${install_home}/.local/bin/imoogi-agent")" == "${install_home}/.config/imoogi-emacs/bin/imoogi-agent" ]] || fail "rerun changed the imoogi-agent link target"
+[[ "$(readlink "${install_home}/.local/bin/imoogi-agent")" == "/usr/bin/true" ]] || fail "an unrelated imoogi-agent link was removed"
+rm -f "${install_home}/.local/bin/imoogi-agent"
+[[ "$(grep -c 'make build-emacsctl' "${install_output}" || true)" == "0" ]] || fail "built imoogi-emacsctl binary still printed the build hint"
+[[ "$(readlink "${install_home}/.local/bin/imoogi-emacsctl")" == "${install_home}/.config/imoogi-emacs/bin/imoogi-emacsctl" ]] || fail "rerun changed the imoogi-emacsctl link target"
 [[ "$(grep -Fxc '# >>> imoogi-emacs external editor >>>' "${profile}")" == "1" ]] || fail "rerun duplicated the editor block"
 cmp -s "${profile}" "${expected_profile}" || fail "rerun changed an up-to-date editor block"
 
@@ -163,4 +177,6 @@ for test_shell in bash zsh; do
   done
 done
 
+[[ -z "$(ls -A "${STRAY_HOME}")" ]] || fail "an install run used the default HOME: $(ls -A "${STRAY_HOME}" | tr '\n' ' ')"
 echo "setup-toolchain tests: PASS"
+

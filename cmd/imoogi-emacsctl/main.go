@@ -1,4 +1,4 @@
-// Command imoogi-agent lets a coding agent notify the running Emacs: it builds
+// Command imoogi-emacsctl lets a coding agent notify the running Emacs: it builds
 // one event from its arguments and delivers it through emacsclient
 // (SPEC-AGENTIPC-001). Exit codes: 0 accepted, 1 not delivered, 2 invalid
 // invocation, 3 rejected by Emacs.
@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/karohani/imoogi-emacs/internal/agentipc"
+	"github.com/karohani/imoogi-emacs/internal/emacsctl"
 )
 
 var version = "dev"
@@ -23,14 +23,14 @@ func main() {
 
 // run is main's testable body. stdin is unused: events come from arguments.
 //
-// @MX:ANCHOR: [AUTO] run wires the real process environment into agentipc.Main.
+// @MX:ANCHOR: [AUTO] run wires the real process environment into emacsctl.Main.
 // @MX:REASON: main and every CLI-level test enter through run; its signature follows cmd/imoogi-anki.
 func run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
-	return agentipc.Main(args, stdout, stderr, agentipc.Deps{
+	return emacsctl.Main(args, stdout, stderr, emacsctl.Deps{
 		Version:   version,
 		Getenv:    os.Getenv,
 		Getwd:     os.Getwd,
 		Now:       time.Now,
-		Transport: agentipc.Emacsclient{},
+		Transport: emacsctl.Emacsclient{},
 	})
 }
