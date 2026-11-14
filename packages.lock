@@ -1,7 +1,9 @@
 ;; imoogi-emacs packages.lock — vendor/elpa/ 에 동결된 패키지 버전
-;; 생성: emacs 30.2, 총 93 패키지
+;; 생성: emacs 31.1, 총 96 패키지
 ;; NAME                         VERSION                ARCHIVE
 ace-window                   0.10.0                 ?
+acp                          0.18.1                 ?
+agent-shell                  0.96.1                 ?
 aggressive-indent            1.10.0                 ?
 apheleia                     20260613.2149          ?
 async                        1.9.9                  ?
@@ -77,6 +79,7 @@ pfuture                      20220913.1401          ?
 posframe                     1.5.2                  ?
 rust-mode                    1.0.6                  ?
 s                            20220902.1511          ?
+shell-maker                  0.98.2                 ?
 shrink-path                  20190208.1335          ?
 stripspace                   20260604.232           ?
 transient                    0.13.4                 ?

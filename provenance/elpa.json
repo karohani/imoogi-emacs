@@ -96,6 +96,592 @@
       ]
     },
     {
+      "id": "elpa/acp",
+      "kind": "elisp-source",
+      "version": "0.18.1",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/xenodium/acp.el",
+        "commit": "73940c8905b930b2386c1d2e355cf44c0feabfb2"
+      },
+      "workflow": "emacs --batch -Q -l scripts/vendor.el",
+      "files": [
+        {
+          "path": "vendor/elpa/acp-0.18.1/README-elpa",
+          "sha256": "ed1121c7c454b129320fed1fe1804b9cfd8845e8a4000ad6ef7c8297c1e41b3b",
+          "size": 324
+        },
+        {
+          "path": "vendor/elpa/acp-0.18.1/acp-autoloads.el",
+          "sha256": "767ed2848c4ecb780da83321be8987dbdb1e6e427cf426df2910d659e484641f",
+          "size": 869
+        },
+        {
+          "path": "vendor/elpa/acp-0.18.1/acp-fakes.el",
+          "sha256": "289d2aa46212e0f2e7cbe07af3398180166e3094ebdec642de91e2fcfcb725b3",
+          "size": 15063
+        },
+        {
+          "path": "vendor/elpa/acp-0.18.1/acp-fakes.elc",
+          "sha256": "5a129a540d36f2160e0e2d27fb3e06e126367922844a56433f8ae915f2f17fbb",
+          "size": 12894
+        },
+        {
+          "path": "vendor/elpa/acp-0.18.1/acp-pkg.el",
+          "sha256": "221c4193dfa873c6fc7cf40e647f376ab00b5f5a035d9f97bc370865f01c6a1d",
+          "size": 278
+        },
+        {
+          "path": "vendor/elpa/acp-0.18.1/acp-traffic.el",
+          "sha256": "89eb3491620c0f68b1be69b893f1a651109a4dc08519f0f829ff38dbfbee578c",
+          "size": 11964
+        },
+        {
+          "path": "vendor/elpa/acp-0.18.1/acp-traffic.elc",
+          "sha256": "83658f9061772377c71bd8d81f1e997dfc0732845db9a3dd57f947e55c43594f",
+          "size": 13837
+        },
+        {
+          "path": "vendor/elpa/acp-0.18.1/acp.el",
+          "sha256": "62af316678452b1464c110a14521442cbc4ee57a345cd7b4f244fc1b505ccf3e",
+          "size": 48760
+        },
+        {
+          "path": "vendor/elpa/acp-0.18.1/acp.elc",
+          "sha256": "a3d5c385f4ef2bdf215bd59d419ae41d0998a1c487c7ae9d5435c407bc96683f",
+          "size": 48523
+        }
+      ]
+    },
+    {
+      "id": "elpa/agent-shell",
+      "kind": "elisp-source",
+      "version": "0.96.1",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/xenodium/agent-shell",
+        "commit": "26365eb6f2fc3a635eb10bfccc97b3f4264d64be"
+      },
+      "workflow": "emacs --batch -Q -l scripts/vendor.el",
+      "files": [
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/README-elpa",
+          "sha256": "89ea7559f8e685da5cf60f20d9add8107e68e54c2fdb761ca7463a5b0258eb61",
+          "size": 535
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-active-message.el",
+          "sha256": "f84c90e56feab67a97f0cee60b5c3a53cc389eb80b18e9f70456daddff6c5a3b",
+          "size": 1996
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-active-message.elc",
+          "sha256": "9167db54d5529d7f3581c5352e01e1d0d411abad649622e32a9db4b30af3ad63",
+          "size": 1547
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-anthropic.el",
+          "sha256": "57e9882d4ed12674dc67532e45b15e06a7d1877c21fa6a4e07ec4bc4eac30858",
+          "size": 11943
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-anthropic.elc",
+          "sha256": "49a51b00907d81f3e767bcb8f23f2211cd7aea32e5410867acb6aec3d6bc5673",
+          "size": 9868
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-antigravity.el",
+          "sha256": "015073970afbe2ac17a1d01b7513aec7298e57f0406bdf3348de6f77e8bbe9db",
+          "size": 11666
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-antigravity.elc",
+          "sha256": "b82035855ed427a9a092dbdd4b11d86b4816dad03dbf622f93b5d78a82af7d7d",
+          "size": 10366
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-artist.el",
+          "sha256": "4497b11d5fb522db9410ecd267367711a8eca0376b9e7b76b3adbb437b69aa06",
+          "size": 14176
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-artist.elc",
+          "sha256": "b34c40c0001298a918274d2dbbae556dec2c46e9563fae778a7ee2be31fd7933",
+          "size": 12987
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-auggie.el",
+          "sha256": "7754768d690afb7b52c5313cf43a606ff044cab4a1a46ba1bc5ed088be2bf9a9",
+          "size": 7036
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-auggie.elc",
+          "sha256": "b8f71d6c6c71fd325566d462a5b8fd842d159f60defa395762f9c8528d49bae5",
+          "size": 6058
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-autoloads.el",
+          "sha256": "5de5a361470a2a24f26bc6986587c5de26e84a9b86236fb11347a8d8768ffb7b",
+          "size": 17485
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-block-motion.el",
+          "sha256": "6fbb56a0c602cba8cb2640c37033b67891f1e9bd70f583a79842c234438a0a7e",
+          "size": 8124
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-block-motion.elc",
+          "sha256": "c7e71773118fe80adb48c6298b06b948f77cdc24b35c4ebc50d9405b570e37a2",
+          "size": 5555
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-chat-mode.el",
+          "sha256": "637c72c294944c4f0d8e06e13cf1f6bc52a16a6592e85082173183cd9f0389be",
+          "size": 66487
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-chat-mode.elc",
+          "sha256": "302e7112e939f54fb4bd7da70ce3babe2dbdaf602c3c27e6e5cc7638304c6d5d",
+          "size": 39818
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-cline.el",
+          "sha256": "192565e953601e8dfc19248fbc6d0248a9c9ffcea150b8bc6157ed34c219442b",
+          "size": 5774
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-cline.elc",
+          "sha256": "e4416224b332470e8869092f3c194c8bdb15f1a92e0dfc56848520bb5a8b8971",
+          "size": 4685
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-codebuddy.el",
+          "sha256": "81b69b9c8694156bc7bc2c0fe9f8583790974dd9277726603dce383039189eae",
+          "size": 4891
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-codebuddy.elc",
+          "sha256": "50b7b8c12ab90b8f84c06aea6c79b23b2c24d5ebd5edb1eaca7bb949712afe0b",
+          "size": 3865
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-completion.el",
+          "sha256": "ff14e1d0ecb567ec790993c6e3648cabe2d2b75bad998f179db04491c638c34f",
+          "size": 13010
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-completion.elc",
+          "sha256": "61a69000976219e8818e7e508714cc407223bff8e1de94ef859e0b648b6121a6",
+          "size": 12846
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-config.el",
+          "sha256": "f89860b0aebb55c34f7f8eccbdc0f556a2af391680c5adf1e581aa6f74aa0746",
+          "size": 17876
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-config.elc",
+          "sha256": "1c4e778a9470ba86d626d1efe9fe0c9c0a125213abbfc81be9a1568eba7a433b",
+          "size": 16583
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-cursor.el",
+          "sha256": "babd3e4243469616aa8115036d8f9fc883ad5cd89ae714a01bf44cc61de32b0a",
+          "size": 16510
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-cursor.elc",
+          "sha256": "a380cd4215c5d1b183bd976913cc227a3bc8b26fc7f2a718a11680b53372610c",
+          "size": 13559
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-deepseek.el",
+          "sha256": "67b0d6832111b979738584dd77d190bc00f7f5e9be79faaa57b1c77504d0c5a9",
+          "size": 7753
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-deepseek.elc",
+          "sha256": "3a68faf78f8685c7067051d96d9be974348c13ccefe9487da4b556ae619db675",
+          "size": 6926
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-devcontainer.el",
+          "sha256": "ba1868209f25614468465d58f8722d4d995406dea9055ad565926b30b35eb905",
+          "size": 3066
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-devcontainer.elc",
+          "sha256": "664ea23943740be071b7745e0c34703cdd0e34124c7d4e5c6a9a197d23d56f09",
+          "size": 1718
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-diff.el",
+          "sha256": "aea168171a3d77afd980b0334e6faf717d1dbe7b3fde8a6fa33031ca52be104d",
+          "size": 21606
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-diff.elc",
+          "sha256": "b1c4d89a26d38175efb8b9a200b717dcb8042f598acf4683e82f9092fe302f42",
+          "size": 16609
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-dnd.el",
+          "sha256": "60356266bec152ceda2bd59d9fb33de5ea8f10b40fb6a6948befaf68328dc7b4",
+          "size": 8622
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-dnd.elc",
+          "sha256": "98cbf551f2d2e219b03b396d90d8f6d52e442ec403caead76eef0f61a0ab997c",
+          "size": 5847
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-droid.el",
+          "sha256": "2d96acdae4315f73306ea54f593fcd8adeddeed66b9e9d0bf4cd110879410501",
+          "size": 9489
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-droid.elc",
+          "sha256": "5537bd09b6a7da294fe4a8c693600cfce576549c849acf0addb68ace164ef37c",
+          "size": 7918
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-elicitation.el",
+          "sha256": "aa823d5eea572e3c8be3984c1bd73c6c9d30452b8ab2de4091259683389d9bd4",
+          "size": 74386
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-elicitation.elc",
+          "sha256": "99d1c2faa632d70208fb7b55ddfc651769c81f597b673558f5cbff57f73f316b",
+          "size": 67751
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-experimental.el",
+          "sha256": "3c75d851fe00a23ffb3068524e1067187c3eb5598bea561baaf03bcb681a36c9",
+          "size": 21323
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-experimental.elc",
+          "sha256": "d197ac735829cc90360f7ee2c1e7699e14bfd65d290c7a0469cba73bf5344878",
+          "size": 14771
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-faces.el",
+          "sha256": "e3709b032d1299bfa266fc3fcaaf4995b9b12c90cae9383f126048517bd62f8e",
+          "size": 6559
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-faces.elc",
+          "sha256": "d78c25e570dc5195c465d8fed1f2857fbc413f1a22fb4008497c5b315eed02cf",
+          "size": 5097
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-github.el",
+          "sha256": "d183d3000bfe98c2575ca7dd42ee6f6599be0cbb099b51d57e83e4778cdd274c",
+          "size": 6029
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-github.elc",
+          "sha256": "10c40db503a7061896c46ffd133619f5279f91695263b70fa45bb67fb91db2b6",
+          "size": 5025
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-google.el",
+          "sha256": "9b452a1621c087e0bb618717584773317b0fb15f7b404f74a18846f442641d96",
+          "size": 14807
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-google.elc",
+          "sha256": "d35720fa42c92110b026df7a7ad9a739378b31d8dce3a00173929b25e5664244",
+          "size": 10234
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-goose.el",
+          "sha256": "aa91ad5b13780b276773132336cea83614bbbde2bd68613d747963e76ca83c71",
+          "size": 7546
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-goose.elc",
+          "sha256": "97d410e612caca13558e78ff263d01ad8924e48d48160da91c7efaa691ba1e3f",
+          "size": 6525
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-heartbeat.el",
+          "sha256": "96c3cfc8181c89ad0d1bee9f4269b8ee9c055bdb98636c04f7a2e19119731d7b",
+          "size": 4004
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-heartbeat.elc",
+          "sha256": "7b80609804aa0ab6e3f9d889694bf3473fb9f1c987528a9866c8e5fc5ef050d4",
+          "size": 3104
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-hermes.el",
+          "sha256": "34769fa071e2234cab36c226e44f73862abebd93a32a9150ca6a4cd402527c00",
+          "size": 7000
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-hermes.elc",
+          "sha256": "7478c7d7ac29e1bbac5f6bd5241c503b66db0a606def084c1a066bbb38438cb7",
+          "size": 5999
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-junie.el",
+          "sha256": "f8476886c4bd03c8df209651a240dce662be5681b818042d0c4de2a8ddc44aa3",
+          "size": 5679
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-junie.elc",
+          "sha256": "070526aa4b2eb6e77c9695bd52b7a367d86d54350c5ce793b06a2faf1a64d574",
+          "size": 4697
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-kimi.el",
+          "sha256": "2c12f5f7deece31375bdacca7cd72b9163436a1f02c5735e2bf5dc51a03b5827",
+          "size": 5495
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-kimi.elc",
+          "sha256": "5bfb75042bbcbff45b06b5c9af1298c9bf07509423a81f98349b6627a994214f",
+          "size": 4495
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-kiro.el",
+          "sha256": "1646a8cc34e990a1a54181e558a0a415f6062fa2f38763965f549a7bf5b6c8c3",
+          "size": 5501
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-kiro.elc",
+          "sha256": "ab916df3c4b332acf1abff467741f2b89e940034dd7943b15e81b21748d8182d",
+          "size": 4518
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-list-edit.el",
+          "sha256": "0089b4ca44fe87c09cb833fbf7485a12e767219b5504fa58452f3f8ff48ce41c",
+          "size": 5545
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-list-edit.elc",
+          "sha256": "b8ca2515ef4b4cc0bf3e6dd58417fc60cef2007503413ad02562c52d8d01ed65",
+          "size": 5824
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-markdown.el",
+          "sha256": "7cc7903e0058f6847f412d7fdcef10bf45062195928761a1255a2291157d5535",
+          "size": 314542
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-markdown.elc",
+          "sha256": "06923296170fa48f1f3691ccd43d01857a0d30a6f1f28b3970544cc8329ed011",
+          "size": 239788
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-mistral.el",
+          "sha256": "bbc2a02999fc75f143998a3f7d6955032b0772d850611f2dcb1f29b277d29a49",
+          "size": 8525
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-mistral.elc",
+          "sha256": "4fb2e7043b84985f691b7adca60c70a32363b47e7124ae370356a705df85cc52",
+          "size": 7534
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-mock-agent.el",
+          "sha256": "87f60dc8855a1bab7861237411fef21fed63e736e745d7a7bc5d788f1aa81327",
+          "size": 4688
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-mock-agent.elc",
+          "sha256": "4ec17d3f66ef38405d93a58594b03b8db9b212ba33deca4f90d6da5723df76ac",
+          "size": 3329
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-omp.el",
+          "sha256": "18e51f91fa8ac05db865779dc8b18cb58c94e4f5938f014165f8db5847db74f3",
+          "size": 6105
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-omp.elc",
+          "sha256": "48ad16eef824ce2279a50f244853e54f0697f671cfe6fd7e61b9257019eaddd9",
+          "size": 4626
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-openai.el",
+          "sha256": "3d66460312b226c6dadf029e45f8124a1d714499b141e1641056e78891ba7ff1",
+          "size": 16789
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-openai.elc",
+          "sha256": "4ba1424a428584d4895b3517a0554cd3091faae55ea8a9c84b5794abaa9f02db",
+          "size": 12877
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-openclaw.el",
+          "sha256": "6c523bc491634bb03748dec8ac9d6ce9b7aa21863adf244c5d1ea2574218a415",
+          "size": 6066
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-openclaw.elc",
+          "sha256": "8f3956af6f11917c321ccd36f32926a34b9d447fc6bc3eaa10929e78861f24ea",
+          "size": 5068
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-opencode.el",
+          "sha256": "e540cf07efa42c66888e38a585f02f95b5ef273a154a7c636f02c4e8cd167a35",
+          "size": 9400
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-opencode.elc",
+          "sha256": "89b77261f1e03efe98d1a9c7275cb8f436128ebef28f2c370429828de1664e81",
+          "size": 8110
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-pi.el",
+          "sha256": "2cce214cd385c64e77457673e40b7e291d07442d475be9aea389e23f39fc575a",
+          "size": 10474
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-pi.elc",
+          "sha256": "847d0fdfacf53d572665ba22e816b8a0c8986f4443294c75b1e03454a3d6cc0f",
+          "size": 8547
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-pkg.el",
+          "sha256": "efcccf50280a18caab21a6e9ba0b1e947f9949b5b030f73ba72396beb4fae4bf",
+          "size": 366
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-project.el",
+          "sha256": "670d54b8b3e622426262ea8e55d50854d917a26865c54bb57777c5dc09c7fa86",
+          "size": 4042
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-project.elc",
+          "sha256": "59fa3a3d48ce9555affc4314932cac5259e70de7ce63e83e4f49b331f957b308",
+          "size": 2579
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-prompt-queue.el",
+          "sha256": "319d34dc95c837079d28dd3f9a5e4b953037d4e59cdd52086afe3a7c0b56de40",
+          "size": 27483
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-prompt-queue.elc",
+          "sha256": "02dceadcf6f14c4db61d5145622e86a61d42b182f6cf555106c4822bb6ac5385",
+          "size": 23655
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-prompt.el",
+          "sha256": "6118ec7ee11972833456fa77f8cdab14bdf6e93c3fb8a95b3971e3e308874b81",
+          "size": 18195
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-prompt.elc",
+          "sha256": "018c10c96b15bfe4ba7de374a3f6b0b85513ff59bf4500618d80f88d45716bda",
+          "size": 14619
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-qoder.el",
+          "sha256": "4c4b0d03033ab330cf5e35c31d3fff3bdfd92938d26fcddcad92b2473dcb07a8",
+          "size": 3463
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-qoder.elc",
+          "sha256": "930ead892eddb817a898756c1e9965dccf4bc2f5dc4620fd8381be83b49244ed",
+          "size": 2765
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-qwen.el",
+          "sha256": "fa0237977fd60258d171eba85616d818a2be378bec940df33726ff3359224bfd",
+          "size": 9456
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-qwen.elc",
+          "sha256": "9e4a3d0d1e8ae8b79ebdd1b3e5023514644f1ff959170465149c39360801f966",
+          "size": 7453
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-styles.el",
+          "sha256": "2c20412a9b483100f452dcfcaf5a30a86a6dcc9c19efbfd3ba19f82817ae9782",
+          "size": 10389
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-styles.elc",
+          "sha256": "7f33bbe7fd012b07e81f2d306c07be9ecb256990a9a09e5ec3fefcc4ffbbe4f8",
+          "size": 6723
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-ui.el",
+          "sha256": "ecdc04b1814cd8c5c01db7774f42406eb3f0375032ad817b7ec66ab2c9d29b15",
+          "size": 95626
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-ui.elc",
+          "sha256": "eacb58ca4d5664692a8f11ad49a6db299b9037e4362f878b5104ff7a6b7857da",
+          "size": 67439
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-usage.el",
+          "sha256": "5b57d03e586caa3669cfd1352e6bddcbb388681f482e819dc11958c1a4d66110",
+          "size": 13087
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-usage.elc",
+          "sha256": "86daa1fc66268a49d3b62476ce9298f22f5f9a8cdee4f37d30ac5e6cef5c783b",
+          "size": 9763
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-viewport.el",
+          "sha256": "25b89975ef6785c7bee592011511002c2e78e27ae0a2df7d4d654096420ee645",
+          "size": 82549
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-viewport.elc",
+          "sha256": "150b0323de44fd82ad16ee143a26d0a50bfd5fbdb0910e05e06314668e88c3c2",
+          "size": 65299
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-work-buffer.el",
+          "sha256": "4df57ac9c9c12bc5f1164ebaaf8a2521a8fcec42e766e2b66bccb1c5c60b5977",
+          "size": 1996
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-work-buffer.elc",
+          "sha256": "4f75dd1ac1c11899af863cf7acb10abc458fc210e2f919153a56c077f704c0f6",
+          "size": 642
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-worktree.el",
+          "sha256": "72a5fce3ab4b9de744e5347898895924b1c26eb3ac36cf9a9727201dac1446e1",
+          "size": 8160
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-worktree.elc",
+          "sha256": "bf989ab33603e5c0f17bef62bc840706d8a33872be7081bf0bc652f8f2fc3928",
+          "size": 6343
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-xai.el",
+          "sha256": "05ff1baf281068611ce066ca2ee2f353f66013a941d6ebe7e4270b4cf78a59eb",
+          "size": 6997
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell-xai.elc",
+          "sha256": "f2eaa207a5754c3de2c17a4d9a7b08f7bd12e169b0b0405c409d10f665fa64bf",
+          "size": 5490
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell.el",
+          "sha256": "876545f49a4185374dd54218ef743297daca7c690fcf41c5817aabbc5d4a138a",
+          "size": 617572
+        },
+        {
+          "path": "vendor/elpa/agent-shell-0.96.1/agent-shell.elc",
+          "sha256": "857b9960a4480a0da829e917a3973b712572b96b55a8355233c9bce89de064ef",
+          "size": 462735
+        }
+      ]
+    },
+    {
       "id": "elpa/aggressive-indent",
       "kind": "elisp-source",
       "version": "1.10.0",
@@ -6908,6 +7494,64 @@
           "path": "vendor/elpa/s-20220902.1511/s.elc",
           "sha256": "e7e2910cc2e23463b889eb915a5d0c9485f5bad04a001ec39f9f16b58c20a18e",
           "size": 28793
+        }
+      ]
+    },
+    {
+      "id": "elpa/shell-maker",
+      "kind": "elisp-source",
+      "version": "0.98.2",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/xenodium/shell-maker",
+        "commit": "a0cb90df6ee5ad633ef7e639921ffa40548ac276"
+      },
+      "workflow": "emacs --batch -Q -l scripts/vendor.el",
+      "files": [
+        {
+          "path": "vendor/elpa/shell-maker-0.98.2/README-elpa",
+          "sha256": "08e05324c7aef9ba7c2d5e8dc2ea6a653e3bb647c9c8a8cc5f0c7859719e4f47",
+          "size": 243
+        },
+        {
+          "path": "vendor/elpa/shell-maker-0.98.2/markdown-overlays-tables.el",
+          "sha256": "524ce4b235bb8a49b98372d79c4a1176eafd258e8dd8ad1448a7e67b422f54b6",
+          "size": 42021
+        },
+        {
+          "path": "vendor/elpa/shell-maker-0.98.2/markdown-overlays-tables.elc",
+          "sha256": "f26cdc9a1c870ff34d80512de59e5a442cab1e0626c0873ec61105797cbed9c8",
+          "size": 21627
+        },
+        {
+          "path": "vendor/elpa/shell-maker-0.98.2/markdown-overlays.el",
+          "sha256": "575b9c9a72fb914199bf59c1382851dd15dd34b42c8ff8e88ede811b83571570",
+          "size": 42462
+        },
+        {
+          "path": "vendor/elpa/shell-maker-0.98.2/markdown-overlays.elc",
+          "sha256": "77fd9f31c8bee6d7ea40224b782a3a1d563e786e121bc95042e947f2c569fc9b",
+          "size": 25923
+        },
+        {
+          "path": "vendor/elpa/shell-maker-0.98.2/shell-maker-autoloads.el",
+          "sha256": "828c1ddb3d7c059a6d253da9f948899826d49dd2e8707fb5b848a91298c21bf3",
+          "size": 973
+        },
+        {
+          "path": "vendor/elpa/shell-maker-0.98.2/shell-maker-pkg.el",
+          "sha256": "239a225fd774c6fd934677a84affdc74fdde79be0f4122644a576d112e8afb5c",
+          "size": 287
+        },
+        {
+          "path": "vendor/elpa/shell-maker-0.98.2/shell-maker.el",
+          "sha256": "38ff9a6b0205196a7977165c07ea40b97466fdc9e88839e9ccd9540c26af2e26",
+          "size": 102880
+        },
+        {
+          "path": "vendor/elpa/shell-maker-0.98.2/shell-maker.elc",
+          "sha256": "b8fb8a476ac4b99823076dc429749658caa842ef421ef5f7fac379d082ac66fa",
+          "size": 91838
         }
       ]
     },

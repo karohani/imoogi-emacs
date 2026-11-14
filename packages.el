@@ -57,9 +57,22 @@
     ;; 21-native-compile
     compile-angel
     ;; 27-ai (LiteLLM/OpenAI-compatible LLM client)
-    gptel)
+    gptel
+    ;; 31-agent (ACP coding agents in Emacs; pinned below)
+    agent-shell)
   "imoogi-emacs 가 요구하는 top-level 패키지 목록.
 전이 의존성은 package.el 이 자동으로 함께 설치한다.")
+
+(defvar imoogi-pinned-packages
+  '((agent-shell "melpa-stable" "0.96.1")
+    (acp "melpa-stable" "0.18.1")
+    (shell-maker "melpa-stable" "0.98.2"))
+  "Packages vendored from a fixed release instead of the rolling MELPA build.
+Each entry is (PACKAGE ARCHIVE VERSION). scripts/vendor.el installs PACKAGE only
+from ARCHIVE and fails unless VERSION is what got installed; tests/vendor-pin-test.el
+fails if vendor/elpa drifts. agent-shell moves fast, so its API is wrapped by the
+imoogi-agent-* interface (modules/development/31-agent.el); acp and shell-maker are
+its requirements, pinned with it.")
 
 (provide 'imoogi-packages)
 ;;; packages.el ends here

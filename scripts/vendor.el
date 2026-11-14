@@ -7,6 +7,7 @@
 ;; 실행:
 ;;   emacs --batch -Q -l scripts/vendor.el           # 누락 패키지만 설치
 ;;   emacs --batch -Q -l scripts/vendor.el -- upgrade # 모두 최신으로 갱신
+;;   emacs --batch -Q -l scripts/vendor.el -- no-font # 글꼴(NFM.ttf) 다시 받기 생략
 ;;
 ;; 이후 vendor/ 와 packages.lock 변경분을 git 커밋 → 폐쇄망으로 반입.
 ;; 타겟 Emacs 메이저 버전을 빌드 머신과 동일하게 유지할 것(.elc 호환).
@@ -25,6 +26,10 @@
   (member "upgrade" command-line-args-left)
   "Non-nil 이면 설치된 패키지도 최신으로 갱신한다.")
 
+(defvar imoogi-vendor--skip-font
+  (member "no-font" command-line-args-left)
+  "Non-nil 이면 nerd-icons 글꼴을 다시 받지 않는다(패키지만 바꿀 때).")
+
 ;;; 매니페스트 로드
 (load (expand-file-name "packages.el" imoogi-vendor--root) nil t)
 
@@ -34,9 +39,13 @@
 (setq package-archives
       '(("gnu"    . "https://elpa.gnu.org/packages/")
         ("nongnu" . "https://elpa.nongnu.org/nongnu/")
-        ("melpa"  . "https://melpa.org/packages/")))
-;; 안정성 위해 GNU/NonGNU 우선, MELPA(rolling) 후순위.
-(setq package-archive-priorities '(("gnu" . 99) ("nongnu" . 80) ("melpa" . 70)))
+        ("melpa"  . "https://melpa.org/packages/")
+        ("melpa-stable" . "https://stable.melpa.org/packages/")))
+;; 안정성 위해 GNU/NonGNU 우선, MELPA(rolling) 후순위. MELPA Stable 은 고정 패키지
+;; (packages.el 의 `imoogi-pinned-packages')만 쓰도록 가장 낮게 두고 아래에서 고정한다.
+(setq package-archive-priorities '(("gnu" . 99) ("nongnu" . 80) ("melpa" . 70) ("melpa-stable" . 0)))
+(setq package-pinned-packages
+      (mapcar (lambda (pin) (cons (nth 0 pin) (nth 1 pin))) imoogi-pinned-packages))
 
 (message "==> vendoring 대상: %s" package-user-dir)
 (make-directory package-user-dir t)
@@ -59,6 +68,16 @@
         (package-install pkg))
     (error (message "!!! %s 설치 실패: %s" pkg (error-message-string err)))))
 
+;;; 고정 패키지 확인 — 받은 버전이 packages.el 의 고정 버전과 다르면 중단한다.
+(dolist (pin imoogi-pinned-packages)
+  (let* ((name (nth 0 pin))
+         (want (nth 2 pin))
+         (desc (cadr (assq name package-alist)))
+         (got (and desc (package-version-join (package-desc-version desc)))))
+    (unless (equal got want)
+      (error "고정 패키지 %s: %s 를 기대했지만 %s 가 설치됨" name want (or got "없음")))
+    (message "    고정 확인: %s %s (%s)" name got (nth 1 pin))))
+
 ;;; packages.lock 생성 — 설치된 모든 패키지(전이 의존성 포함)의 버전 기록
 (let ((lock (expand-file-name "packages.lock" imoogi-vendor--root))
       (entries '()))
@@ -78,6 +97,8 @@
 
 ;;; nerd-icons 폰트도 저장소에 동봉 — 실패하면 이전 파일을 정상 갱신으로 오인하지 않는다.
 (let ((font-dir (expand-file-name "assets/fonts/" imoogi-vendor--root)))
+  (if imoogi-vendor--skip-font
+      (message "==> 글꼴 동봉 생략 (no-font)")
   (condition-case err
       (progn
         (require 'nerd-icons)
@@ -90,7 +111,7 @@
                (dest (expand-file-name "NFM.ttf" font-dir)))
           (url-copy-file url dest t)
           (message "==> 폰트 동봉: %s" dest)))
-    (error (error "폰트 동봉 실패: %s" (error-message-string err)))))
+    (error (error "폰트 동봉 실패: %s" (error-message-string err))))))
 
 (let ((default-directory imoogi-vendor--root))
   (message "==> provenance manifest 갱신 중...")
