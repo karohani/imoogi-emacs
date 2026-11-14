@@ -249,7 +249,8 @@
 ;; 여기서 잡는다. 새 항목을 의도적으로 추가할 때는 이 기대값도 함께 갱신한다.
 (ert-deftest imoogi-transient-master-bindings-have-no-collisions ()
   (should (equal (imoogi-test--layout-bindings 'imoogi-transient-master)
-                 '(("R" . imoogi-reload)
+                 '(("A" . imoogi-agent-transient)
+                   ("R" . imoogi-reload)
                    ("T" . imoogi-transient-tab)
                    ("a" . imoogi-anki-transient)
                    ("c" . imoogi-transient-code)

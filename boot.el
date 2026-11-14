@@ -100,7 +100,8 @@ tests/assert-boot.el 이 이 값을 설치 검증의 판정 근거로 쓴다.")
                   "org/28-clipboard"
                   "org/29-org-roam"
                   "org/32-mothership-metadata"
-                  "development/30-emacsctl"))
+                  "development/30-emacsctl"
+                  "development/31-agent"))
   (condition-case err
       (load (expand-file-name (concat "modules/" module) imoogi-emacs-dir))
     (error

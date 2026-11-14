@@ -80,6 +80,31 @@ Claude Code나 Codex의 `Ctrl+G`를 누르면 실행 중인 Emacs에 새 프레�
 
 모든 패키지가 저장소 안 `vendor/elpa/` 에 동봉돼 있어, **인터넷 없이도 첫 실행부터 그대로 동작한다**(망분리/air-gap 지원).
 
+### Emacs 안의 코딩 에이전트 — `imoogi-agent` (agent-shell)
+
+[agent-shell](https://github.com/xenodium/agent-shell)로 Claude Code·Codex·Gemini를 Emacs 버퍼 안에서
+쓴다. 에이전트와는 ACP(Agent Client Protocol)로 대화한다. agent-shell은 변경이 잦아 `packages.el`의
+`imoogi-pinned-packages`에서 MELPA Stable `0.96.1`(필요한 `acp 0.18.1`, `shell-maker 0.98.2` 포함)로
+고정했다. `scripts/vendor.el`은 고정 버전이 아니면 실패하고, `tests/vendor-pin-test.el`은
+`vendor/elpa`가 고정 버전에서 벗어나면 실패한다.
+
+설정의 다른 곳은 agent-shell 함수를 직접 부르지 않고 `imoogi-agent-*` 명령만 쓴다
+(`modules/development/31-agent.el`). agent-shell을 올렸을 때 함수 이름이 바뀌었으면 첫 명령과
+`tests/agent-test.el`이 사라진 함수 이름을 알려 주므로, 그 파일 하나만 고치면 된다.
+agent-shell은 처음 쓸 때 로드되어 부팅 시간에 영향을 주지 않는다.
+
+`C-c h A` 메뉴:
+
+| 묶음 | 키 · 명령 |
+|---|---|
+| 시작·전환 | `a` 프로젝트 셸 열기(`imoogi-agent-open`), `s` 에이전트 골라 시작(`imoogi-agent-start`, 기본 `imoogi-agent-default-backend` = Claude Code, `C-u`로 고르기), `t` 보이기/숨기기, `n` 새 셸, `b` 셸 고르기 |
+| 문맥 보내기 | `r` 선택 영역, `f` 현재 파일, `F` 다른 파일 |
+| 세션 | `k` 멈추기, `R` 이전 세션 이어가기, `M` 모델, `m` 모드 |
+| 복사·기록 | `c` 마지막 답 복사, `i` 세션 ID 복사, `l` ACP 로그 |
+
+에이전트마다 ACP 어댑터가 PATH에 있어야 한다: Claude Code는 `claude-agent-acp`, Codex는 `codex-acp`,
+Gemini는 `gemini --experimental-acp`. 없으면 `imoogi-agent-start`가 어떤 프로그램이 필요한지 알려 준다.
+
 ### 코딩 에이전트 알림 — `imoogi-emacsctl`
 
 `imoogi-emacsctl`는 Claude Code 같은 코딩 에이전트가 실행 중인 Emacs에 소식을 전하는
