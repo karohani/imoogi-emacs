@@ -56,6 +56,7 @@ type Env interface {
 	ChangedSince(revision string, paths []string) ([]string, error)
 	Readlink(path string) (string, error)
 	Exists(path string) bool
+	IsExecutable(path string) bool // a regular file with an execute bit, following symlinks
 	ReadFile(path string) ([]byte, error)
 	LookPath(name string) (string, error)
 	Getenv(key string) string

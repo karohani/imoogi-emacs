@@ -17,6 +17,7 @@ type fakeEnv struct {
 	required string
 	links    map[string]string
 	exists   map[string]bool
+	execs    map[string]bool   // IsExecutable
 	files    map[string][]byte // ReadFile contents
 	path     map[string]string // LookPath results
 	vars     map[string]string // Getenv
@@ -47,7 +48,8 @@ func (f fakeEnv) Readlink(path string) (string, error) {
 	}
 	return "", os.ErrNotExist
 }
-func (f fakeEnv) Exists(path string) bool { return f.exists[path] }
+func (f fakeEnv) Exists(path string) bool       { return f.exists[path] }
+func (f fakeEnv) IsExecutable(path string) bool { return f.execs[path] }
 func (f fakeEnv) ReadFile(path string) ([]byte, error) {
 	if data, ok := f.files[path]; ok {
 		return data, nil

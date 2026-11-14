@@ -157,6 +157,13 @@ func (e SystemEnv) Exists(path string) bool {
 	return err == nil
 }
 
+// IsExecutable reports whether path, after following symlinks, is a regular
+// file with an execute bit.
+func (e SystemEnv) IsExecutable(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0
+}
+
 func (e SystemEnv) ReadFile(path string) ([]byte, error) { return os.ReadFile(path) }
 func (e SystemEnv) LookPath(name string) (string, error) { return exec.LookPath(name) }
 func (e SystemEnv) Getenv(key string) string             { return os.Getenv(key) }

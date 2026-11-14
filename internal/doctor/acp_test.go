@@ -4,8 +4,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/karohani/imoogi-emacs/internal/lang/acp"
 )
 
 const (
@@ -152,8 +156,56 @@ func TestMissingAgentCLIIsAWarning(t *testing.T) {
 		t.Fatalf("CODEX_PATH to a missing file: %+v", f)
 	}
 	env.exists["/opt/codex/bin/codex"] = true
+	if f := find(t, Check(env), "codex"); f.Status != StatusWarn || !strings.Contains(f.Fix, "CODEX_PATH") {
+		t.Fatalf("CODEX_PATH to an existing file that is not executable: %+v", f)
+	}
+	env.execs = map[string]bool{"/opt/codex/bin/codex": true}
 	if f := find(t, Check(env), "codex"); f.Status != StatusOK || !strings.Contains(f.Detail, "CODEX_PATH") {
-		t.Fatalf("CODEX_PATH to an existing file: %+v", f)
+		t.Fatalf("CODEX_PATH to an executable file: %+v", f)
+	}
+}
+
+// TestCLIOverrideMustBeAnExecutableFile runs checkCLI against real files: an
+// override that names a directory or a file without an execute bit cannot
+// start the agent CLI, so it is a warning like a missing one.
+func TestCLIOverrideMustBeAnExecutableFile(t *testing.T) {
+	dir := t.TempDir()
+	plain := filepath.Join(dir, "codex-plain")
+	program := filepath.Join(dir, "codex")
+	link := filepath.Join(dir, "codex-link")
+	if err := os.WriteFile(plain, []byte("#!/bin/sh\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(program, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(program, link); err != nil {
+		t.Fatal(err)
+	}
+	a, ok := acp.Lookup("codex-acp")
+	if !ok {
+		t.Fatal("codex-acp is not a known adapter")
+	}
+	for name, tc := range map[string]struct {
+		path string
+		want string
+	}{
+		"directory":           {dir, StatusWarn},
+		"non-executable file": {plain, StatusWarn},
+		"missing file":        {filepath.Join(dir, "absent"), StatusWarn},
+		"executable file":     {program, StatusOK},
+		"link to executable":  {link, StatusOK},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(a.EnvVar, tc.path)
+			f := checkCLI(SystemEnv{RootDir: dir}, a)
+			if f.Status != tc.want || !strings.Contains(f.Detail, tc.path) {
+				t.Fatalf("%s=%s: finding = %+v, want status %s", a.EnvVar, tc.path, f, tc.want)
+			}
+			if tc.want == StatusWarn && !strings.Contains(f.Fix, a.EnvVar) {
+				t.Fatalf("warning without the fix: %+v", f)
+			}
+		})
 	}
 }
 

@@ -131,11 +131,11 @@ func checkCLI(env Env, a acp.Adapter) Finding {
 	f := Finding{Kind: "cli", Name: a.CLI, Status: StatusOK}
 	fix := "install the " + a.CLI + " CLI on PATH or set " + a.EnvVar
 	if v := env.Getenv(a.EnvVar); v != "" {
-		if env.Exists(v) {
+		if env.IsExecutable(v) {
 			f.Detail = a.EnvVar + "=" + v
 			return f
 		}
-		f.Status, f.Detail, f.Fix = StatusWarn, a.EnvVar+"="+v+" does not exist; "+a.Name+" cannot start sessions", fix
+		f.Status, f.Detail, f.Fix = StatusWarn, a.EnvVar+"="+v+" is not an executable file; "+a.Name+" cannot start sessions", fix
 		return f
 	}
 	path, err := env.LookPath(a.CLI)
