@@ -1,0 +1,14 @@
+codex-acp bundle — third-party notice
+
+The committed bundle
+vendor/toolchains/acp/codex-acp/2.5.0/darwin-arm64/bundle.tgz contains the
+npm package @openai/codex 0.165.0 (node_modules/@openai/codex), a dependency
+of @agentclientprotocol/codex-acp 2.5.0.
+
+@openai/codex 0.165.0 declares "license": "Apache-2.0" in its package.json
+but its npm tarball ships no license file. It is redistributed here under
+the Apache License, Version 2.0. The full license text is in
+vendor/toolchains/licenses/codex-acp-LICENSE.
+
+Source repository (per its package.json): https://github.com/openai/codex,
+directory codex-cli.

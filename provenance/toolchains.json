@@ -121,6 +121,11 @@
           "path": "vendor/toolchains/licenses/codex-acp-LICENSE",
           "sha256": "72ea310b40e1ee2c4aa61935d22065155c50bfde288b114c9cfd3e1fa34f8049",
           "size": 10760
+        },
+        {
+          "path": "vendor/toolchains/licenses/codex-acp-NOTICE",
+          "sha256": "75f828ea1dbea371d4e8fd0c758ec5ffa532b48ecd1715a2481f8aa0af257b1d",
+          "size": 609
         }
       ]
     },
@@ -169,12 +174,12 @@
       "files": [
         {
           "path": "vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain",
-          "sha256": "37ead6001230fa32a5266f1f4f42692640cd0f05cdb71c58ad3dc4b009e479eb",
-          "size": 9976386
+          "sha256": "16c72203c0925b69b401e725842b5811fe370cc83284606e2f3bb5b4063f94c4",
+          "size": 9976802
         },
         {
           "path": "vendor/toolchains/cli/1.0.0/darwin-arm64/imoogi-toolchain.provenance.json",
-          "sha256": "19e737d369397917bc43964914d791c95e5af23bcb7e9be7fb623d26d6450e3e",
+          "sha256": "5ef76f7dcc60ed645e2bdf4aa874898863972666321c61a5ba04fc72f2835fb5",
           "size": 558
         }
       ]

@@ -1,7 +1,7 @@
 {
   "schema": "imoogi-toolchains-lock/v1",
   "cli_version": "1.0.0",
-  "bundle": "2026.11.14.1",
+  "bundle": "2026.11.14.2",
   "target": {
     "os": "darwin",
     "arch": "arm64"
@@ -153,7 +153,8 @@
         "retrieved_at": "2026-11-14T11:20:17Z"
       },
       "license": {
-        "path": "vendor/toolchains/licenses/codex-acp-LICENSE"
+        "path": "vendor/toolchains/licenses/codex-acp-LICENSE",
+        "notice": "vendor/toolchains/licenses/codex-acp-NOTICE"
       },
       "provenance": {
         "builder": "darwin/arm64",

@@ -1,7 +1,7 @@
 {
   "schema": "imoogi-toolchains-desired/v1",
   "cli_version": "1.0.0",
-  "bundle": "2026.11.14.1",
+  "bundle": "2026.11.14.2",
   "target": {
     "os": "darwin",
     "arch": "arm64"
