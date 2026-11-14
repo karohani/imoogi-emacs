@@ -10,6 +10,7 @@ import (
 	"github.com/karohani/imoogi-emacs/internal/artifact"
 	"github.com/karohani/imoogi-emacs/internal/config"
 	"github.com/karohani/imoogi-emacs/internal/lang"
+	"github.com/karohani/imoogi-emacs/internal/lang/node"
 )
 
 type Provider struct {
@@ -34,7 +35,7 @@ func (p Provider) Materialize(repoRoot, stagingRoot string) ([]lang.Probe, error
 		return nil, fmt.Errorf("typescript-language-server requires node_engine %q but node is %s", components.tls.Runtime.NodeEngine, nodeVersion)
 	}
 
-	nodeRoot, err := extractNode(repoRoot, stagingRoot, components.node)
+	nodeRoot, err := node.Ensure(repoRoot, stagingRoot, components.node)
 	if err != nil {
 		return nil, err
 	}
@@ -173,37 +174,6 @@ func selectComponents(components []config.LockComponent) (selected, error) {
 		return selected{}, fmt.Errorf("typescript-language-server component has no node_engine")
 	}
 	return out, nil
-}
-
-func extractNode(repoRoot, stagingRoot string, component config.LockComponent) (string, error) {
-	destination, err := lang.ContainedStagePath(stagingRoot, "lib/node")
-	if err != nil {
-		return "", err
-	}
-	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
-		return "", err
-	}
-	if _, err := artifact.ExtractTarGzipWithOptions(
-		lang.ArtifactPath(repoRoot, component),
-		destination,
-		digest(component),
-		artifact.Limits{
-			MaxEntries:     20_000,
-			MaxFileBytes:   512 << 20,
-			MaxOutputBytes: 1 << 30,
-		},
-		artifact.ExtractOptions{AllowRelativeSymlinks: true},
-	); err != nil {
-		return "", fmt.Errorf("extract node artifact: %w", err)
-	}
-	entries, err := os.ReadDir(destination)
-	if err != nil {
-		return "", err
-	}
-	if len(entries) != 1 || !entries[0].IsDir() {
-		return "", fmt.Errorf("node archive must contain one distribution directory")
-	}
-	return filepath.Join(destination, entries[0].Name()), nil
 }
 
 func extractPackage(repoRoot, stagingRoot string, component config.LockComponent, packageName string) (string, error) {
