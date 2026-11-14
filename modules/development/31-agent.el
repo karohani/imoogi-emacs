@@ -8,6 +8,10 @@
 ;; changes: `imoogi-agent--upstream-api' lists every upstream function used, and
 ;; both the first command and tests/agent-test.el name any that are missing.
 ;;
+;; The Claude Code and Codex adapters (claude-agent-acp, codex-acp) are
+;; toolchain components: `make toolchain-setup' installs them into .local/bin
+;; on the bundled node, and M-x imoogi-doctor checks that they answer.
+;;
 ;; agent-shell is large, so it loads on first use rather than at boot.
 ;; The opposite direction (an agent notifying Emacs) is 30-emacsctl.el.
 
@@ -119,10 +123,14 @@ Without BACKEND use `imoogi-agent-default-backend'; with a prefix argument ask."
          (spec (or (cdr (assq backend imoogi-agent-backends))
                    (user-error "Unknown agent backend: %s" backend))))
     (imoogi-agent--ensure)
+    ;; The Claude and Codex adapters ship in the toolchain bundle (.local/bin),
+    ;; which 17-lsp.el puts on PATH; do it here too in case that has not run.
+    (when (fboundp 'imoogi-lsp-prepend-local-bin)
+      (imoogi-lsp-prepend-local-bin))
     (let* ((variable (plist-get spec :command))
            (program (car (and (boundp variable) (symbol-value variable)))))
       (unless (and program (executable-find program))
-        (user-error "%s needs the ACP adapter `%s' on PATH (set by `%s'); run M-x imoogi-doctor"
+        (user-error "%s needs the ACP adapter `%s' on PATH (set by `%s'); run `make toolchain-setup', then M-x imoogi-doctor"
                     (plist-get spec :label) (or program "?") variable)))
     (call-interactively (plist-get spec :start))))
 

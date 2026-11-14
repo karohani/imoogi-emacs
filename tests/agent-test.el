@@ -27,6 +27,7 @@
      (imoogi-agent--ensure)
      (cl-letf (((symbol-function 'call-interactively)
                 (lambda (fn &rest _) (push fn calls)))
+               ((symbol-function 'imoogi-lsp-prepend-local-bin) #'ignore)
                ((symbol-function 'executable-find) (lambda (_) "/usr/bin/true")))
        ,@body)
      (nreverse calls)))
@@ -62,8 +63,21 @@
 (ert-deftest imoogi-agent-start-explains-a-missing-acp-adapter ()
   (imoogi-agent--ensure)
   (cl-letf (((symbol-function 'executable-find) (lambda (_) nil))
+            ((symbol-function 'imoogi-lsp-prepend-local-bin) #'ignore)
             ((symbol-function 'call-interactively) (lambda (&rest _) (error "must not start"))))
     (let ((err (should-error (imoogi-agent-start 'claude) :type 'user-error)))
-      (should (string-match-p "claude-agent-acp" (cadr err))))))
+      (should (string-match-p "claude-agent-acp" (cadr err)))
+      (should (string-match-p "make toolchain-setup" (cadr err)))
+      (should (string-match-p "imoogi-doctor" (cadr err))))))
+
+(ert-deftest imoogi-agent-start-looks-in-the-toolchain-bin-first ()
+  "The bundled adapters live in .local/bin, so it joins PATH before the lookup."
+  (imoogi-agent--ensure)
+  (let ((order nil))
+    (cl-letf (((symbol-function 'imoogi-lsp-prepend-local-bin) (lambda () (push 'prepend order)))
+              ((symbol-function 'executable-find) (lambda (program) (push program order) "/x"))
+              ((symbol-function 'call-interactively) #'ignore))
+      (imoogi-agent-start 'codex))
+    (should (equal (nreverse order) '(prepend "codex-acp")))))
 
 ;;; agent-test.el ends here
