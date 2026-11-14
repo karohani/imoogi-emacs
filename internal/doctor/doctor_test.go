@@ -107,13 +107,19 @@ func TestToolProblemsAreClassified(t *testing.T) {
 		}
 	}
 
+	// Go marks a build modified for any untracked or edited file in the checkout
+	// (.moai/ notes, for example). With no change in the tool's own sources since
+	// the build commit, the binary matches what a clean build would produce.
 	env = healthy()
 	env.info["imoogi-anki"] = BuildInfo{GoVersion: "go1.26.11", Revision: "abc1234def", Modified: true, Main: ModulePath}
-	if got := statuses(Check(env)); got["imoogi-anki"] != StatusDirty {
-		t.Fatalf("built from uncommitted changes: %v", got)
+	findings = Check(env)
+	if got := statuses(findings); got["imoogi-anki"] != StatusOK {
+		t.Fatalf("a modified checkout with unchanged tool sources is current: %v", got)
 	}
-	if !Healthy(Check(env)) {
-		t.Fatal("a dirty build is a warning, not a failure")
+	for _, f := range findings {
+		if f.Name == "imoogi-anki" && !strings.Contains(f.Detail, "other files") {
+			t.Fatalf("detail should say the checkout had other changes: %+v", f)
+		}
 	}
 }
 

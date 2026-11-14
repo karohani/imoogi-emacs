@@ -17,7 +17,7 @@ const (
 	StatusMissing   = "missing"   // not built / link absent
 	StatusStale     = "stale"     // source changed since the binary was built
 	StatusToolchain = "toolchain" // built with a different Go than go.work pins
-	StatusDirty     = "dirty"     // built from uncommitted changes; cannot prove it is current (warning)
+	StatusDirty     = "dirty"     // reserved: a warning that does not fail the doctor
 	StatusObsolete  = "obsolete"  // a leftover from a tool that no longer exists
 	StatusWrongLink = "wrong"     // link points somewhere else
 	StatusUnknown   = "unknown"   // could not be inspected
@@ -132,11 +132,12 @@ func checkTool(env Env, tool, required string, reqErr error) Finding {
 		f.Detail = fmt.Sprintf("%d file(s) changed since %s: %s", len(changed), short(info.Revision), preview(changed))
 		return f
 	}
-	if info.Modified {
-		f.Status, f.Detail = StatusDirty, "built from uncommitted changes on "+short(info.Revision)
-		return f
-	}
 	f.Fix, f.Detail = "", "built from "+short(info.Revision)+" with "+info.GoVersion
+	if info.Modified {
+		// Go flags any untracked or edited file in the checkout; the tool's own
+		// sources were compared above and match the build commit.
+		f.Detail += " (checkout had other files changed)"
+	}
 	return f
 }
 
