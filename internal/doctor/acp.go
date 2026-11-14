@@ -68,8 +68,18 @@ type installState struct {
 	record         installRecord
 }
 
+// bundleState reads the install record of the active directory of bundle: the
+// one .local/bin points into, which is the bundle id or the "<bundle>-<digest>"
+// directory setup publishes a completed bundle into.
 func bundleState(env Env, bundle, lockSum string) installState {
-	data, err := env.ReadFile(filepath.Join(env.Root(), ".local", "toolchains", bundle, "install.json"))
+	dir := bundle
+	target, linkErr := env.Readlink(filepath.Join(env.Root(), ".local", "bin"))
+	if linkErr == nil {
+		if active, ok := config.ActiveBundleDir(filepath.ToSlash(filepath.Clean(target)), bundle); ok {
+			dir = active
+		}
+	}
+	data, err := env.ReadFile(filepath.Join(env.Root(), ".local", "toolchains", dir, "install.json"))
 	if err != nil {
 		return installState{status: StatusMissing, detail: "toolchain bundle " + bundle + " is not installed"}
 	}
@@ -80,9 +90,9 @@ func bundleState(env Env, bundle, lockSum string) installState {
 	if record.LockSHA256 != lockSum {
 		return installState{status: StatusStale, detail: "bundle " + bundle + " was installed from a different toolchains.lock.json"}
 	}
-	want := filepath.Join("toolchains", bundle, "bin")
-	if target, err := env.Readlink(filepath.Join(env.Root(), ".local", "bin")); err != nil || filepath.Clean(target) != want {
-		if err != nil {
+	want := filepath.Join("toolchains", dir, "bin")
+	if linkErr != nil || filepath.Clean(target) != want {
+		if linkErr != nil {
 			target = "nothing"
 		}
 		return installState{status: StatusStale, detail: ".local/bin points to " + target + ", not " + want}

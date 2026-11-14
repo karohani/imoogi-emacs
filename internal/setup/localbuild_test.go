@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -201,14 +202,11 @@ func activeBin(root, name string) string {
 	return filepath.Join(root, ".local", "bin", name)
 }
 
+// readInstallRecord reads install.json of the bundle .local/bin activates.
 func readInstallRecord(t *testing.T, root string) metadata {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(root, ".local", "toolchains", "2026.08.22.1", installMetadataName))
+	meta, err := binResolves(root)
 	if err != nil {
-		t.Fatal(err)
-	}
-	var meta metadata
-	if err := json.Unmarshal(data, &meta); err != nil {
 		t.Fatal(err)
 	}
 	return meta
@@ -269,23 +267,212 @@ func TestSetupSkipsALocalBuildThatCannotBuildAndActivatesTheRest(t *testing.T) {
 	if meta := readInstallRecord(t, root); len(meta.Skipped) != 0 {
 		t.Fatalf("install.json still records skipped %v", meta.Skipped)
 	}
-	assertActiveBundle(t, root, "2026.08.22.1")
-	assertNoTransactionTemp(t, root)
-	entries, err := os.ReadDir(filepath.Join(root, ".local", "toolchains"))
+	// The completed bundle lives next to the one it replaced, which is gone.
+	target, err := os.Readlink(filepath.Join(root, ".local", "bin"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, e := range entries {
-		if e.Name() != "2026.08.22.1" {
-			t.Fatalf("replacement left %s behind", e.Name())
-		}
+	if dir, ok := config.ActiveBundleDir(target, "2026.08.22.1"); !ok || dir == "2026.08.22.1" {
+		t.Fatalf("activation = %q, want a replacement directory of 2026.08.22.1", target)
 	}
+	assertNoTransactionTemp(t, root)
+	assertSingleBundleDir(t, root)
 
 	// Complete now: a further run reuses it.
 	stdout.Reset()
 	if err := Run(context.Background(), Options{Workdir: root, Stdout: &stdout,
 		ProviderFactory: fakeProviderFactory(t, nil), RunProbe: okProbe, NPMRunner: offlineNPM(&calls)}); err != nil || !strings.Contains(stdout.String(), "setup reused") {
 		t.Fatalf("complete rerun: %v %q", err, stdout.String())
+	}
+}
+
+// skippedInstall installs a bundle without the local-build adapter (npm
+// offline), the state a later online run replaces.
+func skippedInstall(t *testing.T) string {
+	t.Helper()
+	root, _ := localBuildRepo(t)
+	var calls int
+	if err := Run(context.Background(), Options{Workdir: root, ProviderFactory: fakeProviderFactory(t, nil),
+		RunProbe: okProbe, NPMRunner: offlineNPM(&calls)}); err != nil {
+		t.Fatalf("offline Run() error = %v", err)
+	}
+	if meta := readInstallRecord(t, root); len(meta.Skipped) != 1 {
+		t.Fatalf("install.json skipped = %v, want the adapter", meta.Skipped)
+	}
+	return root
+}
+
+// binResolves checks that .local/bin leads to an intact installed bundle: its
+// install.json parses and every component it did not skip has its launcher.
+func binResolves(root string) (metadata, error) {
+	var meta metadata
+	target, err := os.Readlink(filepath.Join(root, ".local", "bin"))
+	if err != nil {
+		return meta, fmt.Errorf("read .local/bin: %w", err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, ".local", filepath.Dir(filepath.FromSlash(target)), installMetadataName))
+	if err != nil {
+		return meta, fmt.Errorf(".local/bin -> %s: %w", target, err)
+	}
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return meta, fmt.Errorf(".local/bin -> %s: %w", target, err)
+	}
+	skipped := map[string]bool{}
+	for _, name := range meta.Skipped {
+		skipped[name] = true
+	}
+	for _, c := range meta.Components {
+		if skipped[c.Name] {
+			continue
+		}
+		if _, err := os.Stat(activeBin(root, c.Name)); err != nil {
+			return meta, fmt.Errorf(".local/bin -> %s: launcher %s: %w", target, c.Name, err)
+		}
+	}
+	return meta, nil
+}
+
+// TestReplacingABundleKeepsBinResolvable observes every intermediate state of
+// replacing a bundle that skipped the adapter: .local/bin must lead to an
+// intact bundle (the old or the new one) at each of them.
+func TestReplacingABundleKeepsBinResolvable(t *testing.T) {
+	root := skippedInstall(t)
+	var calls int
+	var steps []string
+	var broken []string
+	opts := Options{Workdir: root, ProviderFactory: fakeProviderFactory(t, nil), RunProbe: okProbe, NPMRunner: fakeNPM(&calls, "v1")}
+	opts.Failpoints.Step = func(step string) error {
+		steps = append(steps, step)
+		if _, err := binResolves(root); err != nil {
+			broken = append(broken, step+": "+err.Error())
+		}
+		return nil
+	}
+	if err := Run(context.Background(), opts); err != nil {
+		t.Fatalf("online Run() error = %v", err)
+	}
+	if len(steps) == 0 {
+		t.Fatal("replacing a bundle reported no intermediate steps")
+	}
+	if len(broken) > 0 {
+		t.Fatalf(".local/bin did not resolve to an intact bundle during the replacement:\n%s", strings.Join(broken, "\n"))
+	}
+	if meta, err := binResolves(root); err != nil || len(meta.Skipped) != 0 {
+		t.Fatalf("after the replacement: skipped=%v err=%v", meta.Skipped, err)
+	}
+}
+
+// TestInterruptedReplacementRecoversOnRerun crashes the replacement at every
+// failpoint and step, checks .local/bin still resolves, and that the next
+// online run completes the bundle and leaves no debris behind.
+func TestInterruptedReplacementRecoversOnRerun(t *testing.T) {
+	crash := errors.New("simulated crash")
+	var steps []string
+	{
+		root := skippedInstall(t)
+		var calls int
+		opts := Options{Workdir: root, ProviderFactory: fakeProviderFactory(t, nil), RunProbe: okProbe, NPMRunner: fakeNPM(&calls, "v1")}
+		opts.Failpoints.Step = func(step string) error { steps = append(steps, step); return nil }
+		if err := Run(context.Background(), opts); err != nil {
+			t.Fatalf("observing Run() error = %v", err)
+		}
+	}
+	points := map[string]func(*Failpoints){
+		"AfterStaging":   func(f *Failpoints) { f.AfterStaging = func() error { return crash } },
+		"AfterProbes":    func(f *Failpoints) { f.AfterProbes = func() error { return crash } },
+		"AfterPublish":   func(f *Failpoints) { f.AfterPublish = func() error { return crash } },
+		"BeforeActivate": func(f *Failpoints) { f.BeforeActivate = func() error { return crash } },
+	}
+	for _, step := range steps {
+		step := step
+		points["step "+step] = func(f *Failpoints) {
+			f.Step = func(s string) error {
+				if s == step {
+					return crash
+				}
+				return nil
+			}
+		}
+	}
+	for name, arm := range points {
+		t.Run(name, func(t *testing.T) {
+			root := skippedInstall(t)
+			var calls int
+			opts := Options{Workdir: root, ProviderFactory: fakeProviderFactory(t, nil), RunProbe: okProbe, NPMRunner: fakeNPM(&calls, "v1")}
+			arm(&opts.Failpoints)
+			if err := Run(context.Background(), opts); !errors.Is(err, crash) {
+				t.Fatalf("crashing Run() error = %v, want the simulated crash", err)
+			}
+			if _, err := binResolves(root); err != nil {
+				t.Fatalf("after the crash: %v", err)
+			}
+
+			var stdout bytes.Buffer
+			rerun := Options{Workdir: root, Stdout: &stdout, ProviderFactory: fakeProviderFactory(t, nil), RunProbe: okProbe, NPMRunner: fakeNPM(&calls, "v1")}
+			if err := Run(context.Background(), rerun); err != nil {
+				t.Fatalf("rerun error = %v", err)
+			}
+			meta, err := binResolves(root)
+			if err != nil || len(meta.Skipped) != 0 {
+				t.Fatalf("after the rerun: skipped=%v err=%v (stdout %q)", meta.Skipped, err, stdout.String())
+			}
+			if _, err := os.Stat(activeBin(root, adapterName)); err != nil {
+				t.Fatalf("adapter missing after the rerun: %v", err)
+			}
+			assertNoTransactionTemp(t, root)
+			assertSingleBundleDir(t, root)
+
+			stdout.Reset()
+			if err := Run(context.Background(), rerun); err != nil || !strings.Contains(stdout.String(), "setup reused 2026.08.22.1") {
+				t.Fatalf("third run: %v %q", err, stdout.String())
+			}
+		})
+	}
+}
+
+// TestRerunRecoversFromAnInterruptedLegacyReplacement: the previous setup
+// moved the installed tree to .replaced-* before publishing; interrupted there
+// it left .local/bin dangling. A rerun installs the bundle afresh and sweeps
+// the moved-aside tree.
+func TestRerunRecoversFromAnInterruptedLegacyReplacement(t *testing.T) {
+	root := skippedInstall(t)
+	toolchains := filepath.Join(root, ".local", "toolchains")
+	if err := os.Rename(filepath.Join(toolchains, "2026.08.22.1"), filepath.Join(toolchains, ".replaced-2026.08.22.1-4242")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := binResolves(root); err == nil {
+		t.Fatal("the simulated interruption left .local/bin resolvable")
+	}
+	var calls int
+	var stdout bytes.Buffer
+	if err := Run(context.Background(), Options{Workdir: root, Stdout: &stdout, ProviderFactory: fakeProviderFactory(t, nil),
+		RunProbe: okProbe, NPMRunner: fakeNPM(&calls, "v1")}); err != nil {
+		t.Fatalf("rerun error = %v", err)
+	}
+	if meta, err := binResolves(root); err != nil || len(meta.Skipped) != 0 || !strings.Contains(stdout.String(), "setup activated") {
+		t.Fatalf("after the rerun: skipped=%v err=%v stdout=%q", meta.Skipped, err, stdout.String())
+	}
+	assertActiveBundle(t, root, "2026.08.22.1")
+	assertSingleBundleDir(t, root)
+}
+
+// assertSingleBundleDir checks that .local/toolchains holds exactly the
+// directory .local/bin points into: no replaced, retired or orphaned tree.
+func assertSingleBundleDir(t *testing.T, root string) {
+	t.Helper()
+	target, err := os.Readlink(filepath.Join(root, ".local", "bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	active := filepath.Base(filepath.Dir(filepath.FromSlash(target)))
+	entries, err := os.ReadDir(filepath.Join(root, ".local", "toolchains"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() != active {
+			t.Fatalf(".local/toolchains keeps %s besides the active %s", e.Name(), active)
+		}
 	}
 }
 

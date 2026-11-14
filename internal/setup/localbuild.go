@@ -196,22 +196,97 @@ func skippedNote(names []string) string {
 	return " (without " + strings.Join(names, ", ") + ")"
 }
 
-// replaceBundle swaps an installed bundle that skipped a component for the
-// complete staging tree. The old tree is moved aside first and put back if the
-// swap fails, then removed.
-func replaceBundle(staging, bundleRoot string) error {
-	aside := filepath.Join(filepath.Dir(bundleRoot), fmt.Sprintf(".replaced-%s-%d", filepath.Base(bundleRoot), os.Getpid()))
-	if err := os.RemoveAll(aside); err != nil {
+// installedDir names the directory of bundle that setup treats as installed:
+// the one .local/bin points into when it is an existing directory of this
+// bundle, otherwise the bundle id itself.
+func installedDir(localRoot, bundle string) string {
+	target, err := os.Readlink(filepath.Join(localRoot, "bin"))
+	if err != nil {
+		return bundle
+	}
+	dir, ok := config.ActiveBundleDir(target, bundle)
+	if !ok {
+		return bundle
+	}
+	if _, err := os.Lstat(filepath.Join(localRoot, "toolchains", dir)); err != nil {
+		return bundle
+	}
+	return dir
+}
+
+// publishReplacement publishes the complete staging tree for an installed
+// bundle that skipped a component. It goes into a directory of its own, named
+// after its content, so the installed tree stays whole and active until
+// activate switches .local/bin to the new one in a single rename.
+//
+// @MX:NOTE: [AUTO] readers of .local/bin always see a whole bundle: new tree first, then one atomic link rename, then the old tree is retired
+func publishReplacement(staging, toolchains, bundle, installed, treeSHA256 string, fp Failpoints) (string, error) {
+	name := config.ReplacementBundleDir(bundle, treeSHA256)
+	if name == installed {
+		return "", fmt.Errorf("replacement for bundle %s has the installed tree's content", bundle)
+	}
+	// Left by a run interrupted before it switched .local/bin; never active.
+	if err := retireDir(toolchains, name, fp); err != nil {
+		return "", err
+	}
+	if err := os.Rename(staging, filepath.Join(toolchains, name)); err != nil {
+		return "", fmt.Errorf("publish bundle: %w", err)
+	}
+	return name, fp.step("replacement-published")
+}
+
+// retireInactive removes every directory of bundle except active. Run only
+// after .local/bin points at active.
+func retireInactive(toolchains, bundle, active string, fp Failpoints) error {
+	entries, err := os.ReadDir(toolchains)
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(bundleRoot, aside); err != nil {
-		return fmt.Errorf("move incomplete bundle aside: %w", err)
-	}
-	if err := os.Rename(staging, bundleRoot); err != nil {
-		if backErr := os.Rename(aside, bundleRoot); backErr != nil {
-			return fmt.Errorf("publish bundle: %w (putting the previous bundle back also failed: %v)", err, backErr)
+	for _, e := range entries {
+		if e.Name() != active && config.IsBundleDir(e.Name(), bundle) {
+			if err := retireDir(toolchains, e.Name(), fp); err != nil {
+				return err
+			}
 		}
-		return fmt.Errorf("publish bundle: %w", err)
 	}
-	return os.RemoveAll(aside)
+	return nil
+}
+
+// retireDir renames a bundle directory to a dot name before deleting it, so a
+// half-deleted tree never sits where it could be taken for an installed bundle.
+func retireDir(toolchains, name string, fp Failpoints) error {
+	path := filepath.Join(toolchains, name)
+	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	retired := filepath.Join(toolchains, fmt.Sprintf(".retired-%s-%d", name, os.Getpid()))
+	if err := os.RemoveAll(retired); err != nil {
+		return err
+	}
+	if err := os.Rename(path, retired); err != nil {
+		return fmt.Errorf("retire bundle directory %s: %w", name, err)
+	}
+	if err := fp.step("bundle-retired"); err != nil {
+		return err
+	}
+	return os.RemoveAll(retired)
+}
+
+// sweepDebris removes what an interrupted setup can leave behind: staging and
+// probe trees, temporary activation links, retired bundle directories, and the
+// ".replaced-*" trees of earlier setup versions. It runs under the setup lock,
+// when no other setup can own them, and is best effort: debris never blocks.
+func sweepDebris(localRoot string) {
+	for _, pattern := range []string{
+		filepath.Join(localRoot, ".staging-*"),
+		filepath.Join(localRoot, ".probe-*"),
+		filepath.Join(localRoot, ".bin-*.tmp"),
+		filepath.Join(localRoot, "toolchains", ".retired-*"),
+		filepath.Join(localRoot, "toolchains", ".replaced-*"),
+	} {
+		matches, _ := filepath.Glob(pattern)
+		for _, path := range matches {
+			_ = os.RemoveAll(path)
+		}
+	}
 }

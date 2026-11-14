@@ -77,6 +77,26 @@ func TestAdaptersInstalledAndAnsweringAreOK(t *testing.T) {
 	}
 }
 
+// TestAdaptersInAReplacementBundleDirectoryAreOK: setup completes a bundle
+// that skipped an adapter into "<bundle>-<digest>" and points .local/bin there.
+func TestAdaptersInAReplacementBundleDirectoryAreOK(t *testing.T) {
+	env := withAdapters()
+	dir := bundle + "-0123456789ab"
+	delete(env.files, installRec)
+	env.files[root+"/.local/toolchains/"+dir+"/install.json"] = installJSON(lockDigest(), claudeSHA)
+	env.links[root+"/.local/bin"] = "toolchains/" + dir + "/bin"
+	for _, name := range []string{"claude-agent-acp", "codex-acp"} {
+		if f := find(t, Check(env), name); f.Status != StatusOK {
+			t.Fatalf("%s = %+v", name, f)
+		}
+	}
+	// Another bundle's replacement directory is not this bundle.
+	env.links[root+"/.local/bin"] = "toolchains/" + bundle + "0-0123456789ab/bin"
+	if f := find(t, Check(env), "claude-agent-acp"); f.Status == StatusOK {
+		t.Fatalf("a link into another bundle passed: %+v", f)
+	}
+}
+
 func TestNoAdapterFindingsWithoutAdaptersInTheLock(t *testing.T) {
 	env := healthy()
 	env.files = map[string][]byte{lockPath: []byte(`{"bundle":"b","components":[{"name":"gopls","kind":"go-language-server"}]}`)}

@@ -158,7 +158,11 @@ reserved")를 포함하므로 공개 저장소에 재배포하지 않는다. 이
   같은 경로에 복사한 뒤 `make toolchain-setup`을 실행한다. 파일이 있으면 setup은
   빌드하지 않고 SHA-256만 검증한다.
 - 구성요소를 건너뛴 bundle은 그 구성요소를 여전히 빌드할 수 없는 동안에만 재사용한다.
-  빌드가 성공하면 setup은 완전한 bundle을 새로 만들어 같은 bundle 디렉터리를 교체한다.
+  빌드가 성공하면 setup은 완전한 bundle을 `.local/toolchains/<bundle>-<트리 SHA-256 앞
+  12자리>/`에 따로 만든 뒤, 임시 symlink를 `.local/bin` 위로 rename해 한 번에 전환하고
+  그다음에 이전 디렉터리를 지운다. 그래서 `.local/bin`은 어느 순간에도 이전 bundle이나
+  새 bundle 중 하나를 온전히 가리키며, 중간에 끊긴 setup은 다시 실행하면 이어서
+  마무리된다. `make doctor`는 `.local/bin`이 가리키는 디렉터리의 `install.json`을 읽는다.
 - **다음은 여전히 종료 코드 `10`인 실패다:** 빌드했거나 미리 놓아 둔 아티팩트의 크기·
   SHA-256이 lock과 다를 때, 커밋된 `package-lock.json`의 SHA-256이 `revision`과 다를 때,
   그리고 커밋된(local-build가 아닌) 구성요소의 모든 실패. 이때는 아무것도 활성화하지

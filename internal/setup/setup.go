@@ -80,6 +80,16 @@ type Failpoints struct {
 	AfterProbes    func() error
 	AfterPublish   func() error
 	BeforeActivate func() error
+	// Step runs at every intermediate state of publishing and activating a
+	// bundle, named by step; an error aborts setup there as a crash would.
+	Step func(step string) error
+}
+
+func (f Failpoints) step(name string) error {
+	if f.Step == nil {
+		return nil
+	}
+	return f.Step(name)
 }
 
 type metadata struct {
@@ -175,7 +185,9 @@ func Run(ctx context.Context, opts Options) error {
 		defer release()
 	}
 
-	bundleRoot := filepath.Join(localRoot, "toolchains", lock.Bundle)
+	toolchainsDir := filepath.Join(localRoot, "toolchains")
+	installedName := installedDir(localRoot, lock.Bundle)
+	bundleRoot := filepath.Join(toolchainsDir, installedName)
 	installed, err := readInstalled(bundleRoot, lockDigest)
 	if err != nil {
 		return classify(KindConfigIntegrity, err)
@@ -190,7 +202,10 @@ func Run(ctx context.Context, opts Options) error {
 		if err := runLockProbes(ctx, opts, withoutComponents(*lock, without), bundleRoot, localRoot); err != nil {
 			return err
 		}
-		if err := activate(localRoot, lock.Bundle); err != nil {
+		if err := activate(localRoot, installedName); err != nil {
+			return classify(KindSetup, err)
+		}
+		if err := retireInactive(toolchainsDir, lock.Bundle, installedName, opts.Failpoints); err != nil {
 			return classify(KindSetup, err)
 		}
 		fmt.Fprintf(opts.Stdout, "setup reused %s%s\n", lock.Bundle, skippedNote(installed.Skipped))
@@ -221,7 +236,8 @@ func Run(ctx context.Context, opts Options) error {
 		}
 		probes = append(probes, providerProbes...)
 	}
-	if err := writeMetadata(staging, *lock, lockDigest, sortedNames(skipped)); err != nil {
+	treeSHA256, err := writeMetadata(staging, *lock, lockDigest, sortedNames(skipped))
+	if err != nil {
 		return classify(KindSetup, err)
 	}
 	if opts.Failpoints.AfterStaging != nil {
@@ -237,13 +253,16 @@ func Run(ctx context.Context, opts Options) error {
 			return classify(KindSetup, err)
 		}
 	}
-	if err := ensureRealDir(filepath.Dir(bundleRoot)); err != nil {
+	if err := ensureRealDir(toolchainsDir); err != nil {
 		return classify(KindSetup, err)
 	}
+	// A first install takes the bundle id; a bundle that skipped a component
+	// is completed next to the installed one, which stays active until then.
+	activeName := lock.Bundle
 	if installed != nil {
-		err = replaceBundle(staging, bundleRoot)
+		activeName, err = publishReplacement(staging, toolchainsDir, lock.Bundle, installedName, treeSHA256, opts.Failpoints)
 	} else {
-		err = publish(staging, bundleRoot, lockDigest)
+		err = publish(staging, filepath.Join(toolchainsDir, lock.Bundle), lockDigest)
 	}
 	if err != nil {
 		return classify(KindSetup, err)
@@ -259,7 +278,13 @@ func Run(ctx context.Context, opts Options) error {
 			return classify(KindSetup, err)
 		}
 	}
-	if err := activate(localRoot, lock.Bundle); err != nil {
+	if err := activate(localRoot, activeName); err != nil {
+		return classify(KindSetup, err)
+	}
+	if err := opts.Failpoints.step("linked"); err != nil {
+		return classify(KindSetup, err)
+	}
+	if err := retireInactive(toolchainsDir, lock.Bundle, activeName, opts.Failpoints); err != nil {
 		return classify(KindSetup, err)
 	}
 	fmt.Fprintf(opts.Stdout, "setup activated %s%s\n", lock.Bundle, skippedNote(sortedNames(skipped)))
@@ -277,6 +302,7 @@ func prepareAndLock(localRoot string) (func(), error) {
 	if err != nil {
 		return nil, classify(KindBusy, err)
 	}
+	sweepDebris(localRoot)
 	return release, nil
 }
 
@@ -490,9 +516,11 @@ func publish(staging, bundleRoot, lockDigest string) error {
 	return nil
 }
 
-func activate(localRoot, bundle string) error {
-	linkTarget := filepath.ToSlash(filepath.Join("toolchains", bundle, "bin"))
-	tempLink := filepath.Join(localRoot, ".bin-"+bundle+".tmp")
+// activate points .local/bin at toolchains/<dir>/bin by renaming a fresh
+// symlink over it, so readers see the previous target or the new one.
+func activate(localRoot, dir string) error {
+	linkTarget := filepath.ToSlash(filepath.Join("toolchains", dir, "bin"))
+	tempLink := filepath.Join(localRoot, ".bin-"+dir+".tmp")
 	_ = os.Remove(tempLink)
 	if err := os.Symlink(linkTarget, tempLink); err != nil {
 		return fmt.Errorf("create temporary activation link: %w", err)
@@ -559,10 +587,12 @@ func readInstalled(bundleRoot, lockDigest string) (*metadata, error) {
 	return &meta, nil
 }
 
-func writeMetadata(root string, lock config.ResolvedLock, lockDigest string, skipped []string) error {
+// writeMetadata writes install.json into root and returns the tree SHA-256 it
+// records.
+func writeMetadata(root string, lock config.ResolvedLock, lockDigest string, skipped []string) (string, error) {
 	bundleDigest, err := bundleTreeSHA256(root)
 	if err != nil {
-		return fmt.Errorf("hash installed bundle: %w", err)
+		return "", fmt.Errorf("hash installed bundle: %w", err)
 	}
 	meta := metadata{
 		Schema:       metadataSchema,
@@ -589,10 +619,10 @@ func writeMetadata(root string, lock config.ResolvedLock, lockDigest string, ski
 	})
 	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
-		return err
+		return "", err
 	}
 	data = append(data, '\n')
-	return os.WriteFile(filepath.Join(root, installMetadataName), data, 0o644)
+	return bundleDigest, os.WriteFile(filepath.Join(root, installMetadataName), data, 0o644)
 }
 
 func bundleTreeSHA256(root string) (string, error) {
