@@ -203,6 +203,37 @@ func TestRunRebuildsALocalBuildArtifactAndCatchesDrift(t *testing.T) {
 	}
 }
 
+func TestRunRecordsAHandWrittenACPNotice(t *testing.T) {
+	repo := t.TempDir()
+	writeACPManifest(t, repo, "")
+	notice := "vendor/toolchains/licenses/codex-acp-NOTICE"
+	if err := os.MkdirAll(filepath.Join(repo, filepath.Dir(notice)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, notice), []byte("bundled package notice\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server := acpServer(t)
+	var calls int
+	for run := 0; run < 2; run++ { // a fresh build, then a reuse of the committed artifact
+		if err := runACPFetch(t, repo, server, fakeACPInstall(&calls, "v1")); err != nil {
+			t.Fatalf("Run() %d error = %v", run, err)
+		}
+		lock, err := config.LoadLock(filepath.Join(repo, "toolchains.lock.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range lock.Components {
+			if c.Name == "codex-acp" && c.License.Notice != notice {
+				t.Fatalf("run %d: license = %+v, want notice %s", run, c.License, notice)
+			}
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("npm runs = %d", calls)
+	}
+}
+
 func TestRunRejectsAStaleACPRevision(t *testing.T) {
 	repo := t.TempDir()
 	writeACPManifest(t, repo, "")

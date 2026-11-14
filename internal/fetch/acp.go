@@ -55,6 +55,18 @@ func fetchACPAdapter(ctx context.Context, opts Options, repoRoot, staging string
 	if err != nil {
 		return config.LockComponent{}, nil, err
 	}
+	// A hand-written NOTICE (for example, naming a bundled package that ships
+	// no license file of its own) is recorded when present.
+	notice := fmt.Sprintf("vendor/toolchains/licenses/%s-NOTICE", component.Name)
+	noticePath, err := containedPath(repoRoot, notice)
+	if err != nil {
+		return config.LockComponent{}, nil, err
+	}
+	if exists, err := regularFileExists(noticePath); err != nil {
+		return config.LockComponent{}, nil, err
+	} else if !exists {
+		notice = ""
+	}
 	retrievedAt := opts.Now().UTC().Format(time.RFC3339)
 	previousComponent, matched := matchingPrevious(previous, component, rel)
 	if matched {
@@ -62,7 +74,7 @@ func fetchACPAdapter(ctx context.Context, opts Options, repoRoot, staging string
 			if err := validateLicenseFiles(repoRoot, previousComponent.License); err != nil {
 				return config.LockComponent{}, nil, err
 			}
-			return lock(component, target, rel, sourceURL, previousComponent.Artifact.RetrievedAt, d, licenseRel, "", command, install, probe), nil, nil
+			return lock(component, target, rel, sourceURL, previousComponent.Artifact.RetrievedAt, d, licenseRel, notice, command, install, probe), nil, nil
 		}
 		retrievedAt = previousComponent.Artifact.RetrievedAt
 	}
@@ -94,7 +106,7 @@ func fetchACPAdapter(ctx context.Context, opts Options, repoRoot, staging string
 		return config.LockComponent{}, nil, err
 	}
 	fmt.Fprintf(opts.Stdout, "fetch built %s %s (%d bytes, sha256 %s)\n", component.Name, version, built.Size, built.SHA256)
-	return lock(component, target, rel, sourceURL, retrievedAt, digest{Size: built.Size, SHA256: built.SHA256}, licenseRel, "", command, install, probe),
+	return lock(component, target, rel, sourceURL, retrievedAt, digest{Size: built.Size, SHA256: built.SHA256}, licenseRel, notice, command, install, probe),
 		[]stagedArtifact{
 			{StagePath: stagePath, FinalPath: finalPath, Mode: 0o644},
 			{StagePath: licenseStage, FinalPath: licenseFinal, Mode: 0o644},
