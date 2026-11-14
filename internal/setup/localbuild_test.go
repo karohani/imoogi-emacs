@@ -334,6 +334,49 @@ func TestSetupStillFailsHardOnAStaleLockfileRevision(t *testing.T) {
 	_ = adapter
 }
 
+// TestStaleLockfileFailsEvenWhenNothingIsBuilt: the committed package-lock.json
+// is checked against the lock revision before setup decides whether to build,
+// install or reuse, so a present artifact or an installed bundle does not hide
+// a lockfile that no longer matches.
+func TestStaleLockfileFailsEvenWhenNothingIsBuilt(t *testing.T) {
+	for _, name := range []string{"artifact present", "bundle installed"} {
+		t.Run(name, func(t *testing.T) {
+			root, _ := localBuildRepo(t)
+			var calls int
+			opts := Options{Workdir: root, ProviderFactory: fakeProviderFactory(t, nil), RunProbe: okProbe, NPMRunner: fakeNPM(&calls, "v1")}
+			if err := Run(context.Background(), opts); err != nil {
+				t.Fatalf("first Run() error = %v", err)
+			}
+			if name == "artifact present" {
+				if err := os.RemoveAll(filepath.Join(root, ".local")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			lockfile := filepath.Join(root, filepath.FromSlash(config.ACPPackageDir(adapterName)), "package-lock.json")
+			if err := os.WriteFile(lockfile, []byte(adapterLock+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var stdout bytes.Buffer
+			opts.Stdout = &stdout
+			err := Run(context.Background(), opts)
+			if err == nil || kindOf(err) != KindConfigIntegrity || !strings.Contains(err.Error(), "package-lock.json") {
+				t.Fatalf("Run() error = %v (kind %q), want config-integrity on the lockfile revision", err, kindOf(err))
+			}
+			if out := stdout.String(); strings.Contains(out, "setup reused") || strings.Contains(out, "setup activated") {
+				t.Fatalf("setup went on despite a stale lockfile: %q", out)
+			}
+			if calls != 1 {
+				t.Fatalf("npm runs = %d, want only the first run's build", calls)
+			}
+			if name == "artifact present" {
+				if _, err := os.Lstat(filepath.Join(root, ".local", "bin")); !errors.Is(err, os.ErrNotExist) {
+					t.Fatal("setup activated despite a stale lockfile revision")
+				}
+			}
+		})
+	}
+}
+
 func TestDefaultProviderFactoryRoutesACPAdaptersWithTheNodeComponent(t *testing.T) {
 	providers, err := DefaultProviderFactory(config.ResolvedLock{Components: []config.LockComponent{
 		providerComponent("codex-acp", config.KindACPAdapter),

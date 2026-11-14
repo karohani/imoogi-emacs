@@ -132,6 +132,9 @@ func Run(ctx context.Context, opts Options) error {
 	if err := desired.ValidateLock(*lock); err != nil {
 		return classify(KindConfigIntegrity, err)
 	}
+	if err := verifyACPLockfiles(repoRoot, *lock); err != nil {
+		return classify(KindConfigIntegrity, err)
+	}
 	lockDigest, err := fileSHA256(lockPath)
 	if err != nil {
 		return classify(KindConfigIntegrity, err)

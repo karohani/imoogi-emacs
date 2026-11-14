@@ -2,6 +2,8 @@ package setup
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +17,31 @@ import (
 	"github.com/karohani/imoogi-emacs/internal/lang"
 	"github.com/karohani/imoogi-emacs/internal/npmbundle"
 )
+
+// verifyACPLockfiles checks every ACP adapter's committed package-lock.json
+// against the lock revision. It runs before setup decides to build, install or
+// reuse, so a present artifact or an installed bundle cannot hide a lockfile
+// that changed while the revision did not.
+func verifyACPLockfiles(repoRoot string, lock config.ResolvedLock) error {
+	for _, c := range lock.Components {
+		if c.Kind != config.KindACPAdapter {
+			continue
+		}
+		rel := config.ACPPackageDir(c.Name) + "/package-lock.json"
+		if err := config.ValidateRepoPath(rel); err != nil {
+			return fmt.Errorf("%s package-lock.json: %w", c.Name, err)
+		}
+		data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(rel)))
+		if err != nil {
+			return fmt.Errorf("%s package-lock.json: %w", c.Name, err)
+		}
+		sum := sha256.Sum256(data)
+		if got := hex.EncodeToString(sum[:]); got != c.Revision {
+			return fmt.Errorf("%s: %s sha256 %s does not match the locked revision %s", c.Name, rel, got, c.Revision)
+		}
+	}
+	return nil
+}
 
 // missingLocalBuilds lists local-build components whose artifact is absent.
 // A present artifact is left to verifyArtifacts like any committed one.
