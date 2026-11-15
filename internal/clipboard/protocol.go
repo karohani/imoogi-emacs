@@ -31,6 +31,8 @@ const (
 	OperationReconcile     Operation = "reconcile"
 	OperationPrune         Operation = "prune"
 	OperationVersion       Operation = "version"
+	OperationOrphans       Operation = "orphans"
+	OperationTrash         Operation = "trash"
 )
 
 type OwnerKind string
@@ -143,6 +145,8 @@ type Request struct {
 	Limits              *Limits           `json:"limits,omitempty"`
 	Lease               *Lease            `json:"lease,omitempty"`
 	RetentionSeconds    int64             `json:"retention_seconds,omitempty"`
+	Protected           []string          `json:"protected,omitempty"`
+	GraceSeconds        int64             `json:"grace_seconds,omitempty"`
 }
 
 func (r Request) Validate() error {
@@ -167,7 +171,7 @@ func validOperation(operation Operation) bool {
 	switch operation {
 	case OperationInspect, OperationCheckpoint, OperationPaste, OperationImport,
 		OperationFinalize, OperationDocumentSaved, OperationCommit, OperationAbort,
-		OperationReconcile, OperationPrune, OperationVersion:
+		OperationReconcile, OperationPrune, OperationVersion, OperationOrphans, OperationTrash:
 		return true
 	default:
 		return false
@@ -202,6 +206,11 @@ type Response struct {
 	State            TransactionState `json:"state,omitempty"`
 	Orphans          []string         `json:"orphans,omitempty"`
 	Version          string           `json:"version,omitempty"`
+	// Orphaned lists unreferenced assets found by the orphans operation;
+	// Orphans above names transaction files that failed to be cleaned up.
+	Orphaned []Orphan `json:"orphaned,omitempty"`
+	// Trashed lists the assets the trash operation moved to the trash.
+	Trashed []string `json:"trashed,omitempty"`
 }
 
 func Success(operation Operation, correlationID string) Response {

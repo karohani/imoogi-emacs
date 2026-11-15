@@ -1,0 +1,13 @@
+{
+  "protocol_version": 1,
+  "operation": "orphans",
+  "correlation_id": "corr-orphans",
+  "owner": {
+    "kind": "project_notes",
+    "document": "/notes/project/00. Inbox/a.org",
+    "root": "/notes/project",
+    "asset_dir": "50. Assets"
+  },
+  "protected": ["/notes/project/50. Assets/unsaved.png"],
+  "grace_seconds": 3600
+}
