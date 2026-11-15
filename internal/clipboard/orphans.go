@@ -451,12 +451,19 @@ func expandLinkTarget(target, directory string) string {
 	return filepath.Clean(target)
 }
 
-// textVariants returns the lowercased document text, raw and percent-decoded,
-// each in its original, composed, and decomposed Hangul form.
+// markdownEscape matches a CommonMark backslash escape of ASCII punctuation.
+var markdownEscape = regexp.MustCompile("\\\\([!-/:-@\\[-`{-~])")
+
+// textVariants returns the lowercased document text, raw, percent-decoded and
+// with Markdown backslash escapes removed, each in its original, composed,
+// and decomposed Hangul form.
 func textVariants(text string) []string {
+	unescaped := markdownEscape.ReplaceAllString(text, "$1")
 	return uniqueStrings(
 		normalizedForms(strings.ToLower(text)),
 		normalizedForms(strings.ToLower(decodePercentLenient(text))),
+		normalizedForms(strings.ToLower(unescaped)),
+		normalizedForms(strings.ToLower(decodePercentLenient(unescaped))),
 	)
 }
 

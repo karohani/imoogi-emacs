@@ -521,3 +521,19 @@ func TestHangulNormalization(t *testing.T) {
 		t.Fatalf("hangulNFC(LV) = %q", got)
 	}
 }
+
+func TestFindOrphansMarkdownBackslashEscapes(t *testing.T) {
+	v := newOrphanVault(t)
+	v.asset(t, "photo(1).png")
+	v.asset(t, "a_b[2].png")
+	v.asset(t, "free.png")
+	writeTestFile(t, v.document, strings.Join([]string{
+		`![image](50.\ Assets/photo\(1\).png)`,
+		`see a\_b\[2\].png`,
+	}, "\n"))
+
+	got := mustFindOrphans(t, v.owner, v.store, OrphanOptions{})
+	if want := []string{"free.png"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("orphans = %v, want %v", got, want)
+	}
+}
