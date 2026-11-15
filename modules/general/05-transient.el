@@ -31,6 +31,7 @@
 
 (defconst imoogi-transient--purposes
   '((imoogi-transient-master . "imoogi의 주요 기능으로 들어가는 시작 메뉴입니다.")
+    (imoogi-ai-transient . "gptel 대화와 agent-shell 코딩 에이전트 메뉴를 엽니다.")
     (imoogi-transient-window . "창 이동, 분할, 크기 조절과 버퍼 열기를 한곳에서 다룹니다.")
     (imoogi-transient-project . "프로젝트 탐색과 Perspective 작업공간을 전환·관리합니다.")
     (imoogi-project-notes-transient . "프로젝트의 개요·할 일·작업 기록과 영속 Scratch를 엽니다.")
@@ -623,6 +624,13 @@ major-mode 로 언어를 역추적하지 않고 버퍼에 직접 묻는다 — `
     ("M" "Major mode 설명" describe-mode)
     ("q" "종료" transient-quit-one)]])
 
+(transient-define-prefix imoogi-ai-transient ()
+  "AI tools: gptel conversations and agent-shell coding agents."
+  [["AI ----------------"
+    ("g" "gptel 대화" imoogi-gptel-transient)
+    ("a" "agent-shell 에이전트" imoogi-agent-transient)
+    ("q" "종료" transient-quit-one)]])
+
 ;; 마스터 메뉴 (진입점)
 ;; @MX:ANCHOR C-c h 로 전역 바인딩된 유일한 공개 진입점. 하위 4개 메뉴의
 ;; 디스패치 지점이며, hydra-master/body 의 역할을 그대로 대체한다.
@@ -633,6 +641,7 @@ major-mode 로 언어를 역추적하지 않고 버퍼에 직접 묻는다 — `
     ("w" "창관리" imoogi-transient-window)
     ("p" "프로젝트" imoogi-transient-project)
     ("g" "Git" imoogi-transient-git)
+    ("i" "AI" imoogi-ai-transient)
     ("z" "확대/축소" imoogi-transient-zoom)]
    ["도구 ---------"
     ("n" "영속 Scratch" imoogi-notes-scratch)

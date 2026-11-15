@@ -23,6 +23,8 @@
 (require 'gptel-anthropic)
 (require 'gptel-openai-oauth)
 
+(setq gptel-default-mode 'org-mode)
+
 (defgroup imoogi-gptel nil
   "Guided gptel provider setup for imoogi-emacs."
   :group 'gptel)
@@ -732,7 +734,7 @@ to save it.  Verify the persisted entry before reporting success."
                                 (format "%o" (logand (file-modes file) #o777))))))
         (princ "- 파일 기반 auth-source가 설정되지 않음\n"))
       (princ (format "\n현재 host의 apikey 항목: %s\n" (or search-result "없음")))
-      (princ "\n이미 발생한 메시지: C-h e\n상세 단계 로그: C-c h i L\n"))))
+      (princ "\n이미 발생한 메시지: C-h e\n상세 단계 로그: C-c h i g L\n"))))
 
 (defun imoogi-gptel--model-symbols (models)
   "Return just the model symbols from gptel MODELS specifications."
@@ -791,7 +793,7 @@ Signal a useful setup error when discovery is unavailable."
                                      gateway chat-endpoint models-endpoint)
                         :error-type (car-safe err)
                         :message (error-message-string err))
-     (user-error "LiteLLM 모델 조회 실패: %s (상세: C-c h i L)"
+     (user-error "LiteLLM 모델 조회 실패: %s (상세: C-c h i g L)"
                  (error-message-string err)))))
 
 (defun imoogi-gptel--setup-default-model (provider models)
@@ -1100,13 +1102,13 @@ with `auth-source'."
     (princ "2. LiteLLM은 Gateway URL과 key로 지정한 model endpoint를 조회합니다.\n")
     (princ "   새 등록과 기존 profile 수정을 분리하며 선택에는 자동완성을 씁니다.\n")
     (princ "   Model list와 Chat endpoint는 profile별로 따로 지정합니다.\n")
-    (princ "   API 형식을 고른 뒤 C-c h i m, -m에서 모델을 선택합니다.\n")
+    (princ "   API 형식을 고른 뒤 C-c h i g m, -m에서 모델을 선택합니다.\n")
     (princ "   조회 실패 시 Gateway 주소와 auth-source key를 확인합니다.\n")
-    (princ "   C-c h i D는 현재 상태를 진단하고, C-c h i L은 전체 설정 로그를 엽니다.\n")
+    (princ "   C-c h i g D는 현재 상태를 진단하고, C-c h i g L은 전체 설정 로그를 엽니다.\n")
     (princ "3. Codex는 ChatGPT Plus/Pro OAuth를 사용하며 API key가 필요 없습니다.\n")
     (princ "4. Claude는 Anthropic 모델을 고르고 API key를 auth-source에 저장합니다.\n")
     (princ "5. 기타는 OpenAI 호환 base URL, endpoint, 모델 이름을 입력합니다.\n")
-    (princ "6. C-c h i c로 채팅을 열거나 C-c h i s로 현재 내용을 전송합니다.\n\n")
+    (princ "6. C-c h i g c로 채팅을 열거나 C-c h i g s로 현재 내용을 전송합니다.\n\n")
     (princ (format "설정 파일: %s\n" imoogi-gptel-config-file))
     (princ (format "현재 provider: %s\n" imoogi-gptel-provider))
     (when imoogi-gptel-gateway-url
@@ -1147,9 +1149,7 @@ with `auth-source'."
       ("D" "auth 상태 진단" imoogi-gptel-auth-diagnose)
       ("L" "진단 로그 열기" imoogi-gptel-open-log)
       ("h" "설정 가이드" imoogi-gptel-setup-guide)
-      ("q" "종료" transient-quit-one)]])
-  (transient-append-suffix 'imoogi-transient-master "g"
-    '("i" "AI / gptel" imoogi-gptel-transient)))
+      ("q" "종료" transient-quit-one)]]))
 
 (provide 'imoogi-gptel)
 ;;; 27-gptel.el ends here

@@ -58,10 +58,14 @@
                 (format "%S"
                         `(progn
                            ,(imoogi-compiled-menu-test--common-setup-form tmpdir)
-                           (dolist (module '("14-org" "24-anki" "25-flashcards"
-                                             "27-gptel"))
+                           (dolist (module '("05-transient" "14-org" "24-anki" "25-flashcards"
+                                             "27-gptel" "31-agent"))
                              (let* ((src (expand-file-name
-                                          (concat "modules/" (if (equal module "27-gptel") "development/" "org/") module ".el")
+                                          (concat "modules/"
+                                                  (cond ((equal module "05-transient") "general/")
+                                                        ((member module '("27-gptel" "31-agent")) "development/")
+                                                        (t "org/"))
+                                                  module ".el")
                                           imoogi-emacs-dir))
                                     (dst (expand-file-name
                                           (concat module ".el") ,tmpdir))
@@ -75,17 +79,25 @@
                 (format "%S"
                         `(progn
                            ,(imoogi-compiled-menu-test--common-setup-form tmpdir)
-                           (load ,(expand-file-name "modules/general/05-transient.el"
-                                                    imoogi-compiled-menu-test--root)
-                                 nil t)
+                           (load ,(expand-file-name "05-transient.elc" tmpdir) nil nil t)
                            (load ,(expand-file-name "14-org.elc" tmpdir) nil nil t)
                            (load ,(expand-file-name "24-anki.elc" tmpdir) nil nil t)
                            (load ,(expand-file-name "25-flashcards.elc" tmpdir) nil nil t)
                            (load ,(expand-file-name "27-gptel.elc" tmpdir) nil nil t)
+                           (load ,(expand-file-name "31-agent.elc" tmpdir) nil nil t)
+                           (dolist (row '(("g" . imoogi-gptel-transient)
+                                         ("a" . imoogi-agent-transient)))
+                             (unless (and (fboundp (cdr row))
+                                          (eq (plist-get
+                                               (cdr (transient-get-suffix
+                                                     'imoogi-ai-transient (car row)))
+                                               :command)
+                                              (cdr row)))
+                               (error "AI submenu missing: %S" row)))
                            (dolist (row '((imoogi-org-agenda-transient "o")
                                           (imoogi-anki-transient "a")
                                           (imoogi-flashcards-transient "f")
-                                          (imoogi-gptel-transient "i")))
+                                          (imoogi-ai-transient "i")))
                              (unless (fboundp (car row))
                                (error "%S is not defined" (car row)))
                              (unless (eq (plist-get
