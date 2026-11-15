@@ -477,7 +477,9 @@ perspective 의 `persp-new' 는 interactive 가 아니라 메뉴에 직접 붙�
 `persp-switch' 는 없는 이름을 주면 만들지만 이름만 봐서는 생성인지 전환인지
 알기 어렵다. 그래서 \"만들기\"를 별도 명령으로 드러낸다."
   (interactive "s새 작업공간 이름: ")
-  (persp-switch name))
+  (persp-switch name)
+  (when (fboundp 'imoogi-treemacs-open-empty-workspace)
+    (imoogi-treemacs-open-empty-workspace (persp-current-name))))
 
 (defun imoogi-perspective--read-optional-state (file)
   "Read one value from optional FILE, returning nil if it is missing or blank."
