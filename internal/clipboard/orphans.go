@@ -91,7 +91,7 @@ func FindOrphans(owner ResolvedOwner, store Store, opts OrphanOptions) ([]Orphan
 			return nil, err
 		}
 	}
-	documents, err := orphanDocuments(owner)
+	documents, err := orphanDocuments(owner, candidates)
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +303,11 @@ func markSameFile(candidates []*orphanCandidate, info os.FileInfo) {
 	}
 }
 
-func orphanDocuments(owner ResolvedOwner) ([]string, error) {
+// orphanDocuments returns the documents to scan for references. While walking
+// a project it also protects every candidate that a symlink in the project
+// points at: a link may reach the asset through that alias in a form the
+// link parser does not recognize, so an aliased asset is never an orphan.
+func orphanDocuments(owner ResolvedOwner, candidates []*orphanCandidate) ([]string, error) {
 	if owner.Owner.Kind == OwnerStandalone {
 		info, err := os.Stat(owner.Owner.Document)
 		if err != nil {
@@ -346,6 +350,7 @@ func orphanDocuments(owner ResolvedOwner) ([]string, error) {
 			if info.IsDir() {
 				return fmt.Errorf("project contains symlinked directory %q; orphan scan cannot cover it", path)
 			}
+			markSameFile(candidates, info)
 		}
 		if !orphanDocumentExtensions[strings.ToLower(filepath.Ext(name))] {
 			return nil

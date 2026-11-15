@@ -575,3 +575,23 @@ func TestTrashOrphansMatchesTheRequestedNameNotASharedInode(t *testing.T) {
 		t.Fatalf("sibling hard link was moved: %v", err)
 	}
 }
+
+func TestFindOrphansProtectsAssetsAliasedBySymlinks(t *testing.T) {
+	v := newOrphanVault(t)
+	real := v.asset(t, "real.png")
+	v.asset(t, "free.png")
+	links := filepath.Join(v.root, "links")
+	if err := os.MkdirAll(links, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, filepath.Join(links, "alias.png")); err != nil {
+		t.Fatal(err)
+	}
+	// A reference-style Markdown link the parser does not resolve.
+	writeTestFile(t, v.document, "![image][photo]\n\n[photo]: ../links/alias.png\n")
+
+	got := mustFindOrphans(t, v.owner, v.store, OrphanOptions{})
+	if want := []string{"free.png"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("orphans = %v, want %v", got, want)
+	}
+}
