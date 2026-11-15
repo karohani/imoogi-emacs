@@ -537,3 +537,41 @@ func TestFindOrphansMarkdownBackslashEscapes(t *testing.T) {
 		t.Fatalf("orphans = %v, want %v", got, want)
 	}
 }
+
+func TestFindOrphansUnescapesMarkdownTargetsBeforeResolving(t *testing.T) {
+	v := newOrphanVault(t)
+	real := v.asset(t, "real.png")
+	links := filepath.Join(v.root, "links")
+	if err := os.MkdirAll(links, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, filepath.Join(links, "alias_1.png")); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, v.document, `![image](../links/alias\_1.png)`)
+
+	if got := mustFindOrphans(t, v.owner, v.store, OrphanOptions{}); len(got) != 0 {
+		t.Fatalf("orphans = %v, want none", got)
+	}
+}
+
+func TestTrashOrphansMatchesTheRequestedNameNotASharedInode(t *testing.T) {
+	v := newOrphanVault(t)
+	first := v.asset(t, "a.png")
+	second := filepath.Join(v.assets, "b.png")
+	if err := os.Link(first, second); err != nil {
+		t.Fatal(err)
+	}
+	trash, _ := fakeTrash(t)
+
+	trashed, err := TrashOrphans(v.owner, v.store, OrphanOptions{}, []string{second}, trash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{second}; !reflect.DeepEqual(trashed, want) {
+		t.Fatalf("trashed = %v, want %v", trashed, want)
+	}
+	if _, err := os.Lstat(first); err != nil {
+		t.Fatalf("sibling hard link was moved: %v", err)
+	}
+}

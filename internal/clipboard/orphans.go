@@ -145,7 +145,9 @@ func TrashOrphans(owner ResolvedOwner, store Store, opts OrphanOptions, paths []
 			continue
 		}
 		for _, orphan := range fresh {
-			if moved[orphan.path] || !os.SameFile(orphan.info, info) {
+			// Match the name as well as the inode: hard links share an inode, and
+			// the identity check alone would trash a sibling the caller never named.
+			if moved[orphan.path] || orphan.path != canonical || !os.SameFile(orphan.info, info) {
 				continue
 			}
 			if err := trash(orphan.path); err != nil {
@@ -431,6 +433,7 @@ func linkTargetVariants(raw string) []string {
 		if title := markdownLinkTitle.FindStringIndex(form); title != nil {
 			add(form[:title[0]])
 		}
+		add(markdownEscape.ReplaceAllString(form, "$1"))
 		add(decodePercentLenient(form))
 	}
 	add(raw)
