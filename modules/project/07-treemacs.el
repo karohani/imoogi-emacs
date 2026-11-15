@@ -467,8 +467,9 @@ selected, close it.  Otherwise replace any custom tool window and show it."
 (defun imoogi-treemacs--ensure-project-workspace (root perspective-name)
   "Return the Treemacs workspace for ROOT and PERSPECTIVE-NAME.
 
-Create it with ROOT as its initial project when needed.  Existing projects are
-never removed, so folders added later by the user remain part of the workspace."
+Create it with ROOT as its initial project when needed, or empty if ROOT is nil.
+Existing projects are never removed, so folders added later by the user remain
+part of the workspace."
   (let* ((name (imoogi-treemacs--project-workspace-name perspective-name))
          (workspace (seq-find
                      (lambda (candidate)
@@ -479,7 +480,7 @@ never removed, so folders added later by the user remain part of the workspace."
         (`(success ,created) (setq workspace created))
         (`(duplicate-name ,existing) (setq workspace existing))
         (result (error "Treemacs workspace creation failed: %S" result))))
-    (unless (imoogi-treemacs--workspace-has-p workspace root)
+    (when (and root (not (imoogi-treemacs--workspace-has-p workspace root)))
       (let* ((base-name (file-name-nondirectory (directory-file-name root)))
              (name base-name)
              (suffix 2))
@@ -494,6 +495,15 @@ never removed, so folders added later by the user remain part of the workspace."
             (`(success ,_project))
             (`(duplicate-project ,_project))
             (result (error "Treemacs project registration failed: %S" result))))))
+    workspace))
+
+(defun imoogi-treemacs-open-empty-workspace (perspective-name)
+  "Create or select PERSPECTIVE-NAME's workspace without adding folders.
+Existing folders are preserved when the workspace already exists."
+  (require 'treemacs)
+  (let ((workspace (imoogi-treemacs--ensure-project-workspace nil perspective-name)))
+    (unless (eq workspace (treemacs-current-workspace))
+      (treemacs-do-switch-workspace workspace))
     workspace))
 
 (defun imoogi-treemacs--ensure-workspace-roots (roots perspective-name)
@@ -569,9 +579,9 @@ ROOT; folders the user adds later are preserved by Treemacs persistence."
 (defun imoogi-treemacs-follow-perspective-maybe ()
   "Switch Treemacs to the workspace owned by the current project Perspective.
 
-This hook only follows an existing managed workspace.  Creation and automatic
-opening happen in `imoogi-treemacs-open-project-workspace' when a project is
-opened explicitly."
+This hook only follows an existing managed workspace.  Creation happens in
+`imoogi-treemacs-open-empty-workspace' for an explicit new Perspective, or in
+`imoogi-treemacs-open-project-workspace' when a project is opened explicitly."
   (when (and imoogi-treemacs-follow-perspective
              (featurep 'treemacs))
     (when-let* ((perspective-name (persp-current-name))
