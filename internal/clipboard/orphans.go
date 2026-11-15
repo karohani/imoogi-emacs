@@ -40,8 +40,11 @@ var orphanDocumentExtensions = map[string]bool{
 }
 
 // orphanLinkPattern mirrors imoogi-clipboard--referenced-assets in
-// modules/org/28-clipboard.el: an Org file link or a Markdown link target.
-var orphanLinkPattern = regexp.MustCompile(`\[\[file:([^\]]+)\]|\]\(([^)]*)\)`)
+// modules/org/28-clipboard.el (an Org file link or a Markdown link target),
+// and adds Markdown reference definitions and HTML src/href attributes,
+// which Emacs never writes but a hand-edited document may.
+var orphanLinkPattern = regexp.MustCompile(`\[\[file:([^\]]+)\]|\]\(([^)]*)\)` +
+	`|(?m:^[ \t]{0,3}\[[^\]]+\]:[ \t]*(\S+))|(?:src|href)=["']([^"']+)["']`)
 
 var markdownLinkTitle = regexp.MustCompile(`\s+("[^"]*"|'[^']*')\s*$`)
 
@@ -380,9 +383,12 @@ func markReferences(candidates []*orphanCandidate, document string) error {
 	directory := filepath.Dir(document)
 	resolved := make(map[string]bool)
 	for _, match := range orphanLinkPattern.FindAllStringSubmatch(text, -1) {
-		raw := match[1]
-		if raw == "" {
-			raw = match[2]
+		var raw string
+		for _, group := range match[1:] {
+			if group != "" {
+				raw = group
+				break
+			}
 		}
 		for _, target := range linkTargetVariants(raw) {
 			path := expandLinkTarget(target, directory)

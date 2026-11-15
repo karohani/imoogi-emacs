@@ -595,3 +595,32 @@ func TestFindOrphansProtectsAssetsAliasedBySymlinks(t *testing.T) {
 		t.Fatalf("orphans = %v, want %v", got, want)
 	}
 }
+
+func TestFindOrphansStandaloneReferenceDefinitionsAndHTML(t *testing.T) {
+	directory := t.TempDir()
+	document := filepath.Join(directory, "note.md")
+	assets := filepath.Join(directory, "note.assets")
+	if err := os.MkdirAll(assets, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"real.png", "shown.png", "free.png"} {
+		path := filepath.Join(assets, name)
+		writeTestFile(t, path, name)
+		ageTestFile(t, path)
+	}
+	for alias, target := range map[string]string{"alias.png": "real.png", "pic.png": "shown.png"} {
+		if err := os.Symlink(filepath.Join(assets, target), filepath.Join(directory, alias)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeTestFile(t, document, "![photo][id]\n\n  [id]: alias.png \"title\"\n\n<img src='pic.png'>\n")
+	owner, err := ResolveOwner(Owner{Kind: OwnerStandalone, Document: document, Root: assets}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := mustFindOrphans(t, owner, Store{Base: t.TempDir()}, OrphanOptions{})
+	if want := []string{"free.png"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("orphans = %v, want %v", got, want)
+	}
+}
