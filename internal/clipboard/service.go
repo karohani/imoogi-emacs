@@ -48,6 +48,10 @@ func (s Service) Handle(ctx context.Context, request Request) Response {
 		return s.reconcile(request)
 	case OperationPrune:
 		return s.prune(request)
+	case OperationOrphans:
+		return s.orphans(request)
+	case OperationTrash:
+		return s.trash(request)
 	default:
 		return Failure(request.Operation, request.CorrelationID, CodeInvalidRequest, "unsupported operation")
 	}
@@ -80,6 +84,55 @@ func (s Service) prune(request Request) Response {
 	response := Success(request.Operation, request.CorrelationID)
 	response.Message = fmt.Sprintf("pruned %d expired session(s)", removed)
 	return response
+}
+
+func (s Service) orphans(request Request) Response {
+	owner, opts, failure, ok := s.orphanScope(request)
+	if !ok {
+		return failure
+	}
+	orphans, err := FindOrphans(owner, Store{Base: s.stagingBase()}, opts)
+	if err != nil {
+		return Failure(request.Operation, request.CorrelationID, CodeInternal, err.Error())
+	}
+	response := Success(request.Operation, request.CorrelationID)
+	response.Orphaned = orphans
+	return response
+}
+
+// trash moves the requested assets to the trash when a fresh scan still
+// reports them as orphans, and lists what moved in Trashed, even on failure.
+func (s Service) trash(request Request) Response {
+	if len(request.Paths) == 0 {
+		return Failure(request.Operation, request.CorrelationID, CodeInvalidRequest, "paths are required")
+	}
+	owner, opts, failure, ok := s.orphanScope(request)
+	if !ok {
+		return failure
+	}
+	trashed, err := TrashOrphans(owner, Store{Base: s.stagingBase()}, opts, request.Paths, trashAsset)
+	response := Success(request.Operation, request.CorrelationID)
+	if err != nil {
+		response = Failure(request.Operation, request.CorrelationID, classifyError(err), err.Error())
+	}
+	response.Trashed = trashed
+	return response
+}
+
+func (s Service) orphanScope(request Request) (ResolvedOwner, OrphanOptions, Response, bool) {
+	if request.Owner == nil {
+		return ResolvedOwner{}, OrphanOptions{}, Failure(request.Operation, request.CorrelationID, CodeInvalidRequest, "owner is required"), false
+	}
+	if request.Owner.Kind != OwnerProjectNotes && request.Owner.Kind != OwnerStandalone {
+		return ResolvedOwner{}, OrphanOptions{}, Failure(request.Operation, request.CorrelationID, CodeInvalidRequest,
+			"orphan scans require a project_notes or standalone owner"), false
+	}
+	owner, err := ResolveOwner(*request.Owner, s.stagingBase())
+	if err != nil {
+		return ResolvedOwner{}, OrphanOptions{}, Failure(request.Operation, request.CorrelationID, CodeOwnerRejected, err.Error()), false
+	}
+	opts := OrphanOptions{Grace: time.Duration(request.GraceSeconds) * time.Second, Protected: request.Protected}
+	return owner, opts, Response{}, true
 }
 
 func (s Service) commit(request Request) Response {

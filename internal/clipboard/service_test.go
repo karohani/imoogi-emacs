@@ -271,3 +271,80 @@ func TestServiceFinalizeKeepsDistinctStableIDsForEqualContent(t *testing.T) {
 		}
 	}
 }
+
+func TestServiceOrphansAndTrash(t *testing.T) {
+	v := newOrphanVault(t)
+	orphan := v.asset(t, "orphan.png")
+	kept := v.asset(t, "kept.png")
+	unsaved := v.asset(t, "unsaved.png")
+	writeTestFile(t, v.document, "[[file:../50. Assets/kept.png]]")
+	bin := t.TempDir()
+	previous := trashAsset
+	trashAsset = func(path string) error { return os.Rename(path, filepath.Join(bin, filepath.Base(path))) }
+	t.Cleanup(func() { trashAsset = previous })
+	service := Service{StagingBase: v.store.Base}
+	owner := &Owner{Kind: OwnerProjectNotes, Document: v.document, Root: v.root, AssetDir: "50. Assets"}
+
+	listed := service.Handle(context.Background(), Request{
+		ProtocolVersion: 1, Operation: OperationOrphans, CorrelationID: "list",
+		Owner: owner, Protected: []string{unsaved}, GraceSeconds: 60,
+	})
+	if listed.Status != "ok" || len(listed.Orphaned) != 1 || listed.Orphaned[0].Path != orphan {
+		t.Fatalf("orphans response = %#v", listed)
+	}
+
+	trashed := service.Handle(context.Background(), Request{
+		ProtocolVersion: 1, Operation: OperationTrash, CorrelationID: "trash",
+		Owner: owner, Protected: []string{unsaved}, Paths: []string{orphan, kept, unsaved},
+	})
+	if trashed.Status != "ok" || len(trashed.Trashed) != 1 || trashed.Trashed[0] != orphan {
+		t.Fatalf("trash response = %#v", trashed)
+	}
+	if _, err := os.Stat(filepath.Join(bin, "orphan.png")); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{kept, unsaved} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("%s moved: %v", path, err)
+		}
+	}
+}
+
+func TestServiceOrphanRequestValidation(t *testing.T) {
+	service := Service{StagingBase: t.TempDir()}
+	tests := []struct {
+		name    string
+		request Request
+		code    ErrorCode
+	}{
+		{"orphans without owner", Request{Operation: OperationOrphans}, CodeInvalidRequest},
+		{"staging owner", Request{Operation: OperationOrphans, Owner: &Owner{Kind: OwnerStaging, Session: "s", Buffer: "b", Generation: 1}}, CodeInvalidRequest},
+		{"trash without paths", Request{Operation: OperationTrash, Owner: &Owner{Kind: OwnerStandalone, Document: "/n/a.org", Root: "/n/a.assets"}}, CodeInvalidRequest},
+		{"rejected owner", Request{Operation: OperationOrphans, Owner: &Owner{Kind: OwnerStandalone, Document: "/n/a.org", Root: "/n/b.assets"}}, CodeOwnerRejected},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.request.ProtocolVersion = 1
+			test.request.CorrelationID = "c"
+			if response := service.Handle(context.Background(), test.request); response.Status != "error" || response.Code != test.code {
+				t.Fatalf("response = %#v", response)
+			}
+		})
+	}
+}
+
+func TestServiceOrphansReportsScanFailure(t *testing.T) {
+	directory := t.TempDir()
+	document := filepath.Join(directory, "missing.org")
+	root := filepath.Join(directory, "missing.assets")
+	writeTestFile(t, filepath.Join(root, "a.png"), "a")
+	ageTestFile(t, filepath.Join(root, "a.png"))
+	service := Service{StagingBase: t.TempDir()}
+	response := service.Handle(context.Background(), Request{
+		ProtocolVersion: 1, Operation: OperationOrphans, CorrelationID: "c",
+		Owner: &Owner{Kind: OwnerStandalone, Document: document, Root: root},
+	})
+	if response.Status != "error" || response.Code != CodeInternal || len(response.Orphaned) != 0 {
+		t.Fatalf("response = %#v", response)
+	}
+}
