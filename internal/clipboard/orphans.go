@@ -3,6 +3,7 @@ package clipboard
 import (
 	"errors"
 	"fmt"
+	"html"
 	"io/fs"
 	"net/url"
 	"os"
@@ -445,6 +446,7 @@ func linkTargetVariants(raw string) []string {
 			add(form[:title[0]])
 		}
 		add(markdownEscape.ReplaceAllString(form, "$1"))
+		add(html.UnescapeString(form))
 		add(decodePercentLenient(form))
 	}
 	add(raw)
@@ -473,7 +475,10 @@ var markdownEscape = regexp.MustCompile("\\\\([!-/:-@\\[-`{-~])")
 // and decomposed Hangul form.
 func textVariants(text string) []string {
 	unescaped := markdownEscape.ReplaceAllString(text, "$1")
+	entities := html.UnescapeString(text)
 	return uniqueStrings(
+		normalizedForms(strings.ToLower(entities)),
+		normalizedForms(strings.ToLower(decodePercentLenient(entities))),
 		normalizedForms(strings.ToLower(text)),
 		normalizedForms(strings.ToLower(decodePercentLenient(text))),
 		normalizedForms(strings.ToLower(unescaped)),

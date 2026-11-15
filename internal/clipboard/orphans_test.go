@@ -624,3 +624,15 @@ func TestFindOrphansStandaloneReferenceDefinitionsAndHTML(t *testing.T) {
 		t.Fatalf("orphans = %v, want %v", got, want)
 	}
 }
+
+func TestFindOrphansDecodesHTMLEntities(t *testing.T) {
+	v := newOrphanVault(t)
+	v.asset(t, "q&a.png")
+	v.asset(t, "free.png")
+	writeTestFile(t, v.document, `<img src="../50. Assets/q&amp;a.png">`)
+
+	got := mustFindOrphans(t, v.owner, v.store, OrphanOptions{})
+	if want := []string{"free.png"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("orphans = %v, want %v", got, want)
+	}
+}
