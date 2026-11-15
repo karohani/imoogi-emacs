@@ -636,3 +636,30 @@ func TestFindOrphansDecodesHTMLEntities(t *testing.T) {
 		t.Fatalf("orphans = %v, want %v", got, want)
 	}
 }
+
+func TestFindOrphansStandaloneProtectsSiblingAliases(t *testing.T) {
+	directory := t.TempDir()
+	document := filepath.Join(directory, "note.md")
+	assets := filepath.Join(directory, "note.assets")
+	if err := os.MkdirAll(assets, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"real.png", "free.png"} {
+		path := filepath.Join(assets, name)
+		writeTestFile(t, path, name)
+		ageTestFile(t, path)
+	}
+	if err := os.Symlink(filepath.Join(assets, "real.png"), filepath.Join(directory, "alias image.png")); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, document, "![photo][id]\n\n[id]: <alias image.png>\n")
+	owner, err := ResolveOwner(Owner{Kind: OwnerStandalone, Document: document, Root: assets}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := mustFindOrphans(t, owner, Store{Base: t.TempDir()}, OrphanOptions{})
+	if want := []string{"free.png"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("orphans = %v, want %v", got, want)
+	}
+}

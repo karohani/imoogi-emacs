@@ -320,6 +320,20 @@ func orphanDocuments(owner ResolvedOwner, candidates []*orphanCandidate) ([]stri
 		if !info.Mode().IsRegular() {
 			return nil, fmt.Errorf("standalone document %q is not a regular file", owner.Owner.Document)
 		}
+		// Apply the project rule to the document's own folder: an asset a
+		// sibling symlink points at may be linked through that alias.
+		entries, err := os.ReadDir(filepath.Dir(owner.Owner.Document))
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range entries {
+			if entry.Type()&fs.ModeSymlink == 0 {
+				continue
+			}
+			if target, err := os.Stat(filepath.Join(filepath.Dir(owner.Owner.Document), entry.Name())); err == nil {
+				markSameFile(candidates, target)
+			}
+		}
 		return []string{owner.Owner.Document}, nil
 	}
 	root := owner.ContainmentRoot
