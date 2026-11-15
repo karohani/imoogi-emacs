@@ -102,6 +102,9 @@ func (s Service) orphans(request Request) Response {
 
 // trash moves the requested assets to the trash when a fresh scan still
 // reports them as orphans, and lists what moved in Trashed, even on failure.
+// The rescan sees only this request's protected and grace_seconds, so a caller
+// must resend the protected paths it listed with, or an asset linked only from
+// an unsaved buffer can be trashed.
 func (s Service) trash(request Request) Response {
 	if len(request.Paths) == 0 {
 		return Failure(request.Operation, request.CorrelationID, CodeInvalidRequest, "paths are required")

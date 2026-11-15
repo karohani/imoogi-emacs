@@ -322,6 +322,30 @@ func TestFindOrphansAbortsOnDanglingDocumentSymlink(t *testing.T) {
 	}
 }
 
+func TestFindOrphansAbortsOnSymlinkedDirectory(t *testing.T) {
+	v := newOrphanVault(t)
+	v.asset(t, "a.png")
+	elsewhere := t.TempDir()
+	writeTestFile(t, filepath.Join(elsewhere, "hidden.org"), "[[file:a.png]]")
+	if err := os.Symlink(elsewhere, filepath.Join(v.root, "linked notes")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := FindOrphans(v.owner, v.store, OrphanOptions{}); err == nil {
+		t.Fatal("documents behind a symlinked directory treated as absent")
+	}
+}
+
+func TestFindOrphansMissingProtectedPathMatchesName(t *testing.T) {
+	v := newOrphanVault(t)
+	v.asset(t, hangulNFD("사진.png"))
+	v.asset(t, "free.png")
+	// A composed spelling from Emacs may not resolve on a non-APFS volume.
+	protected := []string{filepath.Join(t.TempDir(), "elsewhere", "사진.PNG")}
+	if got := mustFindOrphans(t, v.owner, v.store, OrphanOptions{Protected: protected}); !reflect.DeepEqual(got, []string{"free.png"}) {
+		t.Fatalf("orphans = %v", got)
+	}
+}
+
 func TestFindOrphansSkipsEmacsLockFiles(t *testing.T) {
 	v := newOrphanVault(t)
 	v.asset(t, "a.png")
