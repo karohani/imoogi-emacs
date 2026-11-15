@@ -598,19 +598,28 @@ func hangulNFC(value string) string {
 	return builder.String()
 }
 
-// finderTrash moves path to the macOS Trash through Finder, so the user can
-// restore it. The path travels as an argument, never as script text.
+// trashScript moves argv[0] to the Trash with NSFileManager. Unlike a Finder
+// "delete" Apple event it needs no Automation permission, and Finder
+// rejected POSIX file references in practice (error -1728).
+const trashScript = `ObjC.import("Foundation");
+function run(argv) {
+  var error = $();
+  if (!$.NSFileManager.defaultManager.trashItemAtURLResultingItemURLError(
+      $.NSURL.fileURLWithPath(argv[0]), null, error)) {
+    throw new Error(ObjC.unwrap(error.localizedDescription));
+  }
+  return "ok";
+}`
+
+// finderTrash moves path to the macOS Trash, so the user can restore it.
+// The path travels as an argument, never as script text.
 func finderTrash(path string) error {
 	if runtime.GOOS != "darwin" {
 		return fmt.Errorf("%s: moving assets to the trash is only supported on macOS", CodeUnsupportedCapability)
 	}
-	output, err := exec.Command("osascript",
-		"-e", "on run argv",
-		"-e", `tell application "Finder" to delete (POSIX file (item 1 of argv))`,
-		"-e", "end run",
-		path).CombinedOutput()
+	output, err := exec.Command("osascript", "-l", "JavaScript", "-e", trashScript, path).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("finder trash: %w: %s", err, strings.TrimSpace(string(output)))
+		return fmt.Errorf("trash: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	return nil
 }
