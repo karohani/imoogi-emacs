@@ -7,6 +7,18 @@
 (require 'imoogi-gptel)
 (require 'gnutls)
 
+(ert-deftest imoogi-gptel-new-chat-uses-org-mode ()
+  "The configured default creates a real Org chat without a network request."
+  (let* ((gptel--known-backends nil)
+         (gptel-backend (gptel-make-openai "Org test" :key "test" :models '(gpt-4o)))
+         (gptel-model 'gpt-4o)
+         (name (generate-new-buffer-name " *imoogi-org-chat-test*")))
+    (unwind-protect
+        (with-current-buffer (gptel name)
+          (should (derived-mode-p 'org-mode))
+          (should gptel-mode))
+      (when (get-buffer name) (kill-buffer name)))))
+
 (ert-deftest imoogi-gptel-setup-round-trips-without-secret ()
   (let* ((directory (make-temp-file "imoogi-gptel-test" t))
          (file (expand-file-name "config.json" directory))

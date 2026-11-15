@@ -1033,10 +1033,10 @@ LiteLLM은 다음 순서로 설정한다.
 5. Model list endpoint: 모델 목록을 조회할 상대 경로, 예: `/v1/models`
 6. API key: Gateway host별로 `auth-source`에 저장
 7. Model aliases: 지정한 Model list endpoint에서 자동 조회
-8. `C-c h i m`의 요청 메뉴에서 `-m`을 눌러 실제 사용할 모델 선택
+8. `C-c h i g m`의 요청 메뉴에서 `-m`을 눌러 실제 사용할 모델 선택
 
-`C-c h i N`은 새 profile만 등록하며 이미 사용 중인 이름은 거부한다. `C-c h i E`는
-등록된 이름을 자동완성으로 선택하고 Gateway 설정을 수정한다. `C-c h i G` 또는
+`C-c h i g N`은 새 profile만 등록하며 이미 사용 중인 이름은 거부한다. `C-c h i g E`는
+등록된 이름을 자동완성으로 선택하고 Gateway 설정을 수정한다. `C-c h i g G` 또는
 `M-x imoogi-gptel-switch-litellm-profile`은 자동완성 목록에서 활성 Gateway를 바꾼다.
 일반 `M-x imoogi-gptel-setup`에서 LiteLLM을 선택하면 새 profile 등록 흐름으로 들어간다.
 경로 prefix가 있는 Gateway는 그 경로까지 base URL에 넣는다. Base URL이
@@ -1045,9 +1045,9 @@ LiteLLM은 다음 순서로 설정한다.
 두 endpoint는 프로필별로 저장되므로 특수한 Gateway에서는 Chat endpoint와 Model list
 endpoint를 서로 다른 경로로 지정할 수 있다.
 
-`C-c h i O`로 `~/.emacs.d/imoogi-gptel.json`을 직접 열 수 있다. API key는 이 파일에
+`C-c h i g O`로 `~/.emacs.d/imoogi-gptel.json`을 직접 열 수 있다. API key는 이 파일에
 쓰지 않는다. `litellm_profiles` 배열에서 profile의 `gateway_url`, `endpoint`,
-`models_endpoint`, `models`, `default_model`을 수정하고 저장한 다음 `C-c h i R`로 다시
+`models_endpoint`, `models`, `default_model`을 수정하고 저장한 다음 `C-c h i g R`로 다시
 읽는다. `active_profile`과 이름이 같은 profile이 현재 설정으로 적용된다.
 
 ```json
@@ -1116,30 +1116,37 @@ Emacs 안에서는 `C-c h s P`로 PEM을 선택하면 전역 시스템 설정에
 backend 생성을 추적할 수 있다. API key, token, secret, password 값은 항상
 `<redacted>`로 기록되고 로그 파일 권한은 `0600`으로 맞춘다.
 
-실패 직후 `C-c h i D`를 실행하면 현재 Gateway에서 계산한 auth host, endpoint,
+실패 직후 `C-c h i g D`를 실행하면 현재 Gateway에서 계산한 auth host, endpoint,
 `auth-sources` 파일의 존재·읽기·쓰기 권한, 현재 host의 `apikey` 항목 존재 여부를
-확인할 수 있다. `C-c h i L`은 상세 로그를 연다. 이 기능을 설치하기 전에 이미 발생한
+확인할 수 있다. `C-c h i g L`은 상세 로그를 연다. 이 기능을 설치하기 전에 이미 발생한
 오류 메시지는 `C-h e` (`view-echo-area-messages`)에서 확인한다.
 
 | 키 | 동작 |
 | --- | --- |
-| `C-c h i c` | LiteLLM 채팅 버퍼 열기 |
-| `C-c h i s` | 현재 영역 또는 버퍼의 prompt 전송 |
-| `C-c h i m` | gptel 모델·옵션·도구 Transient 열기 |
-| `C-c h i N` | 새 LiteLLM Gateway profile 등록 |
-| `C-c h i E` | 등록된 LiteLLM Gateway profile 수정 |
-| `C-c h i G` | 저장된 LiteLLM Gateway profile 전환 |
-| `C-c h i O` | gptel 설정 JSON 직접 열기 |
+| `C-c h i` | 공통 AI 메뉴 열기 |
+| `C-c h i g` | gptel 메뉴 열기 |
+| `C-c h i a` | agent-shell 메뉴 열기 (`C-c h A`도 사용 가능) |
+| `C-c h i g c` | Org 모드로 LiteLLM 채팅 버퍼 열기 |
+| `C-c h i g s` | 현재 영역 또는 버퍼의 prompt 전송 |
+| `C-c h i g m` | gptel 모델·옵션·도구 Transient 열기 |
+| `C-c h i g N` | 새 LiteLLM Gateway profile 등록 |
+| `C-c h i g E` | 등록된 LiteLLM Gateway profile 수정 |
+| `C-c h i g G` | 저장된 LiteLLM Gateway profile 전환 |
+| `C-c h i g O` | gptel 설정 JSON 직접 열기 |
 | `C-c h s P` | 사설 CA PEM을 Emacs 전역에 설정하고 저장 |
 | `C-c h s X` | Emacs 전역 사설 CA 설정 해제 |
-| `C-c h i R` | 수정한 gptel 설정 JSON 다시 읽기 |
-| `C-c h i a` | 현재 영역 또는 버퍼를 추가 문맥으로 등록 |
-| `C-c h i f` | 파일을 추가 문맥으로 등록 |
-| `C-c h i S` | LiteLLM Gateway 설정 |
-| `C-c h i k` | virtual key를 auth-source에 등록 |
-| `C-c h i D` | 현재 gptel·auth-source 상태 진단 |
-| `C-c h i L` | 비밀값이 제거된 단계별 진단 로그 열기 |
-| `C-c h i h` | 내장 설정 가이드 보기 |
+| `C-c h i g R` | 수정한 gptel 설정 JSON 다시 읽기 |
+| `C-c h i g a` | 현재 영역 또는 버퍼를 추가 문맥으로 등록 |
+| `C-c h i g f` | 파일을 추가 문맥으로 등록 |
+| `C-c h i g S` | LiteLLM Gateway 설정 |
+| `C-c h i g k` | virtual key를 auth-source에 등록 |
+| `C-c h i g D` | 현재 gptel·auth-source 상태 진단 |
+| `C-c h i g L` | 비밀값이 제거된 단계별 진단 로그 열기 |
+| `C-c h i g h` | 내장 설정 가이드 보기 |
+
+새 gptel 채팅은 기본적으로 `org-mode`를 사용한다. 대화를 파일로 보관하려면
+`C-x C-w`로 `.org` 파일에 저장한다. 파일 자동 저장은 설정하지 않는다.
+기존 `C-c h i …` gptel 명령은 공통 AI 메뉴 아래의 `C-c h i g …`로 이동했다.
 
 ### Org/Markdown 브라우저 미리보기 (간단 버전)
 
