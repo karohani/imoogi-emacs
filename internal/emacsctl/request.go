@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // maxEventBytes caps the encoded event, trailing newline included, because
@@ -71,6 +73,14 @@ type artifactPayload struct {
 	Title        *string `json:"title,omitempty"`
 }
 
+type taskCreatePayload struct {
+	Title          string  `json:"title"`
+	Path           *string `json:"path,omitempty"`
+	ExternalSystem *string `json:"externalSystem,omitempty"`
+	ExternalID     *string `json:"externalId,omitempty"`
+	ExternalURL    *string `json:"externalUrl,omitempty"`
+}
+
 type finishPayload struct {
 	Status   string  `json:"status"`
 	Summary  *string `json:"summary,omitempty"`
@@ -83,11 +93,12 @@ var commonOptions = []string{"--project", "--session", "--timeout"}
 // subcommandOptions lists the options each subcommand accepts beyond the
 // common ones.
 var subcommandOptions = map[string][]string{
-	"message":   nil,
-	"open-file": nil,
-	"goto":      nil,
-	"artifact":  {"--type", "--title"},
-	"finish":    {"--artifact"},
+	"message":     nil,
+	"open-file":   nil,
+	"goto":        nil,
+	"artifact":    {"--type", "--title"},
+	"finish":      {"--artifact"},
+	"task-create": {"--file", "--external-system", "--external-id", "--external-url"},
 }
 
 // parseArgs splits args into positional arguments and option values. Options
@@ -141,7 +152,7 @@ func parseRequest(args []string, getenv func(string) string, getwd func() (strin
 		return nil, err
 	}
 	if len(positional) == 0 {
-		return nil, usagef("missing subcommand (message, open-file, goto, artifact, finish)")
+		return nil, usagef("missing subcommand (message, open-file, goto, artifact, finish, task-create)")
 	}
 	sub, rest := positional[0], positional[1:]
 	allowed, ok := subcommandOptions[sub]
@@ -227,6 +238,35 @@ func parseRequest(args []string, getenv func(string) string, getwd func() (strin
 			ArtifactType: optional(options, "--type"),
 			Title:        optional(options, "--title"),
 		}
+	case "task-create":
+		if len(rest) != 1 || !taskLine(rest[0]) {
+			return nil, usagef("task-create takes one nonempty single-line TITLE")
+		}
+		payload := taskCreatePayload{Title: rest[0], ExternalSystem: optional(options, "--external-system"), ExternalID: optional(options, "--external-id"), ExternalURL: optional(options, "--external-url")}
+		if (payload.ExternalSystem == nil) != (payload.ExternalID == nil) || (payload.ExternalURL != nil && payload.ExternalSystem == nil) {
+			return nil, usagef("external metadata requires --external-system and --external-id together")
+		}
+		for _, value := range []*string{payload.ExternalSystem, payload.ExternalID, payload.ExternalURL} {
+			if value != nil && !taskLine(*value) {
+				return nil, usagef("external metadata must be nonempty single-line text")
+			}
+		}
+		if payload.ExternalURL != nil {
+			parsed, err := url.Parse(*payload.ExternalURL)
+			_, escapeErr := url.PathUnescape(*payload.ExternalURL)
+			if err != nil || escapeErr != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" || strings.IndexFunc(*payload.ExternalURL, unicode.IsSpace) >= 0 {
+				return nil, usagef("--external-url must be an absolute HTTP(S) URL without whitespace")
+			}
+		}
+		if file := optional(options, "--file"); file != nil {
+			path, err := abs(*file)
+			if err != nil {
+				return nil, err
+			}
+			payload.Path = &path
+		}
+		event.Type = "task-create"
+		event.Payload = payload
 	case "finish":
 		if len(rest) < 1 || len(rest) > 2 {
 			return nil, usagef("finish takes success|failed [SUMMARY]")
@@ -319,4 +359,9 @@ func optional(options map[string]string, name string) *string {
 		return nil
 	}
 	return &value
+}
+
+// taskLine prevents Org headings or property drawers from being injected.
+func taskLine(value string) bool {
+	return strings.TrimSpace(value) != "" && strings.IndexFunc(value, func(r rune) bool { return unicode.IsControl(r) || r == '\u2028' || r == '\u2029' }) < 0
 }

@@ -130,6 +130,42 @@ imoogi-emacsctl finish success "테스트 전부 통과" --artifact notes/report
 imoogi-emacsctl --version
 ```
 
+새 Org 할 일은 `task-create`로 등록한다. 실행 중인 Emacs의 `org-directory` 아래
+`agenda.org`에서 `Inbox` 제목을 찾아 새 할 일을 추가하고 저장한다. 상태는 대상 파일에
+현재 저장된 `#+TODO` 선언과 Emacs 전역 설정에서 첫 번째 미완료 키워드(기본 `TODO`)를 사용한다.
+열린 버퍼의 오래된 키워드 캐시나 파일·폴더별 로컬 변수는 사용하지 않으며, 로컬 코드를 실행하지 않는다.
+Org의 `#+SETUPFILE` 처리는 유지하므로 참조한 파일이나 URL을 읽을 수 있고, 그 내용도 상태 키워드에 반영된다. 예를 들어 `#+TODO: OPEN | DONE`이면
+`OPEN`으로 등록하며, 미완료 키워드가 없으면 변경 없이 거절한다. `Inbox`가 없으면
+만들며, 기본 `agenda.org`가 없을 때는 부모 폴더가 이미 있는 경우에만 파일을 만든다.
+`--file`은 다른 **기존 로컬 `.org` 파일**을 지정한다.
+
+```bash
+imoogi-emacsctl task-create "로그인 오류 수정" \
+  --external-system jira --external-id PROJ-123 \
+  --external-url https://example.atlassian.net/browse/PROJ-123
+imoogi-emacsctl task-create "회의 준비" --file ~/notes/work.org
+```
+
+외부 정보는 선택 사항이다. 지정한다면 `--external-system`과 `--external-id`를 함께
+사용하고, `--external-url`에는 HTTP(S) 주소를 넣는다. 제목과 속성값에는 줄바꿈이나
+제어 문자를 넣을 수 없다. 새 할 일에는 고유한 Org `ID`를 생성하며, 기존 항목의
+`ID`는 변경하지 않는다. 저장이 끝나면 Org ID 색인에도 등록을 시도한다. 알림이나 색인 갱신 실패는
+이미 저장한 할 일을 실패로 돌리지 않는다. 외부 정보는 `EXTERNAL_SYSTEM`, `EXTERNAL_ID`,
+`EXTERNAL_URL` 속성으로 저장한다. 외부 서비스 API에는 연결하지 않는다.
+
+Org의 `C-c C-x p` (`org-set-property`)에서도 세 속성을 선택할 수 있다.
+`EXTERNAL_SYSTEM`은 `jira`, `github`, `gitlab`, `linear`를 제안하고 사내 시스템처럼
+목록에 없는 이름도 직접 입력할 수 있다. 제안 목록은 다음처럼 바꾼다.
+
+```elisp
+(setq imoogi-org-external-systems '("jira" "github" "youtrack" "internal"))
+```
+
+저장 대상 버퍼에 미저장 편집 내용이 있거나 디스크 파일이 외부에서 바뀌었으면 등록을
+거절한다. 읽기 전용 파일과 다른 프로세스가 잠근 파일도 변경하지 않는다.
+**타임아웃이나 전달 오류 뒤에는 대상 파일을 확인한 다음 재시도한다.** Emacs가 이미
+등록했을 수 있으며, 같은 명령을 다시 실행하면 별도의 새 할 일이 만들어진다.
+
 모든 하위 명령에 `--project P`, `--session S`, `--timeout SECONDS`를 붙일 수 있다.
 옵션은 위치 인자 앞뒤 어디에 와도 되고, `--` 뒤는 모두 위치 인자로 본다.
 상대 경로는 명령을 실행한 디렉터리 기준 절대 경로로 바뀌어 전달된다.
