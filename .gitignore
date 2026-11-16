@@ -352,6 +352,8 @@ modules/.omc/
 .moai/logs/
 .moai/backup/
 .moai/lessons-inbox.jsonl
+.moai/archive/
+.moai/harness/
 .omx-state-locks/
 .omx-state-locks.identity.json
 .codex/*
