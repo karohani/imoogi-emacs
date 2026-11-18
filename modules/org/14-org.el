@@ -38,6 +38,22 @@ would otherwise never apply to source blocks."
 (with-eval-after-load 'org
   (imoogi-org--enable-babel-languages))
 
+(defcustom imoogi-org-external-systems '("jira" "github" "gitlab" "linear")
+  "Suggested external ticket systems in Org property completion.
+Other system names can also be entered.  These values do not contact a service."
+  :type '(repeat string)
+  :group 'org)
+
+(defun imoogi-org--external-property-values (property)
+  "Offer configurable system suggestions for PROPERTY, allowing free input."
+  (when (equal property "EXTERNAL_SYSTEM")
+    (append imoogi-org-external-systems '(":ETC"))))
+
+(with-eval-after-load 'org
+  (dolist (name '("EXTERNAL_SYSTEM" "EXTERNAL_ID" "EXTERNAL_URL"))
+    (add-to-list 'org-default-properties name t))
+  (add-hook 'org-property-allowed-value-functions #'imoogi-org--external-property-values))
+
 (defun imoogi-org--default-directory ()
   "Return imoogi's default Org directory."
   (expand-file-name "~/notes/"))

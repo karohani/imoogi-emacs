@@ -15,6 +15,7 @@
 (imoogi-require "30-emacsctl")
 
 (require 'subr-x)
+(require 'seq)
 
 (defconst imoogi-emacsctl-max-bytes 1048576
   "Largest accepted event, in bytes (event file size or JSON string bytes).")
@@ -30,7 +31,7 @@ receiver binds it to nil when visiting, so this cap is the only bound.")
   "Name of the append-only, session-scoped event log buffer.")
 
 (defconst imoogi-emacsctl--types
-  '("message" "open-file" "goto-location" "artifact-created" "task-finished")
+  '("message" "open-file" "goto-location" "artifact-created" "task-finished" "task-create")
   "Event types accepted by protocol version 1.")
 
 (defconst imoogi-emacsctl--json-options
@@ -202,6 +203,34 @@ The original name is kept under :name for notices."
         (setq event (plist-put event :name (file-name-nondirectory path))))))
   event)
 
+(defun imoogi-emacsctl--task-space-p (char)
+  "Match the Unicode whitespace accepted by the CLI's unicode.IsSpace."
+  (or (<= 9 char 13) (= char 133)
+      (memq (get-char-code-property char 'general-category) '(Zs Zl Zp))))
+
+(defun imoogi-emacsctl--task-line-p (value)
+  "Return non-nil for nonblank VALUE without C0/C1 controls or line separators."
+  (and (seq-some (lambda (char) (not (imoogi-emacsctl--task-space-p char))) value)
+       (not (seq-some (lambda (char)
+                        (or (< char 32) (<= 127 char 159) (memq char '(8232 8233))))
+                      value))))
+
+(defun imoogi-emacsctl--task-url-p (value)
+  "Validate an HTTP(S) URL without accessing the network.
+Check authority syntax and escapes explicitly because url-generic-parse-url
+accepts malformed ports, brackets and percent escapes."
+  (let ((case-fold-search t))
+    (and (not (seq-some #'imoogi-emacsctl--task-space-p value))
+         (string-match "\\`https?://\\([^/?#]+\\)" value)
+         (let* ((authority (match-string 1 value))
+                (host-port (car (last (split-string authority "@")))))
+           (and (stringp host-port)
+                (or (string-match-p "\\`\\[[^][]+\\]\\(?::[0-9]*\\)?\\'" host-port)
+                    (string-match-p "\\`[^][:@]+\\(?::[0-9]*\\)?\\'" host-port))))
+         (not (string-match-p
+               "%\\(?:[^0-9A-Fa-f]\\|[0-9A-Fa-f][^0-9A-Fa-f]\\|[0-9A-Fa-f]?\\'\\)"
+               value)))))
+
 (defun imoogi-emacsctl--validate-payload (type payload)
   "Validate PAYLOAD of TYPE and return its fields as a plist."
   (pcase type
@@ -217,6 +246,20 @@ The original name is kept under :name for notices."
      (list :path (imoogi-emacsctl--field payload 'path 'string)
            :artifact-type (imoogi-emacsctl--field payload 'artifactType 'string t)
            :title (imoogi-emacsctl--field payload 'title 'string t)))
+    ("task-create"
+     (let ((title (imoogi-emacsctl--field payload 'title 'text))
+           (system (imoogi-emacsctl--field payload 'externalSystem 'string t))
+           (id (imoogi-emacsctl--field payload 'externalId 'string t))
+           (url (imoogi-emacsctl--field payload 'externalUrl 'string t)))
+       (dolist (value (delq nil (list title system id url)))
+         (unless (imoogi-emacsctl--task-line-p value)
+           (imoogi-emacsctl--reject "bad-field")))
+       (unless (and (eq (null system) (null id)) (or (not url) system))
+         (imoogi-emacsctl--reject "bad-field"))
+       (when (and url (not (imoogi-emacsctl--task-url-p url)))
+         (imoogi-emacsctl--reject "bad-field"))
+       (list :title title :external-system system :external-id id :external-url url
+             :path (imoogi-emacsctl--field payload 'path 'string t))))
     ("task-finished"
      (let ((status (imoogi-emacsctl--field payload 'status 'string)))
        (unless (member status '("success" "failed"))
@@ -319,11 +362,134 @@ a column past the end of the line clamps to the line end."
                 (concat ": " summary)
               ""))))
 
+(defun imoogi-emacsctl--task-buffer-preflight (buffer)
+  "Reject BUFFER when task creation would overwrite or disturb user data."
+  (with-current-buffer buffer
+    (when (buffer-modified-p) (imoogi-emacsctl--reject "dirty-buffer"))
+    (unless (verify-visited-file-modtime buffer)
+      (imoogi-emacsctl--reject "stale-buffer"))
+    (when buffer-read-only (imoogi-emacsctl--reject "read-only"))))
+
+(defun imoogi-emacsctl--task-keyword (text keywords)
+  "Calculate the first unfinished state from TEXT and global KEYWORDS.
+File and directory local variables are deliberately not evaluated.
+Native Org SETUPFILE resolution can read files or URLs referenced by TEXT;
+those external contents can also determine the returned keyword."
+  (with-temp-buffer
+    (insert text)
+    (let ((org-todo-keywords keywords) (org-mode-hook nil)
+          (change-major-mode-hook nil) (after-change-major-mode-hook nil)
+          (org-todo-setup-filter-hook nil) (org-inhibit-startup t))
+      (org-mode)
+      (car org-not-done-keywords))))
+
+(defun imoogi-emacsctl--task-save ()
+  "Save the task, accepting a late error only if intended text reached disk.
+An unconfirmed write error escapes so the caller can roll back its edits."
+  (let ((before-save-hook nil) (after-save-hook nil)
+        (write-file-functions nil) (write-contents-functions nil)
+        (local-write-file-hooks nil))
+    (condition-case failure
+        (save-buffer)
+      (error
+       (let ((text (buffer-string))
+             (file buffer-file-name)
+             (coding-system-for-read buffer-file-coding-system))
+         (if (condition-case nil
+                 (equal text (with-temp-buffer
+                               (insert-file-contents file)
+                               (buffer-string)))
+               (error nil))
+             (progn (set-visited-file-modtime) (set-buffer-modified-p nil))
+           (signal (car failure) (cdr failure))))))))
+
+(defun imoogi-emacsctl--task-target (event)
+  "Resolve a safe Org destination for task EVENT before visiting or changing it."
+  (require 'org)
+  (let* ((explicit (plist-get event :path))
+         (path (or explicit (expand-file-name "agenda.org" org-directory))))
+    (unless (and (file-name-absolute-p path) (not (file-remote-p path))
+                 (equal (downcase (or (file-name-extension path) "")) "org"))
+      (imoogi-emacsctl--reject "bad-path"))
+    (setq path (file-truename path))
+    (when (file-remote-p path) (imoogi-emacsctl--reject "bad-path"))
+    (if (file-exists-p path)
+        (setq path (imoogi-emacsctl--resolve-path path))
+      (unless (and (not explicit) (file-directory-p (file-name-directory path)))
+        (imoogi-emacsctl--reject "bad-path")))
+    (unless (file-writable-p path) (imoogi-emacsctl--reject "read-only"))
+    (when (stringp (file-locked-p path)) (imoogi-emacsctl--reject "locked"))
+    (when-let* ((buffer (find-buffer-visiting path)))
+      (imoogi-emacsctl--task-buffer-preflight buffer))
+    path))
+
+(defun imoogi-emacsctl--create-task (event)
+  "Persist one new TODO from EVENT without saving unrelated buffer edits."
+  (let* ((path (imoogi-emacsctl--task-target event))
+         (existing (find-buffer-visiting path))
+         (buffer (or existing
+                     (let ((enable-local-variables nil) (enable-local-eval nil)
+                           (find-file-hook nil))
+                       (find-file-noselect path))))
+         todo id)
+    (unwind-protect
+        (with-current-buffer buffer
+          (unless (derived-mode-p 'org-mode) (imoogi-emacsctl--reject "bad-path"))
+          (imoogi-emacsctl--task-buffer-preflight buffer)
+          (setq todo (imoogi-emacsctl--task-keyword
+                      (save-restriction (widen) (buffer-string))
+                      (default-value 'org-todo-keywords)))
+          (unless todo (imoogi-emacsctl--reject "no-todo-keyword"))
+          ;; Refresh the visiting buffer too, so the new state is recognized now.
+          (let ((org-todo-setup-filter-hook nil))
+            (org-set-regexps-and-options))
+          (require 'org-id)
+          (save-excursion
+            (save-restriction
+              (widen)
+              (atomic-change-group
+                (let ((inbox (catch 'inbox
+                               (org-map-entries
+                                (lambda ()
+                                  (when (and (= (org-outline-level) 1)
+                                             (equal (org-get-heading t t t t) "Inbox"))
+                                    (throw 'inbox (point)))))
+                               nil)))
+                  (if inbox
+                      (progn (goto-char inbox) (org-end-of-subtree t t))
+                    (goto-char (point-max))
+                    (unless (bolp) (insert "\n"))
+                    (insert "* Inbox\n"))
+                  (unless (bolp) (insert "\n"))
+                  (insert "** " todo " " (plist-get event :title) "\n")
+                  (forward-line -1)
+                  (setq id (org-id-new))
+                  (org-entry-put nil "ID" id)
+                  (dolist (property '((:external-system . "EXTERNAL_SYSTEM")
+                                      (:external-id . "EXTERNAL_ID")
+                                      (:external-url . "EXTERNAL_URL")))
+                    (when-let* ((value (plist-get event (car property))))
+                      (org-entry-put nil (cdr property) value)))
+                  ;; A noninteractive request must not invoke user save hooks,
+                  ;; formatters or alternate writers that can change other content.
+                  (imoogi-emacsctl--task-save)))))
+          ;; Persistence is committed. Auxiliary failures must not invite a retry.
+          (ignore-errors (org-id-add-location id path))
+          (ignore-errors
+            (imoogi-emacsctl--notify (concat "Org task created: " (plist-get event :title))))
+          path)
+      (unless existing
+        (when (buffer-live-p buffer)
+          (with-current-buffer buffer (set-buffer-modified-p nil))
+          (let ((kill-buffer-hook nil) (kill-buffer-query-functions nil))
+            (kill-buffer buffer)))))))
+
 (defun imoogi-emacsctl-dispatch (event)
   "Carry out the validated, normalized EVENT plist.
 Handlers that show a file display it first and notify last, so the notice
 is the final message of the call. Return a detail string for the log."
   (pcase (plist-get event :type)
+    ("task-create" (imoogi-emacsctl--create-task event))
     ("message"
      (imoogi-emacsctl--notify (plist-get event :text))
      (plist-get event :text))
