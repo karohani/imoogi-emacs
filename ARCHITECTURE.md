@@ -8,18 +8,11 @@
 
 ~/.emacs.d/init.el
   └── boot.el                  ← package.el → vendor/elpa/, use-package (오프라인)
-        └── modules/ (순서대로 load)
-              ├── defaults     ← 더 나은 기본값 + recentf/savehist/saveplace
-              ├── completion   ← vertico, consult, corfu
-              ├── which-key    ← Emacs 30 내장
-              ├── projects     ← project.el, perspective
-              ├── hydra        ← ace-window, hydra 정의, 글로벌 키바인딩
-              ├── git          ← magit
-              ├── keys         ← 한영전환, 한글 key-translation-map
-              ├── treemacs     ← treemacs + 관련 패키지
-              ├── obsidian     ← obsidian (vendored)
-              ├── autorevert
-              └── theme        ← doom-themes, doom-modeline, nerd-icons
+        └── modules/ (boot.el `dolist` 순서대로 load — 아래 "모듈 로딩 순서" 참고)
+              ├── general/     ← 기본값, 키, 완성, transient 메뉴, 테마, 편집·탐색
+              ├── project/     ← project.el/perspective, magit, treemacs, 탭, 프로젝트 노트
+              ├── org/         ← Org, 미리보기, Anki/flashcard, 클립보드, org-roam
+              └── development/ ← elisp, LSP, 언어 모드, 터미널, gptel, 에이전트 IPC
 ```
 
 ## 디렉토리 레이아웃
@@ -89,51 +82,61 @@ git-ignored 런타임 상태다.
 
 ## 모듈 로딩 순서
 
-boot.el의 `dolist`에서 정의된 순서대로 로딩된다. 의존성이 있으므로 순서가 중요하다:
+boot.el의 `dolist`에서 정의된 순서대로 로딩된다. 의존성이 있으므로 순서가 중요하다.
+로드 순서의 기준은 boot.el 목록 하나뿐이다. 파일 이름 앞의 번호는 정렬용 이름일
+뿐이며, 기존 파일의 번호를 바꾸지 않으려고 새 모듈을 뒤 번호로 붙였기 때문에 실제
+순서와 어긋나는 곳이 있다(아래 목록은 실제 로드 순서이다).
 
-0. **00-defaults** — 내장 기본값/세션 영속(외부 패키지 없음), 가장 먼저
-1. **01-keys** — 한글 키매핑 (독립적). 이어서 `development/formatting`의 공통 포맷 명령 로드
-2. **02-completion** — vertico/consult/corfu 스택 (hydra가 consult 함수 참조)
-3. **03-which-key** — Emacs 30 내장
-4. **04-projects** — project.el + perspective 작업공간 연결/영속화
-5. **05-hydra** — ace-window + hydra 정의 (consult, project.el, magit 함수 참조)
-6. **06-git** — magit (독립적)
-7. **07-treemacs** — 전역 treemacs + project.el/magit/icons-dired 연동
-8. **08-obsidian** — obsidian (독립적)
-9. **09-autorevert** — global-auto-revert (독립적)
-10. **10-theme** — doom-themes/doom-modeline (treemacs 뒤라야 연동 동작)
-11. **11-editing** — undo-fu, yasnippet, apheleia, dumb-jump, stripspace, elec-pair
-12. **12-navigation** — avy, helpful, diff-hl, bufferfile
-13. **13-system** — exec-path-from-shell, server, buffer-terminator, persist-text-scale
-14. **14-org** — org, org-appear
-15. **15-markdown** — markdown-mode, markdown-toc
-16. **16-elisp** — aggressive-indent, paredit, highlight-defined 등
-17. **17-lsp** — 내장 Eglot/Flymake/xref 공통 설정과 `modules/development/lang/*.el` 로더
-18. **18-languages** — 21종 파일타입 메이저 모드(언어별 LSP와 분리)
-19. **19-folding** — kirigami, outline-indent, 내장 outline/hs-minor
-20. **20-terminal** — ghostel + ghostel-ime (모듈은 vendor/ghostel-module/ 동봉)
-21. **21-native-compile** — compile-angel (소급 컴파일하므로 마지막)
-22. **22-tabs** — tab-bar 기반 tmux window 대응
-23. **23-org-preview** — Org HTML preview client
-24. **24-anki** — Org → Anki 단방향 동기화
-25. **25-flashcards** — Anki 미설치 폐쇄망용 Emacs-native flashcard fallback.
-    Org의 `IMOOGI_FLASHCARD_ID`/`IMOOGI_FLASHCARD_KIND`가 source of truth이고,
-    SQLite는 projection, review state, immutable review log만 보관한다.
-26. **26-project-notes** — 소스 밖 프로젝트별 Org 기록과 영속 Scratch.
-    `templates/project-notes/`에서 문서를 새로 생성하고 기존 파일은 보존한다.
-    `.cache/project-notes.json`은 소스와 기록 폴더의 연결 및 TODO 저장 방식을 보관한다.
-    `.cache/project-notes-mounted-roots.json`은 호스트별 외장 노트 루트와 source
-    override만 보관하고, 실제 외장 노트 목록은 각 폴더의 `.imoogi-project.json`에서
-    동적으로 복원한다. 외장 instance identity와 논리 key를 분리하며 source가 없는
-    project note는 읽기 전용 inactive 상태로 유지한다. 물리 unmount는 mount/device
-    preflight와 저장 성공 뒤에만 플랫폼 adapter를 호출한다.
-    Git common directory로 worktree의 기록을 공유하고 재개 지점은 경로별로 나눈다.
-    기존 프로젝트 문서 연결 목록은 `cmd/imoogi-notes`가 `catalog`/`index`/`lookup`/
-    `backlinks` JSON 요청으로 제공한다. CLI는 `{project_id, notes_root, tasks_file,
-    excluded_roots}` scope별 SQLite 캐시를 만들고 파일 내용 해시가 같은 Org parse
-    결과를 재사용한다. Emacs는 비동기 subprocess와 live buffer overlay만 넘기며,
-    overlay 내용은 캐시에 저장하지 않는다. 캐시는 disposable projection이고 Org
-    문서가 source of truth다.
+- **00-defaults** — 내장 기본값/세션 영속(외부 패키지 없음), 가장 먼저
+- **01-keys** — 한글 키매핑 (독립적)
+- **formatting** (`development/formatting`, 번호 없음) — 공통 포맷 명령 `imoogi-format-code`
+- **02-completion** — vertico/consult/corfu 스택 (transient 메뉴가 consult 함수 참조)
+- **03-which-key** — Emacs 30 내장
+- **04-projects** — project.el + perspective 작업공간 연결/영속화
+- **05-transient** — ace-window + transient 메뉴 정의 (consult, project.el, magit 함수 참조)
+- **06-git** — magit (독립적)
+- **07-treemacs** — 전역 treemacs + project.el/magit/icons-dired 연동
+- **08-obsidian** — obsidian (독립적)
+- **09-autorevert** — global-auto-revert (독립적)
+- **10-theme** — doom-themes/doom-modeline (treemacs 뒤라야 연동 동작)
+- **11-editing** — undo-fu, yasnippet, apheleia, dumb-jump, stripspace, elec-pair
+- **12-navigation** — avy, helpful, diff-hl, bufferfile
+- **13-system** — exec-path-from-shell, server, buffer-terminator, persist-text-scale
+- **14-org** — org, org-appear
+- **23-org-preview** — Org HTML preview client (14-org 의존)
+- **15-markdown** — markdown-mode, markdown-toc
+- **16-elisp** — aggressive-indent, paredit, highlight-defined 등
+- **17-lsp** — 내장 Eglot/Flymake/xref 공통 설정과 `modules/development/lang/*.el` 로더
+- **18-languages** — 21종 파일타입 메이저 모드(언어별 LSP와 분리)
+- **19-folding** — kirigami, outline-indent, 내장 outline/hs-minor
+- **20-terminal** — ghostel + ghostel-ime (모듈은 vendor/ghostel-module/ 동봉)
+- **21-native-compile** — compile-angel (그때까지 로드된 모듈을 소급 컴파일)
+- **22-tabs** — tab-bar 기반 tmux window 대응
+- **24-anki** — Org → Anki 단방향 동기화
+- **25-flashcards** — Anki 미설치 폐쇄망용 Emacs-native flashcard fallback.
+  Org의 `IMOOGI_FLASHCARD_ID`/`IMOOGI_FLASHCARD_KIND`가 source of truth이고,
+  SQLite는 projection, review state, immutable review log만 보관한다.
+- **26-project-notes** — 소스 밖 프로젝트별 Org 기록과 영속 Scratch.
+  `templates/project-notes/`에서 문서를 새로 생성하고 기존 파일은 보존한다.
+  `.cache/project-notes.json`은 소스와 기록 폴더의 연결 및 TODO 저장 방식을 보관한다.
+  `.cache/project-notes-mounted-roots.json`은 호스트별 외장 노트 루트와 source
+  override만 보관하고, 실제 외장 노트 목록은 각 폴더의 `.imoogi-project.json`에서
+  동적으로 복원한다. 외장 instance identity와 논리 key를 분리하며 source가 없는
+  project note는 읽기 전용 inactive 상태로 유지한다. 물리 unmount는 mount/device
+  preflight와 저장 성공 뒤에만 플랫폼 adapter를 호출한다.
+  Git common directory로 worktree의 기록을 공유하고 재개 지점은 경로별로 나눈다.
+  기존 프로젝트 문서 연결 목록은 `cmd/imoogi-notes`가 `catalog`/`index`/`lookup`/
+  `backlinks` JSON 요청으로 제공한다. CLI는 `{project_id, notes_root, tasks_file,
+  excluded_roots}` scope별 SQLite 캐시를 만들고 파일 내용 해시가 같은 Org parse
+  결과를 재사용한다. Emacs는 비동기 subprocess와 live buffer overlay만 넘기며,
+  overlay 내용은 캐시에 저장하지 않는다. 캐시는 disposable projection이고 Org
+  문서가 source of truth다.
+- **27-gptel** — LiteLLM Gateway 기반 gptel 프로필·인증·모델 등록
+- **28-clipboard** — Org/Markdown 클립보드 이미지·자산 붙여넣기 (`imoogi-clip`)
+- **29-org-roam** — 중앙 노트 org-roam과 캐시된 노드 완성
+- **32-mothership-metadata** — Mothership 메타데이터 입력 폼 (org-roam 의존)
+- **30-emacsctl** — 코딩 에이전트 → Emacs IPC 수신기 (`imoogi-emacsctl`)
+- **31-agent** — agent-shell 위의 `imoogi-agent-*` 인터페이스
 
 언어별 LSP 설정은 `modules/development/lang/` 아래의 이름 기반 파일로 분리한다. `17-lsp`가
 `*.el`을 정렬해 자동 로드하고 각 파일의 실패를 격리하므로, 새 언어는
