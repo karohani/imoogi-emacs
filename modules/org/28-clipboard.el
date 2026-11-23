@@ -10,6 +10,128 @@
 
 (defgroup imoogi-clipboard nil "Clipboard asset integration." :group 'imoogi)
 
+(defcustom imoogi-clipboard-trace-file
+  (expand-file-name ".cache/clipboard-trace.log" user-emacs-directory)
+  "Local diagnostic log; change only while tracing is disabled."
+  :type 'file :group 'imoogi-clipboard)
+
+(defcustom imoogi-clipboard-trace-max-bytes (* 1024 1024)
+  "Maximum bytes per log, with one previous log retained as .1.
+Must be at least 2048.  Change only while tracing is disabled."
+  :type 'integer :group 'imoogi-clipboard)
+
+(defconst imoogi-clipboard--trace-targets
+  '(imoogi-clipboard--owner imoogi-project-notes--read-registry
+    imoogi-org-preview--send-update imoogi-clipboard--renew-active-leases))
+(defvar imoogi-clipboard--trace-writing nil)
+(defvar imoogi-clipboard--trace-depth 0)
+(defvar imoogi-clipboard--trace-id 0)
+
+(defun imoogi-clipboard--trace-write (text &optional prepare)
+  "Immediately append TEXT, rotating before the size limit is reached.
+The caller handles failures.  Never run modification hooks while logging.
+When PREPARE is non-nil, also discard an oversized previous log."
+  (unless imoogi-clipboard--trace-writing
+    (save-match-data
+      (let ((imoogi-clipboard--trace-writing t)
+            (inhibit-modification-hooks t)
+            (before-change-functions nil) (after-change-functions nil)
+            (coding-system-for-write 'utf-8-unix)
+            (write-region-annotate-functions nil)
+            (write-region-post-annotation-function nil)
+            (buffer-file-format nil)
+            (write-region-inhibit-fsync nil)
+            (file (expand-file-name imoogi-clipboard-trace-file)))
+	(when (or (file-remote-p file) (file-remote-p (file-truename file)))
+          (error "Clipboard trace requires a local file"))
+	(unless (and (integerp imoogi-clipboard-trace-max-bytes)
+                     (>= imoogi-clipboard-trace-max-bytes 2048))
+          (error "Clipboard trace size must be at least 2048 bytes"))
+	(when (> (string-bytes text) imoogi-clipboard-trace-max-bytes)
+          (error "Clipboard trace record exceeds size limit"))
+	(make-directory (file-name-directory file) t)
+        (when prepare
+          (let ((backup (concat file ".1")))
+            (when (> (or (file-attribute-size (file-attributes backup)) 0)
+                     imoogi-clipboard-trace-max-bytes)
+              (write-region "" nil backup nil 'silent))))
+	(let ((size (or (file-attribute-size (file-attributes file)) 0)))
+          (when (> (+ size (string-bytes text)) imoogi-clipboard-trace-max-bytes)
+            ;; Bound an existing oversized file too, without copying its contents.
+            (when (> size imoogi-clipboard-trace-max-bytes)
+              (write-region "" nil file nil 'silent))
+            (rename-file file (concat file ".1") t)))
+	(write-region text nil file t 'silent)))))
+
+(defun imoogi-clipboard--trace-callers ()
+  "Return a bounded list of symbol names, never frame arguments or closures."
+  (let (names)
+    (dotimes (index 80)
+      (let* ((frame (backtrace-frame index)) (fn (nth 1 frame)))
+        (when (and (symbolp fn) fn (not (special-form-p fn))
+                   (not (memq fn '(backtrace-frame apply funcall)))
+                   (not (string-prefix-p "imoogi-clipboard--trace-" (symbol-name fn)))
+                   (< (length names) 12))
+          (let ((name (symbol-name fn)))
+            (when (and (<= (length name) 80)
+                       (string-match-p "\\`[[:alnum:]_+*/:<>=!?-]+\\'" name))
+              (push name names))))))
+    (mapconcat #'identity (nreverse names) ",")))
+
+(defun imoogi-clipboard--trace-record (format-string &rest args)
+  "Record metadata using FORMAT-STRING and ARGS without affecting the caller."
+  (condition-case nil
+      (imoogi-clipboard--trace-write
+       (concat (format-time-string "%FT%T.%N%z ")
+               (apply #'format format-string args) "\n"))
+    ((error quit) nil)))
+
+(defun imoogi-clipboard--trace-call (name original &rest args)
+  "Trace NAME around ORIGINAL with ARGS, preserving every nonlocal exit."
+  (if imoogi-clipboard--trace-writing
+      (apply original args)
+    (let ((id (cl-incf imoogi-clipboard--trace-id))
+          (imoogi-clipboard--trace-depth (1+ imoogi-clipboard--trace-depth))
+          (start (float-time)) (outcome 'nonlocal-exit))
+      (condition-case nil
+          (imoogi-clipboard--trace-record
+           "phase=begin id=%s depth=%s fn=%s callers=%s"
+           id imoogi-clipboard--trace-depth name (imoogi-clipboard--trace-callers))
+        ((error quit) nil))
+      (unwind-protect
+          (prog1 (apply original args) (setq outcome 'ok))
+        (imoogi-clipboard--trace-record
+         "phase=end id=%s depth=%s fn=%s duration=%.6f outcome=%s"
+         id imoogi-clipboard--trace-depth name (- (float-time) start) outcome)))))
+
+;;;###autoload
+(define-minor-mode imoogi-clipboard-trace-mode
+  "Record bounded clipboard-related diagnostics to a local file.
+Disabled by default.  Logging adds synchronous disk I/O; disable after diagnosis."
+  :global t :group 'imoogi-clipboard
+  (if imoogi-clipboard-trace-mode
+      (condition-case err
+          (progn
+            (imoogi-clipboard--trace-write
+             (format "%s phase=enabled emacs=%s system=%s\n"
+                     (format-time-string "%FT%T%z") emacs-version system-type)
+             t)
+            (dolist (target imoogi-clipboard--trace-targets)
+              (unless (advice-member-p 'imoogi-clipboard-trace target)
+                (advice-add target :around
+                            (apply-partially #'imoogi-clipboard--trace-call target)
+                            '((name . imoogi-clipboard-trace))))))
+        ((error quit)
+         (imoogi-clipboard-trace-mode -1)
+         (signal (car err) (cdr err))))
+    (dolist (target imoogi-clipboard--trace-targets)
+      (advice-remove target 'imoogi-clipboard-trace))))
+
+(defun imoogi-clipboard-open-trace-log ()
+  "Open the current diagnostic trace as a read-only buffer."
+  (interactive)
+  (find-file-read-only imoogi-clipboard-trace-file))
+
 (defcustom imoogi-clipboard-command '("imoogi-clip")
   "Command used to run the offline clipboard helper."
   :type '(repeat string) :group 'imoogi-clipboard)
